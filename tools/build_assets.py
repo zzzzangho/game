@@ -298,9 +298,10 @@ class Compiler:
         if block is not None:
             self.err("text inside a block; close it with @end")
         name, sep, rest = ln.partition(":")
-        m = SPEAKER_RE.match(name.strip()) if sep else None
+        name = name.strip().strip('"')  # names with spaces may be quoted: "트네 마리오": 대사
+        m = SPEAKER_RE.match(name) if sep else None
         if m and m.group(1).strip() in self.chars:
-            spk, por = self.speaker_portrait(name.strip())
+            spk, por = self.speaker_portrait(name)
             self.say(spk, rest.strip(), por)
         else:
             self.say(NONE, ln)
