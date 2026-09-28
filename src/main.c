@@ -1,0 +1,944 @@
+/* 소년탐정 김전일 - 마술열차 살인사건 (unofficial fan game)
+ * Script-driven detective adventure engine for GBA mode 3.
+ * Story bytecode, font and art come from build/gen_data.c (tools/build_assets.py).
+ */
+#include "platform.h"
+#include "gen_data.h"
+
+#define RGB(r, g, b) ((u16)((r) | ((g) << 5) | ((b) << 10)))
+#define C_WHITE  RGB(31, 31, 31)
+#define C_SHADOW RGB(1, 1, 4)
+#define C_GREY   RGB(14, 14, 17)
+#define C_GOLD   RGB(31, 25, 8)
+#define C_RED    RGB(31, 6, 6)
+#define C_BOX    RGB(2, 3, 9)
+#define C_PANEL  RGB(4, 5, 12)
+#define C_HILITE RGB(9, 12, 24)
+#define C_BORDER RGB(24, 19, 8)
+
+#define LINE_H 13
+#define BOX_Y 104
+#define TEXT_X 8
+#define TEXT_Y 109
+#define PORTRAIT_X 172
+#define PORTRAIT_Y (BOX_Y - PORTRAIT_H)
+
+#define REC_ROWS 5
+#define REC_LIST_Y 21
+#define REC_DESC_Y 100
+
+enum { RET_RETURN, RET_TITLE };
+
+static u16 *fb;
+static u16 snapshot[SCREEN_W * SCREEN_H] EWRAM_BSS;
+static int dirty0 = SCREEN_H, dirty1 = 0;
+static u16 keys_held, keys_new;
+static u32 frame_count;
+
+static int cur_scene, cur_portrait = NONE;
+static int lives, max_lives, in_game;
+static u32 ev_flags, prof_flags;
+static u16 gameover_pc;
+
+/* ------------------------------------------------------------------ frame / input */
+
+static void mark(int y0, int y1)
+{
+    if (y0 < 0) y0 = 0;
+    if (y1 > SCREEN_H) y1 = SCREEN_H;
+    if (y0 < dirty0) dirty0 = y0;
+    if (y1 > dirty1) dirty1 = y1;
+}
+
+static void frame(void)
+{
+    u16 prev = keys_held;
+    plat_vsync();
+    if (dirty1 > dirty0) {
+        plat_present(dirty0, dirty1);
+        dirty0 = SCREEN_H;
+        dirty1 = 0;
+    }
+    keys_held = plat_keys();
+    keys_new = keys_held & ~prev;
+    frame_count++;
+}
+
+static void wait_frames(int n)
+{
+    while (n-- > 0) frame();
+}
+
+static void fade_out(void)
+{
+    for (int l = 2; l <= 16; l += 2) {
+        plat_fade(l);
+        frame();
+    }
+}
+
+static void fade_in(void)
+{
+    frame(); /* make sure the new picture is on screen first */
+    for (int l = 14; l >= 0; l -= 2) {
+        plat_fade(l);
+        frame();
+    }
+}
+
+/* ------------------------------------------------------------------ drawing */
+
+static inline void px(int x, int y, u16 c)
+{
+    if ((unsigned)x < SCREEN_W && (unsigned)y < SCREEN_H) fb[y * SCREEN_W + x] = c;
+}
+
+static void fill(int x, int y, int w, int h, u16 c)
+{
+    for (int j = y; j < y + h; j++)
+        for (int i = x; i < x + w; i++) px(i, j, c);
+    mark(y, y + h);
+}
+
+/* 50% blend toward colour c (translucent panels). */
+static void shade(int x, int y, int w, int h, u16 c)
+{
+    u16 half = (c >> 1) & 0x3DEF;
+    for (int j = y; j < y + h; j++) {
+        if ((unsigned)j >= SCREEN_H) continue;
+        for (int i = x; i < x + w; i++) {
+            if ((unsigned)i >= SCREEN_W) continue;
+            u16 *p = &fb[j * SCREEN_W + i];
+            *p = ((*p >> 1) & 0x3DEF) + half;
+        }
+    }
+    mark(y, y + h);
+}
+
+static void frame_rect(int x, int y, int w, int h, u16 c)
+{
+    fill(x, y, w, 1, c);
+    fill(x, y + h - 1, w, 1, c);
+    fill(x, y, 1, h, c);
+    fill(x + w - 1, y, 1, h, c);
+}
+
+static void blit_keyed(int x, int y, int w, int h, const u16 *src)
+{
+    for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++) {
+            u16 c = src[j * w + i];
+            if (c != TRANSPARENT) px(x + i, y + j, c);
+        }
+    mark(y, y + h);
+}
+
+static void save_screen(void) { plat_copy32(snapshot, fb, SCREEN_W * SCREEN_H / 2); }
+
+static void restore_screen(void)
+{
+    plat_copy32(fb, snapshot, SCREEN_W * SCREEN_H / 2);
+    mark(0, SCREEN_H);
+}
+
+/* ------------------------------------------------------------------ text */
+
+static const u16 *txt(int id) { return text_data + text_ofs[id]; }
+
+static void draw_glyph(int x, int y, int g, u16 c, int scale)
+{
+    const u16 *rows = glyph_bits + g * GLYPH_H;
+    for (int r = 0; r < GLYPH_H; r++) {
+        u16 bits = rows[r];
+        for (int b = 0; bits; b++, bits <<= 1) {
+            if (!(bits & 0x8000)) continue;
+            if (scale == 1)
+                px(x + b, y + r, c);
+            else
+                for (int sy = 0; sy < scale; sy++)
+                    for (int sx = 0; sx < scale; sx++) px(x + b * scale + sx, y + r * scale + sy, c);
+        }
+    }
+    mark(y, y + GLYPH_H * scale);
+}
+
+static void glyph_shadowed(int x, int y, int g, u16 c, int scale)
+{
+    draw_glyph(x + scale, y + scale, g, C_SHADOW, scale);
+    draw_glyph(x, y, g, c, scale);
+}
+
+static int line_width(const u16 *s, int scale)
+{
+    int w = 0;
+    for (; *s != TXT_END && *s != TXT_NL; s++) w += glyph_adv[*s] * scale;
+    return w;
+}
+
+static int text_width(int id, int scale)
+{
+    const u16 *s = txt(id);
+    int best = 0;
+    for (;;) {
+        int w = line_width(s, scale);
+        if (w > best) best = w;
+        while (*s != TXT_END && *s != TXT_NL) s++;
+        if (*s == TXT_END) return best;
+        s++;
+    }
+}
+
+/* Draws text; centred = each line centred around x. */
+static void draw_text_ex(int x, int y, int id, u16 c, int scale, int centred)
+{
+    const u16 *s = txt(id);
+    int cx = centred ? x - line_width(s, scale) / 2 : x;
+    for (; *s != TXT_END; s++) {
+        if (*s == TXT_NL) {
+            y += LINE_H * scale;
+            cx = centred ? x - line_width(s + 1, scale) / 2 : x;
+            continue;
+        }
+        glyph_shadowed(cx, y, *s, c, scale);
+        cx += glyph_adv[*s] * scale;
+    }
+}
+
+static void draw_text(int x, int y, int id, u16 c) { draw_text_ex(x, y, id, c, 1, 0); }
+
+/* Typewriter effect; A or B finishes the page instantly. */
+static void type_text(int x, int y, int id, u16 c)
+{
+    const u16 *s = txt(id);
+    int cx = x, instant = 0, n = 0;
+    for (; *s != TXT_END; s++) {
+        if (*s == TXT_NL) {
+            y += LINE_H;
+            cx = x;
+            continue;
+        }
+        glyph_shadowed(cx, y, *s, c, 1);
+        cx += glyph_adv[*s];
+        if (!instant && (++n & 1) == 0) {
+            if ((n & 3) == 0) plat_sfx(SFX_BLIP);
+            frame();
+            if (keys_new & (KEY_A | KEY_B)) instant = 1;
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ scene + text box */
+
+static const u8 heart_bits[7] = {0x36, 0x7F, 0x7F, 0x7F, 0x3E, 0x1C, 0x08};
+
+static void draw_heart(int x, int y, u16 c)
+{
+    for (int r = 0; r < 7; r++)
+        for (int b = 0; b < 7; b++)
+            if (heart_bits[r] & (0x40 >> b)) {
+                px(x + b + 1, y + r + 1, C_SHADOW);
+                px(x + b, y + r, c);
+            }
+    mark(y, y + 9);
+}
+
+static void draw_hearts(void)
+{
+    if (!in_game || !max_lives) return;
+    for (int i = 0; i < max_lives; i++)
+        draw_heart(SCREEN_W - 4 - (max_lives - i) * 10, 3, i < lives ? C_RED : RGB(8, 6, 8));
+}
+
+static void draw_scene(void)
+{
+    plat_copy32(fb, scene_img[cur_scene], SCREEN_W * SCREEN_H / 2);
+    mark(0, SCREEN_H);
+    if (cur_portrait != NONE) blit_keyed(PORTRAIT_X, PORTRAIT_Y, PORTRAIT_W, PORTRAIT_H, portrait_img[cur_portrait]);
+    draw_hearts();
+}
+
+static void set_speaker_portrait(int spk)
+{
+    cur_portrait = (spk != NONE) ? char_portrait[spk] : NONE;
+}
+
+static void draw_box(int spk)
+{
+    shade(0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, C_BOX);
+    fill(0, BOX_Y, SCREEN_W, 1, C_BORDER);
+    if (spk != NONE) {
+        int w = text_width(char_name[spk], 1) + 12;
+        fill(4, BOX_Y - 14, w, 14, char_color[spk]);
+        frame_rect(4, BOX_Y - 14, w, 14, C_BORDER);
+        draw_text(10, BOX_Y - 14, char_name[spk], C_WHITE);
+    }
+}
+
+static void draw_arrow(int x, int y, u16 c)
+{
+    for (int r = 0; r < 4; r++) fill(x + r, y + r, 7 - 2 * r, 1, c);
+}
+
+static void draw_cursor(int x, int y, u16 c)
+{
+    for (int r = 0; r < 4; r++) fill(x + r, y + r, 1, 7 - 2 * r, c);
+}
+
+static int record(int present, int question);
+
+static void restore_rect(int x, int y, int w, int h)
+{
+    for (int j = y; j < y + h; j++)
+        for (int i = x; i < x + w; i++) fb[j * SCREEN_W + i] = snapshot[j * SCREEN_W + i];
+    mark(y, y + h);
+}
+
+/* Wait for A on a finished page (snapshot must hold the page). START opens the court record. */
+static void wait_advance(void)
+{
+    plat_debug_event("page", 0);
+    for (;;) {
+        restore_rect(224, 150, 8, 5);
+        if ((frame_count >> 4) & 1) draw_arrow(225, 150, C_WHITE);
+        frame();
+        if (keys_new & KEY_A) return;
+        if (keys_new & KEY_START) record(0, NONE);
+    }
+}
+
+static void say(int spk, int t)
+{
+    set_speaker_portrait(spk);
+    draw_scene();
+    draw_box(spk);
+    type_text(TEXT_X, TEXT_Y, t, C_WHITE);
+    save_screen();
+    wait_advance();
+}
+
+/* ------------------------------------------------------------------ popups & effects */
+
+static void popup_window(int x, int y, int w, int h)
+{
+    fill(x, y, w, h, C_PANEL);
+    frame_rect(x, y, w, h, C_BORDER);
+    frame_rect(x + 2, y + 2, w - 4, h - 4, RGB(12, 9, 4));
+}
+
+static void wait_a(int min_frames)
+{
+    for (int i = 0; ; i++) {
+        frame();
+        if (i >= min_frames && (keys_new & (KEY_A | KEY_START))) return;
+    }
+}
+
+static void got_item(int title, int name, const u16 *img, int w, int h)
+{
+    save_screen();
+    plat_sfx(SFX_GET);
+    int wy = 16, wh = h + 16;
+    popup_window(24, wy, 192, wh);
+    fill(32, wy + 8, w, h, RGB(1, 1, 3));
+    blit_keyed(32, wy + 8, w, h, img);
+    draw_text(108, wy + 14, title, C_GOLD);
+    draw_text(108, wy + 34, name, C_WHITE);
+    plat_debug_event("get", 0);
+    wait_a(10);
+    plat_sfx(SFX_OK);
+    restore_screen();
+}
+
+static void flash(u16 c, int frames)
+{
+    save_screen();
+    fill(0, 0, SCREEN_W, SCREEN_H, c);
+    wait_frames(frames);
+    restore_screen();
+    frame();
+}
+
+static void shake(int frames, int amp)
+{
+    for (int i = 0; i < frames; i++) {
+        int a = amp * (frames - i) / frames;
+        plat_offset((i & 1) ? a : -a, (i & 2) ? a / 2 : -a / 2);
+        frame();
+    }
+    plat_offset(0, 0);
+}
+
+static void do_fx(int kind)
+{
+    switch (kind) {
+    case FX_FLASH:
+        flash(C_WHITE, 3);
+        break;
+    case FX_SHOCK:
+        plat_sfx(SFX_SHOCK);
+        flash(C_WHITE, 2);
+        shake(16, 4);
+        break;
+    case FX_SHAKE:
+        shake(20, 3);
+        break;
+    case FX_RED:
+        plat_sfx(SFX_SHOCK);
+        save_screen();
+        for (int i = 0; i < 3; i++) shade(0, 0, SCREEN_W, SCREEN_H, RGB(28, 0, 2));
+        shake(24, 4);
+        wait_frames(20);
+        restore_screen();
+        frame();
+        break;
+    }
+}
+
+static void do_shout(int spk, int t)
+{
+    set_speaker_portrait(spk);
+    draw_scene();
+    plat_sfx(SFX_OBJECTION);
+    flash(C_WHITE, 2);
+    fill(0, 48, SCREEN_W, 44, C_WHITE);
+    fill(0, 50, SCREEN_W, 2, C_RED);
+    fill(0, 88, SCREEN_W, 2, C_RED);
+    for (int i = 0; i < SCREEN_W; i += 12) {
+        fill(i, 44, 6, 4, C_WHITE);
+        fill(i + 6, 92, 6, 4, C_WHITE);
+    }
+    draw_text_ex(SCREEN_W / 2, 56, t, C_RED, 2, 1);
+    shake(20, 5);
+    plat_debug_event("shout", 0);
+    for (int i = 0; i < 90; i++) {
+        frame();
+        if (i > 15 && (keys_new & KEY_A)) break;
+    }
+}
+
+static int lose_life(void)
+{
+    plat_sfx(SFX_WRONG);
+    if (lives > 0) lives--;
+    save_screen();
+    for (int i = 0; i < 3; i++) shade(0, 0, SCREEN_W, SCREEN_H, RGB(20, 0, 0));
+    draw_text_ex(SCREEN_W / 2, 60, UI_WRONG, C_WHITE, 2, 1);
+    for (int i = 0; i < 24; i++) {
+        /* blink the heart that was lost */
+        draw_heart(SCREEN_W - 4 - (max_lives - lives) * 10, 3, (i & 4) ? C_RED : RGB(8, 6, 8));
+        plat_offset((i & 1) ? 3 : -3, 0);
+        frame();
+    }
+    plat_offset(0, 0);
+    wait_frames(20);
+    restore_screen();
+    draw_hearts();
+    frame();
+    return lives == 0;
+}
+
+static void chapter_card(int t)
+{
+    fade_out();
+    fill(0, 0, SCREEN_W, SCREEN_H, 0);
+    int h = LINE_H;
+    for (const u16 *s = txt(t); *s != TXT_END; s++)
+        if (*s == TXT_NL) h += LINE_H;
+    fill(40, 76 - h / 2 - 8, 160, 1, C_BORDER);
+    fill(40, 76 + h / 2 + 8, 160, 1, C_BORDER);
+    draw_text_ex(SCREEN_W / 2, 76 - h / 2, t, C_GOLD, 1, 1);
+    draw_text_ex(SCREEN_W / 2, 140, UI_SAVED, C_GREY, 1, 1);
+    fade_in();
+    plat_debug_event("chapter", 0);
+    for (int i = 0; i < 180; i++) {
+        frame();
+        if (i > 20 && (keys_new & (KEY_A | KEY_START))) break;
+    }
+    fade_out();
+    cur_scene = SCENE_BLACK;
+    cur_portrait = NONE;
+    draw_scene();
+    frame();
+    plat_fade(0);
+}
+
+/* ------------------------------------------------------------------ menus */
+
+/* opts: pairs (text id, label) with stride 2. extra: optional trailing option (UI text) or NONE. */
+static int menu(int spk, int q, const u16 *opts, int n, u32 greyed, int extra, int dbg_kind)
+{
+    int total = n + (extra != NONE);
+    int sel = 0, w = 120;
+    for (int i = 0; i < total; i++) {
+        int tw = text_width(i < n ? opts[i * 2] : extra, 1) + 30;
+        if (tw > w) w = tw;
+    }
+    int h = total * 14 + 8;
+    int x = (SCREEN_W - w) / 2, y = (BOX_Y - 14 - h) / 2 + 4;
+    if (y < 12) y = 12;
+
+    set_speaker_portrait(spk);
+    draw_scene();
+    draw_box(spk);
+    draw_text(TEXT_X, TEXT_Y, q, C_WHITE);
+    popup_window(x, y, w, h);
+    save_screen();
+
+    for (int redraw = 1;;) {
+        if (redraw) {
+            restore_screen();
+            for (int i = 0; i < total; i++) {
+                int oy = y + 4 + i * 14;
+                int t = i < n ? opts[i * 2] : extra;
+                if (i == sel) {
+                    fill(x + 4, oy, w - 8, 14, C_HILITE);
+                    draw_cursor(x + 8, oy + 3, C_GOLD);
+                }
+                u16 c = (i < n && (greyed & (1u << i))) ? C_GREY : (i == sel ? C_GOLD : C_WHITE);
+                draw_text(x + 18, oy, t, c);
+            }
+            redraw = 0;
+        }
+        plat_debug_event("menu", sel);
+        int d = plat_debug_choice(dbg_kind, total);
+        if (d >= 0 && d < total) {
+            plat_sfx(SFX_OK);
+            return d;
+        }
+        frame();
+        if (keys_new & KEY_UP) {
+            sel = (sel + total - 1) % total;
+            redraw = 1;
+            plat_sfx(SFX_MOVE);
+        } else if (keys_new & KEY_DOWN) {
+            sel = (sel + 1) % total;
+            redraw = 1;
+            plat_sfx(SFX_MOVE);
+        } else if (keys_new & KEY_A) {
+            plat_sfx(SFX_OK);
+            return sel;
+        } else if (keys_new & KEY_START) {
+            record(0, NONE);
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ court record (증거물 / 인물) */
+
+static int collect(int tab, u8 *list)
+{
+    int n = 0;
+    if (tab == 0) {
+        for (int i = 0; i < EVIDENCE_COUNT; i++)
+            if (ev_flags & (1u << i)) list[n++] = i;
+    } else {
+        for (int i = 0; i < CHAR_COUNT; i++)
+            if ((prof_flags & (1u << i)) && char_profile[i] != NONE) list[n++] = i;
+    }
+    return n;
+}
+
+static void draw_tab(int x, int label, int active)
+{
+    int w = text_width(label, 1) + 14;
+    fill(x, 3, w, 15, active ? C_BORDER : RGB(6, 6, 10));
+    draw_text(x + 7, 4, label, active ? C_SHADOW : C_GREY);
+}
+
+/* present = 1: pick evidence to present (returns evidence id). Otherwise browse; returns -1.
+ * The caller's screen is saved and restored here. */
+static int record(int present, int question)
+{
+    static u16 saved_screen[SCREEN_W * SCREEN_H] EWRAM_BSS;
+    static int tab, sel[2];
+    u8 list[32];
+    int top = 0, result = -1;
+
+    plat_copy32(saved_screen, fb, SCREEN_W * SCREEN_H / 2);
+    plat_sfx(SFX_OK);
+    if (present) tab = 0;
+
+    for (int redraw = 1;;) {
+        int n = collect(tab, list);
+        if (sel[tab] >= n) sel[tab] = n ? n - 1 : 0;
+        if (sel[tab] < top) top = sel[tab];
+        if (sel[tab] >= top + REC_ROWS) top = sel[tab] - REC_ROWS + 1;
+
+        if (redraw) {
+            fill(0, 0, SCREEN_W, SCREEN_H, RGB(3, 3, 7));
+            for (int y = 0; y < SCREEN_H; y += 4) fill(0, y, SCREEN_W, 1, RGB(4, 4, 9));
+            if (present) {
+                fill(0, 0, SCREEN_W, 19, C_RED);
+                draw_text(8, 3, question, C_WHITE);
+            } else {
+                fill(0, 18, SCREEN_W, 1, C_BORDER);
+                draw_tab(6, UI_TAB_EVIDENCE, tab == 0);
+                draw_tab(6 + text_width(UI_TAB_EVIDENCE, 1) + 18, UI_TAB_PROFILE, tab == 1);
+                draw_hearts();
+            }
+            int hint = present ? UI_PRESENT_HINT : UI_RECORD_HINT;
+            draw_text(160 - text_width(hint, 1), 86, hint, C_GREY);
+
+            if (n == 0) {
+                draw_text(12, REC_LIST_Y + 4, UI_EMPTY, C_GREY);
+            }
+            for (int r = 0; r < REC_ROWS && top + r < n; r++) {
+                int i = top + r, y = REC_LIST_Y + r * 13;
+                int name = tab == 0 ? ev_name[list[i]] : char_name[list[i]];
+                if (i == sel[tab]) {
+                    fill(4, y, 156, 13, C_HILITE);
+                    draw_cursor(7, y + 3, C_GOLD);
+                }
+                draw_text(16, y, name, i == sel[tab] ? C_GOLD : C_WHITE);
+            }
+            if (top > 0) draw_arrow(150, REC_LIST_Y - 2, C_GOLD);
+            if (top + REC_ROWS < n) {
+                for (int r = 0; r < 4; r++) fill(150 + r, REC_LIST_Y + REC_ROWS * 13 + 3 - r, 7 - 2 * r, 1, C_GOLD);
+            }
+
+            fill(0, REC_DESC_Y, SCREEN_W, SCREEN_H - REC_DESC_Y, C_BOX);
+            fill(0, REC_DESC_Y, SCREEN_W, 1, C_BORDER);
+            if (n) {
+                int item = list[sel[tab]];
+                if (tab == 0) {
+                    fill(168, 22, ICON_SIZE + 4, ICON_SIZE + 4, C_BORDER);
+                    fill(170, 24, ICON_SIZE, ICON_SIZE, RGB(1, 1, 3));
+                    blit_keyed(170, 24, ICON_SIZE, ICON_SIZE, icon_img + ev_icon[item] * ICON_SIZE * ICON_SIZE);
+                    draw_text(8, REC_DESC_Y + 3, ev_desc[item], C_WHITE);
+                } else {
+                    fill(168, 18, PORTRAIT_W + 4, 2, C_BORDER);
+                    fill(170, 20, PORTRAIT_W, PORTRAIT_H, char_color[item]);
+                    if (char_portrait[item] != NONE)
+                        blit_keyed(170, 20, PORTRAIT_W, PORTRAIT_H, portrait_img[char_portrait[item]]);
+                    draw_text(8, REC_DESC_Y + 3, char_profile[item], C_WHITE);
+                }
+            }
+            redraw = 0;
+        }
+
+        plat_debug_event("record", tab);
+        if (present) {
+            int d = plat_debug_choice(DBG_PRESENT, EVIDENCE_COUNT);
+            if (d >= 0) {
+                result = d;
+                break;
+            }
+        }
+        frame();
+        if (keys_new & (KEY_UP | KEY_DOWN)) {
+            if (n) {
+                sel[tab] = (sel[tab] + ((keys_new & KEY_UP) ? n - 1 : 1)) % n;
+                plat_sfx(SFX_MOVE);
+                redraw = 1;
+            }
+        } else if (!present && (keys_new & (KEY_L | KEY_R | KEY_LEFT | KEY_RIGHT))) {
+            tab ^= 1;
+            top = 0;
+            plat_sfx(SFX_MOVE);
+            redraw = 1;
+        } else if (present && (keys_new & KEY_A) && n) {
+            result = list[sel[tab]];
+            break;
+        } else if (!present && (keys_new & (KEY_B | KEY_START))) {
+            plat_sfx(SFX_CANCEL);
+            break;
+        }
+    }
+    plat_copy32(fb, saved_screen, SCREEN_W * SCREEN_H / 2);
+    mark(0, SCREEN_H);
+    return result;
+}
+
+/* ------------------------------------------------------------------ save data (SRAM) */
+
+#define SAVE_MAGIC 0x544D4A4Bu /* "KJMT" */
+
+typedef struct {
+    u32 magic;
+    u32 ev, prof;
+    u16 pc, scene, gameover;
+    u8 lives, max_lives;
+    u32 check;
+} SaveData;
+
+static u32 save_sum(const SaveData *s)
+{
+    return s->ev * 3 + s->prof * 5 + s->pc * 7 + s->scene * 11 + s->gameover * 13 + s->lives * 17 +
+           s->max_lives * 19 + 0x1234;
+}
+
+static void save_game(u16 pc)
+{
+    SaveData s;
+    s.magic = SAVE_MAGIC;
+    s.ev = ev_flags;
+    s.prof = prof_flags;
+    s.pc = pc;
+    s.scene = cur_scene;
+    s.gameover = gameover_pc;
+    s.lives = lives;
+    s.max_lives = max_lives;
+    s.check = save_sum(&s);
+    plat_sram_write(&s, 0, sizeof s);
+}
+
+static int load_game(SaveData *s)
+{
+    plat_sram_read(s, 0, sizeof *s);
+    return s->magic == SAVE_MAGIC && s->check == save_sum(s);
+}
+
+/* ------------------------------------------------------------------ interpreter */
+
+static int run(u16 pc);
+
+static int investigate(int n, u32 need, const u16 *spots)
+{
+    u32 visited = 0;
+    plat_debug_event("invest", n);
+    for (;;) {
+        int sel = menu(NONE, UI_INVEST_Q, spots, n, visited, UI_INVEST_DONE, DBG_INVEST);
+        if (sel == n) {
+            if ((ev_flags & need) == need) return RET_RETURN;
+            say(NONE, UI_INVEST_NOTYET);
+            continue;
+        }
+        visited |= 1u << sel;
+        if (run(spots[sel * 2 + 1]) == RET_TITLE) return RET_TITLE;
+    }
+}
+
+static void ending(int kind, int t)
+{
+    fade_out();
+    fill(0, 0, SCREEN_W, SCREEN_H, 0);
+    if (kind) {
+        for (int i = 0; i < 60; i++) px((i * 97) % SCREEN_W, (i * 53) % 90, C_GOLD);
+        draw_text_ex(SCREEN_W / 2, 30, UI_TRUE_END, C_GOLD, 2, 1);
+        draw_text_ex(SCREEN_W / 2, 74, t, C_WHITE, 1, 1);
+        draw_text_ex(SCREEN_W / 2, 112, UI_THANKS, C_GOLD, 1, 1);
+    } else {
+        fill(0, 26, SCREEN_W, 34, RGB(10, 0, 2));
+        draw_text_ex(SCREEN_W / 2, 30, UI_BAD_END, C_RED, 2, 1);
+        draw_text_ex(SCREEN_W / 2, 74, t, C_WHITE, 1, 1);
+    }
+    draw_text_ex(SCREEN_W / 2, 140, UI_PRESS_A, C_GREY, 1, 1);
+    fade_in();
+    plat_debug_event(kind ? "true_end" : "bad_end", t);
+    wait_a(40);
+    fade_out();
+}
+
+static int run(u16 pc)
+{
+    const u16 *S = script;
+    for (;;) {
+        u16 op_pc = pc;
+        u16 op = S[pc++];
+        switch (op) {
+        case OP_SAY: {
+            int spk = S[pc++];
+            say(spk, S[pc++]);
+            break;
+        }
+        case OP_SCENE:
+            fade_out();
+            cur_scene = S[pc++];
+            cur_portrait = NONE;
+            draw_scene();
+            fade_in();
+            break;
+        case OP_GET: {
+            int e = S[pc++];
+            if (ev_flags & (1u << e)) break; /* re-examined spot: already in the record */
+            ev_flags |= 1u << e;
+            got_item(UI_GOT, ev_name[e], icon_img + ev_icon[e] * ICON_SIZE * ICON_SIZE, ICON_SIZE, ICON_SIZE);
+            break;
+        }
+        case OP_MEET: {
+            int c = S[pc++];
+            if (prof_flags & (1u << c)) break;
+            prof_flags |= 1u << c;
+            if (char_portrait[c] != NONE)
+                got_item(UI_MEET, char_name[c], portrait_img[char_portrait[c]], PORTRAIT_W, PORTRAIT_H);
+            break;
+        }
+        case OP_FX:
+            do_fx(S[pc++]);
+            break;
+        case OP_SHOUT: {
+            int spk = S[pc++];
+            do_shout(spk, S[pc++]);
+            break;
+        }
+        case OP_CHAPTER:
+            save_game(op_pc);
+            chapter_card(S[pc++]);
+            break;
+        case OP_INVEST: {
+            int n = S[pc];
+            u32 need = S[pc + 1] | ((u32)S[pc + 2] << 16);
+            const u16 *spots = &S[pc + 3];
+            pc += 3 + n * 2;
+            if (investigate(n, need, spots) == RET_TITLE) return RET_TITLE;
+            break;
+        }
+        case OP_RETURN:
+            return RET_RETURN;
+        case OP_ASK: {
+            int spk = S[pc], q = S[pc + 1], n = S[pc + 2];
+            const u16 *opts = &S[pc + 3];
+            pc += 3 + n * 2;
+            for (;;) {
+                int sel = menu(spk, q, opts, n, 0, NONE, DBG_MENU);
+                if (opts[sel * 2 + 1] == NONE) break;
+                lose_life();
+                if (run(opts[sel * 2 + 1]) == RET_TITLE) return RET_TITLE;
+                if (lives == 0) {
+                    pc = gameover_pc;
+                    break;
+                }
+            }
+            break;
+        }
+        case OP_PRESENT: {
+            int spk = S[pc], q = S[pc + 1], target = S[pc + 2], wrong = S[pc + 3];
+            pc += 4;
+            for (;;) {
+                say(spk, q);
+                if (record(1, q) == target) {
+                    plat_sfx(SFX_OBJECTION);
+                    flash(C_WHITE, 2);
+                    break;
+                }
+                lose_life();
+                if (run(wrong) == RET_TITLE) return RET_TITLE;
+                if (lives == 0) {
+                    pc = gameover_pc;
+                    break;
+                }
+            }
+            break;
+        }
+        case OP_ACCUSE: {
+            int spk = S[pc], q = S[pc + 1], n = S[pc + 2];
+            const u16 *opts = &S[pc + 3];
+            int sel = menu(spk, q, opts, n, 0, NONE, DBG_ACCUSE);
+            pc = opts[sel * 2 + 1];
+            break;
+        }
+        case OP_GOTO:
+            pc = S[pc];
+            break;
+        case OP_ENDING:
+            ending(S[pc], S[pc + 1]);
+            return RET_TITLE;
+        case OP_LIVES:
+            lives = max_lives = S[pc++];
+            break;
+        case OP_GAMEOVER:
+            gameover_pc = S[pc++];
+            break;
+        case OP_WAIT:
+            wait_frames(S[pc++]);
+            break;
+        default:
+            return RET_TITLE; /* end of script or corrupt data */
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ title */
+
+static void disclaimer(void)
+{
+    fill(0, 0, SCREEN_W, SCREEN_H, 0);
+    draw_text_ex(SCREEN_W / 2, 40, UI_DISCLAIMER, C_WHITE, 1, 1);
+    fade_in();
+    for (int i = 0; i < 240; i++) {
+        frame();
+        if (i > 20 && (keys_new & (KEY_A | KEY_START))) break;
+    }
+    fade_out();
+}
+
+static int title_screen(int has_save)
+{
+    int sel = has_save ? 1 : 0;
+    in_game = 0;
+    cur_scene = SCENE_TITLE;
+    cur_portrait = NONE;
+    draw_scene();
+    shade(0, 22, SCREEN_W, 58, 0);
+    draw_text_ex(SCREEN_W / 2, 26, UI_TITLE_SERIES, C_WHITE, 1, 1);
+    draw_text_ex(SCREEN_W / 2, 41, UI_TITLE_MAIN, C_GOLD, 2, 1);
+    shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
+    shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
+    frame_rect(SCREEN_W / 2 - 56, 86, 112, 34, C_BORDER);
+    shade(0, 140, SCREEN_W, 16, 0);
+    draw_text_ex(SCREEN_W / 2, 142, UI_TITLE_FAN, C_GREY, 1, 1);
+    save_screen();
+    fade_in();
+    for (int redraw = 1;;) {
+        if (redraw) {
+            restore_screen();
+            for (int i = 0; i < 2; i++) {
+                int t = i ? UI_CONTINUE : UI_NEW, y = 89 + i * 14;
+                u16 c = (i == 1 && !has_save) ? C_GREY : (i == sel ? C_GOLD : C_WHITE);
+                if (i == sel) draw_cursor(SCREEN_W / 2 - 40, y + 3, C_GOLD);
+                draw_text_ex(SCREEN_W / 2, y, t, c, 1, 1);
+            }
+            redraw = 0;
+        }
+        plat_debug_event("title", has_save);
+        int d = plat_debug_choice(DBG_TITLE, 2);
+        if (d >= 0) {
+            sel = d;
+            break;
+        }
+        frame();
+        if ((keys_new & (KEY_UP | KEY_DOWN)) && has_save) {
+            sel ^= 1;
+            plat_sfx(SFX_MOVE);
+            redraw = 1;
+        }
+        if (keys_new & (KEY_A | KEY_START)) break;
+    }
+    plat_sfx(SFX_OK);
+    fade_out();
+    return sel;
+}
+
+int main(void)
+{
+    SaveData s;
+    plat_init();
+    fb = plat_fb();
+    plat_fade(16);
+    disclaimer();
+    for (;;) {
+        int has_save = load_game(&s);
+        int choice = title_screen(has_save);
+        u16 pc = 0;
+        lives = max_lives = 5;
+        ev_flags = prof_flags = 0;
+        gameover_pc = 0;
+        cur_scene = SCENE_BLACK;
+        if (choice == 1 && has_save) {
+            ev_flags = s.ev;
+            prof_flags = s.prof;
+            lives = s.lives;
+            max_lives = s.max_lives;
+            gameover_pc = s.gameover;
+            cur_scene = s.scene;
+            pc = s.pc;
+        }
+        in_game = 1;
+        cur_portrait = NONE;
+        draw_scene();
+        frame();
+        plat_fade(0);
+        run(pc);
+        plat_debug_event("to_title", 0);
+    }
+}
