@@ -20,8 +20,8 @@
 #define BOX_Y 104
 #define TEXT_X 8
 #define TEXT_Y 109
-#define PORTRAIT_X 172
-#define PORTRAIT_Y (BOX_Y - PORTRAIT_H)
+#define PORTRAIT_X ((SCREEN_W - PORTRAIT_W) / 2)
+#define PORTRAIT_Y (SCREEN_H - PORTRAIT_H) /* bust sits behind the translucent text box */
 
 #define REC_ROWS 5
 #define REC_LIST_Y 21
@@ -38,6 +38,7 @@ static u32 frame_count;
 static int cur_scene, cur_portrait = NONE;
 static int lives, max_lives, in_game;
 static u32 ev_flags, prof_flags;
+static u16 prof_text[32]; /* current profile text per character (@profile_update changes it) */
 static u16 gameover_pc;
 
 /* ------------------------------------------------------------------ frame / input */
@@ -306,14 +307,25 @@ static void wait_advance(void)
     }
 }
 
-static void say(int spk, int t)
+static void got_item(int title, int name, const u16 *img, int w, int h);
+
+/* Adds a character to the court record (after they first talk, or via @meet). */
+static void meet(int c, int title)
 {
-    set_speaker_portrait(spk);
+    prof_flags |= 1u << c;
+    if (char_portrait[c] != NONE)
+        got_item(title, char_name[c], portrait_thumb[char_portrait[c]], THUMB_W, THUMB_H);
+}
+
+static void say(int spk, int t, int portrait)
+{
+    cur_portrait = portrait;
     draw_scene();
     draw_box(spk);
     type_text(TEXT_X, TEXT_Y, t, C_WHITE);
     save_screen();
     wait_advance();
+    if (spk != NONE && prof_text[spk] != NONE && !(prof_flags & (1u << spk))) meet(spk, UI_MEET);
 }
 
 /* ------------------------------------------------------------------ popups & effects */
@@ -394,9 +406,9 @@ static void do_fx(int kind)
     }
 }
 
-static void do_shout(int spk, int t)
+static void do_shout(int spk, int t, int portrait)
 {
-    set_speaker_portrait(spk);
+    cur_portrait = portrait;
     draw_scene();
     plat_sfx(SFX_OBJECTION);
     flash(C_WHITE, 2);
@@ -533,7 +545,7 @@ static int collect(int tab, u8 *list)
             if (ev_flags & (1u << i)) list[n++] = i;
     } else {
         for (int i = 0; i < CHAR_COUNT; i++)
-            if ((prof_flags & (1u << i)) && char_profile[i] != NONE) list[n++] = i;
+            if ((prof_flags & (1u << i)) && prof_text[i] != NONE) list[n++] = i;
     }
     return n;
 }
@@ -606,11 +618,11 @@ static int record(int present, int question)
                     blit_keyed(170, 24, ICON_SIZE, ICON_SIZE, icon_img + ev_icon[item] * ICON_SIZE * ICON_SIZE);
                     draw_text(8, REC_DESC_Y + 3, ev_desc[item], C_WHITE);
                 } else {
-                    fill(168, 18, PORTRAIT_W + 4, 2, C_BORDER);
-                    fill(170, 20, PORTRAIT_W, PORTRAIT_H, char_color[item]);
+                    fill(168, 18, THUMB_W + 4, THUMB_H + 2, C_BORDER);
+                    fill(170, 20, THUMB_W, THUMB_H, char_color[item]);
                     if (char_portrait[item] != NONE)
-                        blit_keyed(170, 20, PORTRAIT_W, PORTRAIT_H, portrait_img[char_portrait[item]]);
-                    draw_text(8, REC_DESC_Y + 3, char_profile[item], C_WHITE);
+                        blit_keyed(170, 20, THUMB_W, THUMB_H, portrait_thumb[char_portrait[item]]);
+                    draw_text(8, REC_DESC_Y + 3, prof_text[item], C_WHITE);
                 }
             }
             redraw = 0;
@@ -651,20 +663,23 @@ static int record(int present, int question)
 
 /* ------------------------------------------------------------------ save data (SRAM) */
 
-#define SAVE_MAGIC 0x544D4A4Bu /* "KJMT" */
+#define SAVE_MAGIC 0x324D4A4Bu /* "KJM2" (v2: profile texts) */
 
 typedef struct {
     u32 magic;
     u32 ev, prof;
     u16 pc, scene, gameover;
     u8 lives, max_lives;
+    u16 prof_text[32];
     u32 check;
 } SaveData;
 
 static u32 save_sum(const SaveData *s)
 {
-    return s->ev * 3 + s->prof * 5 + s->pc * 7 + s->scene * 11 + s->gameover * 13 + s->lives * 17 +
-           s->max_lives * 19 + 0x1234;
+    u32 sum = s->ev * 3 + s->prof * 5 + s->pc * 7 + s->scene * 11 + s->gameover * 13 + s->lives * 17 +
+              s->max_lives * 19 + 0x1234;
+    for (int i = 0; i < 32; i++) sum = sum * 31 + s->prof_text[i];
+    return sum;
 }
 
 static void save_game(u16 pc)
@@ -678,6 +693,7 @@ static void save_game(u16 pc)
     s.gameover = gameover_pc;
     s.lives = lives;
     s.max_lives = max_lives;
+    for (int i = 0; i < 32; i++) s.prof_text[i] = prof_text[i];
     s.check = save_sum(&s);
     plat_sram_write(&s, 0, sizeof s);
 }
@@ -700,7 +716,7 @@ static int investigate(int n, u32 need, const u16 *spots)
         int sel = menu(NONE, UI_INVEST_Q, spots, n, visited, UI_INVEST_DONE, DBG_INVEST);
         if (sel == n) {
             if ((ev_flags & need) == need) return RET_RETURN;
-            say(NONE, UI_INVEST_NOTYET);
+            say(NONE, UI_INVEST_NOTYET, NONE);
             continue;
         }
         visited |= 1u << sel;
@@ -737,8 +753,9 @@ static int run(u16 pc)
         u16 op = S[pc++];
         switch (op) {
         case OP_SAY: {
-            int spk = S[pc++];
-            say(spk, S[pc++]);
+            int spk = S[pc], t = S[pc + 1], por = S[pc + 2];
+            pc += 3;
+            say(spk, t, por);
             break;
         }
         case OP_SCENE:
@@ -757,18 +774,23 @@ static int run(u16 pc)
         }
         case OP_MEET: {
             int c = S[pc++];
-            if (prof_flags & (1u << c)) break;
-            prof_flags |= 1u << c;
-            if (char_portrait[c] != NONE)
-                got_item(UI_MEET, char_name[c], portrait_img[char_portrait[c]], PORTRAIT_W, PORTRAIT_H);
+            if (!(prof_flags & (1u << c))) meet(c, UI_MEET);
+            break;
+        }
+        case OP_PROFILE: {
+            int c = S[pc], t = S[pc + 1];
+            pc += 2;
+            prof_text[c] = t;
+            meet(c, UI_PROFILE_UPDATED);
             break;
         }
         case OP_FX:
             do_fx(S[pc++]);
             break;
         case OP_SHOUT: {
-            int spk = S[pc++];
-            do_shout(spk, S[pc++]);
+            int spk = S[pc], t = S[pc + 1], por = S[pc + 2];
+            pc += 3;
+            do_shout(spk, t, por);
             break;
         }
         case OP_CHAPTER:
@@ -805,7 +827,8 @@ static int run(u16 pc)
             int spk = S[pc], q = S[pc + 1], target = S[pc + 2], wrong = S[pc + 3];
             pc += 4;
             for (;;) {
-                say(spk, q);
+                set_speaker_portrait(spk);
+                say(spk, q, cur_portrait);
                 if (record(1, q) == target) {
                     plat_sfx(SFX_OBJECTION);
                     flash(C_WHITE, 2);
@@ -924,12 +947,14 @@ int main(void)
         ev_flags = prof_flags = 0;
         gameover_pc = 0;
         cur_scene = SCENE_BLACK;
+        for (int i = 0; i < 32; i++) prof_text[i] = i < CHAR_COUNT ? char_profile[i] : NONE;
         if (choice == 1 && has_save) {
             ev_flags = s.ev;
             prof_flags = s.prof;
             lives = s.lives;
             max_lives = s.max_lives;
             gameover_pc = s.gameover;
+            for (int i = 0; i < 32; i++) prof_text[i] = s.prof_text[i];
             cur_scene = s.scene;
             pc = s.pc;
         }

@@ -1,8 +1,11 @@
-"""Procedural pixel art for the game: scene backgrounds, character portraits and evidence icons.
+"""Art for the game: scene backgrounds, character portraits and evidence icons.
 
-Everything is drawn with Pillow and converted to GBA BGR555. Deterministic (fixed random seeds).
-Run `python3 tools/build_assets.py ... --preview DIR` to dump PNG previews.
+User images in assets/scenes, assets/portraits and assets/icons take priority (any size;
+they are resized, background-removed and converted to GBA BGR555 automatically).
+Anything without a user image falls back to the built-in procedural pixel art below.
+Run `make preview` to dump PNG previews.
 """
+import collections
 import math
 import os
 import random
@@ -10,7 +13,8 @@ import random
 from PIL import Image, ImageDraw
 
 W, H = 240, 160
-PORTRAIT_W, PORTRAIT_H = 64, 80
+PORTRAIT_W, PORTRAIT_H = 128, 144   # dialogue bust, bottom-centred behind the text box
+THUMB_W, THUMB_H = 64, 80           # face crop for the court record / popups
 ICON_SIZE = 64
 OUTLINE = (28, 20, 32, 255)
 
@@ -371,7 +375,7 @@ def scene_black():
     return Image.new("RGB", (W, H), (0, 0, 0))
 
 
-SCENES = {
+BUILTIN_SCENES = {
     "black": scene_black,
     "title": scene_title,
     "platform": scene_platform,
@@ -383,11 +387,6 @@ SCENES = {
     "baggage": scene_baggage,
     "snowfield": scene_snowfield,
 }
-ALWAYS_SCENES = ["black", "title"]
-
-
-def render_scene(key):
-    return to15(SCENES[key]())
 
 
 # ---------------------------------------------------------------- portraits (drawn at 32x40, scaled 2x)
@@ -589,7 +588,7 @@ def p_puppet(d):
     d.point((13, 21), fill=(90, 150, 220))
 
 
-PORTRAITS = {
+BUILTIN_PORTRAITS = {
     "kin": p_kin, "miyuki": p_miyuki, "kenmochi": p_kenmochi, "yamagami": p_yamagami, "reika": p_reika,
     "kuroki": p_kuroki, "okada": p_okada, "izumi": p_izumi, "takato": p_takato, "puppet": p_puppet,
 }
@@ -607,16 +606,6 @@ def outline(img):
                         dp[x, y] = OUTLINE
                         break
     return img
-
-
-def portrait_image(key):
-    img = Image.new("RGBA", (32, 40), (0, 0, 0, 0))
-    PORTRAITS[key](ImageDraw.Draw(img))
-    return outline(img).resize((PORTRAIT_W, PORTRAIT_H), Image.NEAREST)
-
-
-def render_portrait(key):
-    return to15(portrait_image(key), dither=False)
 
 
 # ---------------------------------------------------------------- evidence icons (32x32, scaled 2x)
@@ -749,7 +738,7 @@ def i_clock(d):
     d.line([(16, 16), (22, 19)], fill=(200, 30, 40), width=2)
 
 
-ICONS = {
+BUILTIN_ICONS = {
     "letter": i_letter, "puppet": i_puppet, "chain": i_chain, "window": i_window, "box": i_box,
     "paper": i_paper, "talk": i_talk, "cough": i_cough, "ice": i_ice, "watch": i_watch,
     "clipboard": i_clipboard, "glove": i_glove, "photo": i_photo, "voice": i_voice, "tape": i_tape,
@@ -757,9 +746,142 @@ ICONS = {
 }
 
 
+# ---------------------------------------------------------------- user images
+
+ASSET_DIR = os.environ.get("KMT_ASSETS", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets"))
+IMG_EXT = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+
+
+def user_files(sub):
+    found = {}
+    d = os.path.join(ASSET_DIR, sub)
+    if os.path.isdir(d):
+        for f in sorted(os.listdir(d)):
+            stem, ext = os.path.splitext(f)
+            if ext.lower() in IMG_EXT and not stem.startswith("."):
+                found[stem] = os.path.join(d, f)
+    return found
+
+
+USER_SCENES = user_files("scenes")
+USER_PORTRAITS = user_files("portraits")
+USER_ICONS = user_files("icons")
+
+SCENES = dict(BUILTIN_SCENES)
+SCENES.update({k: None for k in USER_SCENES if k not in SCENES})
+PORTRAITS = dict(BUILTIN_PORTRAITS)
+PORTRAITS.update({k: None for k in USER_PORTRAITS if k not in PORTRAITS})
+ICONS = dict(BUILTIN_ICONS)
+ICONS.update({k: None for k in USER_ICONS if k not in ICONS})
+ALWAYS_SCENES = ["black", "title"]
+
+
+def remove_background(img, tol=48):
+    """Flood-fill the dominant border colour to transparent (for images without alpha)."""
+    w, h = img.size
+    px = img.load()
+    border = [(x, 0) for x in range(w)] + [(x, h - 1) for x in range(w)] + \
+             [(0, y) for y in range(h)] + [(w - 1, y) for y in range(h)]
+    counts = collections.Counter(tuple(c // 16 for c in px[p][:3]) for p in border)
+    key, n = counts.most_common(1)[0]
+    if n < len(border) * 0.4:
+        return img  # no uniform background: keep as is
+    ref = [sum(px[p][i] for p in border if tuple(c // 16 for c in px[p][:3]) == key) / n for i in range(3)]
+
+    def close(c):
+        return abs(c[0] - ref[0]) + abs(c[1] - ref[1]) + abs(c[2] - ref[2]) <= tol
+
+    seen = bytearray(w * h)
+    q = collections.deque()
+    for x, y in border:
+        if not seen[y * w + x] and close(px[x, y]):
+            seen[y * w + x] = 1
+            q.append((x, y))
+    while q:
+        x, y = q.popleft()
+        px[x, y] = (0, 0, 0, 0)
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < w and 0 <= ny < h and not seen[ny * w + nx] and close(px[nx, ny]):
+                seen[ny * w + nx] = 1
+                q.append((nx, ny))
+    return img
+
+
+def load_rgba(path, max_w, max_h):
+    img = Image.open(path)
+    has_alpha = img.mode in ("RGBA", "LA", "PA") or (img.mode == "P" and "transparency" in img.info)
+    img = img.convert("RGBA")
+    scale = min(1.0, max_w * 3 / img.width, max_h * 3 / img.height)  # shrink huge images first
+    if scale < 1.0:
+        img = img.resize((max(1, int(img.width * scale)), max(1, int(img.height * scale))), Image.LANCZOS)
+    if not has_alpha or img.getextrema()[3][0] == 255:
+        img = remove_background(img)
+    bbox = img.getchannel("A").point(lambda a: 255 if a >= 128 else 0).getbbox()
+    return img.crop(bbox) if bbox else img
+
+
+def fit(img, w, h, anchor_bottom=True):
+    scale = min(w / img.width, h / img.height)
+    img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
+    canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    canvas.paste(img, ((w - img.width) // 2, h - img.height if anchor_bottom else (h - img.height) // 2))
+    return canvas
+
+
+def scene_image(key):
+    if key in USER_SCENES:
+        img = Image.open(USER_SCENES[key]).convert("RGB")
+        scale = max(W / img.width, H / img.height)
+        img = img.resize((max(W, round(img.width * scale)), max(H, round(img.height * scale))), Image.LANCZOS)
+        x, y = (img.width - W) // 2, (img.height - H) // 2
+        return img.crop((x, y, x + W, y + H))
+    return BUILTIN_SCENES[key]()
+
+
+def render_scene(key):
+    return to15(scene_image(key))
+
+
+def _procedural_portrait(key):
+    img = Image.new("RGBA", (32, 40), (0, 0, 0, 0))
+    BUILTIN_PORTRAITS[key](ImageDraw.Draw(img))
+    return outline(img)
+
+
+def portrait_image(key):
+    if key in USER_PORTRAITS:
+        return fit(load_rgba(USER_PORTRAITS[key], PORTRAIT_W, PORTRAIT_H), PORTRAIT_W, PORTRAIT_H)
+    small = _procedural_portrait(key).resize((96, 120), Image.NEAREST)
+    canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
+    canvas.paste(small, ((PORTRAIT_W - 96) // 2, 0))  # keep the face above the text box
+    return canvas
+
+
+def thumb_image(key):
+    """Face crop: upper part of the figure, centred."""
+    if key not in USER_PORTRAITS:
+        return _procedural_portrait(key).resize((THUMB_W, THUMB_H), Image.NEAREST)
+    img = load_rgba(USER_PORTRAITS[key], PORTRAIT_W * 2, PORTRAIT_H * 2)
+    cw = min(img.width, int(img.height * 0.6))
+    ch = int(cw * THUMB_H / THUMB_W)
+    x = (img.width - cw) // 2
+    crop = img.crop((x, 0, x + cw, ch))
+    return crop.resize((THUMB_W, THUMB_H), Image.LANCZOS)
+
+
+def render_portrait(key):
+    return to15(portrait_image(key), dither=False)
+
+
+def render_thumb(key):
+    return to15(thumb_image(key), dither=False)
+
+
 def icon_image(key):
+    if key in USER_ICONS:
+        return fit(load_rgba(USER_ICONS[key], ICON_SIZE, ICON_SIZE), ICON_SIZE, ICON_SIZE, anchor_bottom=False)
     img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
-    ICONS[key](ImageDraw.Draw(img))
+    BUILTIN_ICONS[key](ImageDraw.Draw(img))
     return outline(img).resize((ICON_SIZE, ICON_SIZE), Image.NEAREST)
 
 
@@ -769,13 +891,16 @@ def render_icon(key):
 
 def write_previews(out):
     os.makedirs(out, exist_ok=True)
-    for k, f in SCENES.items():
-        f().resize((W * 2, H * 2), Image.NEAREST).save(os.path.join(out, f"scene_{k}.png"))
-    sheet = Image.new("RGBA", (PORTRAIT_W * len(PORTRAITS), PORTRAIT_H), (60, 60, 80, 255))
-    for i, k in enumerate(PORTRAITS):
+    for k in SCENES:
+        scene_image(k).resize((W * 2, H * 2), Image.NEAREST).save(os.path.join(out, f"scene_{k}.png"))
+    keys = list(PORTRAITS)
+    sheet = Image.new("RGBA", (PORTRAIT_W * len(keys), PORTRAIT_H + THUMB_H), (60, 60, 80, 255))
+    for i, k in enumerate(keys):
         p = portrait_image(k)
         sheet.paste(p, (i * PORTRAIT_W, 0), p)
-    sheet.resize((sheet.width * 2, sheet.height * 2), Image.NEAREST).save(os.path.join(out, "portraits.png"))
+        t = thumb_image(k)
+        sheet.paste(t, (i * PORTRAIT_W, PORTRAIT_H), t)
+    sheet.save(os.path.join(out, "portraits.png"))
     sheet = Image.new("RGBA", (ICON_SIZE * len(ICONS), ICON_SIZE), (60, 60, 80, 255))
     for i, k in enumerate(ICONS):
         p = icon_image(k)

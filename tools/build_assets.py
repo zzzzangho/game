@@ -6,6 +6,7 @@ See README.md for the script syntax.
 """
 import argparse
 import os
+import re
 import shlex
 import sys
 
@@ -21,7 +22,9 @@ HEADER_W = 224        # court record header (present question)
 LIST_W = 150          # court record list width
 
 OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PRESENT=9,
-           ACCUSE=10, GOTO=11, ENDING=12, LIVES=13, GAMEOVER=14, MEET=15, WAIT=16, SHOUT=17)
+           ACCUSE=10, GOTO=11, ENDING=12, LIVES=13, GAMEOVER=14, MEET=15, WAIT=16, SHOUT=17,
+           PROFILE=18)
+SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
 FX = dict(flash=0, shock=1, shake=2, red=3)
 NL = 0xFFFE
 END = 0xFFFF
@@ -41,6 +44,7 @@ UI_STRINGS = [
     ("UI_EMPTY", "아직 아무것도 없다."),
     ("UI_GOT", "증거물 입수!"),
     ("UI_MEET", "인물 파일 추가!"),
+    ("UI_PROFILE_UPDATED", "인물 파일 갱신!"),
     ("UI_INVEST_Q", "어디를 조사할까?"),
     ("UI_INVEST_DONE", "조사를 마친다"),
     ("UI_INVEST_NOTYET", "아직 알아내지 못한 게 있어.\n좀 더 조사해 보자."),
@@ -162,6 +166,7 @@ class Compiler:
         self.scenes = {}          # key -> idx
         self.portraits = {}       # key -> idx
         self.lineno = 0
+        self.missing_expr = set()  # 이름[표정] used in the script without an image file
 
     def err(self, msg):
         raise CompileError(f"story.txt:{self.lineno}: {msg}")
@@ -193,11 +198,24 @@ class Compiler:
         return self.portraits.setdefault(key, len(self.portraits))
 
     def speaker(self, name):
-        if name in ("-", "narr", "나레이션"):
-            return NONE
+        return self.speaker_portrait(name)[0]
+
+    def speaker_portrait(self, token):
+        """'이름' or '이름[표정]' -> (char index, portrait index). Expression = file <portrait>_<표정>."""
+        if token in ("-", "narr", "나레이션"):
+            return NONE, NONE
+        m = SPEAKER_RE.match(token.strip())
+        name, expr = m.group(1).strip(), m.group(2)
         if name not in self.chars:
             self.err(f"undeclared speaker {name!r} (use @char)")
-        return self.chars[name]["idx"]
+        ch = self.chars[name]
+        if not expr or ch["pkey"] is None:
+            return ch["idx"], ch["portrait"]
+        key = f"{ch['pkey']}_{expr.strip()}"
+        if key not in art.PORTRAITS:
+            self.missing_expr.add(key)
+            return ch["idx"], ch["portrait"]
+        return ch["idx"], self.portrait(key)
 
     def ev(self, eid):
         if eid not in self.evidence:
@@ -212,10 +230,10 @@ class Compiler:
         self.code.append(0)
 
     # -- statements
-    def say(self, spk, text):
+    def say(self, spk, text, portrait=NONE):
         lines = wrap(self.font, text, TEXT_W)
         for i in range(0, len(lines), TEXT_LINES):
-            self.emit(OPS["SAY"], spk, self.text("\n".join(lines[i:i + TEXT_LINES])))
+            self.emit(OPS["SAY"], spk, self.text("\n".join(lines[i:i + TEXT_LINES])), portrait)
 
     def compile(self, src):
         lines = src.split("\n")
@@ -247,8 +265,10 @@ class Compiler:
             if block is not None:
                 self.err("text inside a block; close it with @end")
             name, sep, rest = ln.partition(":")
-            if sep and name.strip() in self.chars:
-                self.say(self.chars[name.strip()]["idx"], rest.strip())
+            m = SPEAKER_RE.match(name.strip()) if sep else None
+            if m and m.group(1).strip() in self.chars:
+                spk, por = self.speaker_portrait(name.strip())
+                self.say(spk, rest.strip(), por)
             else:
                 self.say(NONE, ln)
         if block is not None:
@@ -273,13 +293,18 @@ class Compiler:
                 self.err("too many characters (max 32)")
             self.text(name)
             self.chars[name] = dict(idx=len(self.chars), portrait=NONE if a[1] == "-" else self.portrait(a[1]),
-                                    color=art.rgb15(a[2]), profile=None)
+                                    pkey=None if a[1] == "-" else a[1], color=art.rgb15(a[2]), profile=None)
             self.char_order.append(name)
         elif cmd == "profile":
             self.need_args(a, 2, "@profile NAME \"description\"")
             if a[0] not in self.chars:
                 self.err(f"undeclared char {a[0]}")
             self.chars[a[0]]["profile"] = self.wrapped(a[1], TEXT_W, DESC_LINES, "profile")
+        elif cmd == "profile_update":
+            self.need_args(a, 2, "@profile_update NAME \"new description\"")
+            if a[0] not in self.chars:
+                self.err(f"undeclared char {a[0]}")
+            self.emit(OPS["PROFILE"], self.chars[a[0]]["idx"], self.wrapped(a[1], TEXT_W, DESC_LINES, "profile"))
         elif cmd == "evidence":
             self.need_args(a, 4, "@evidence ID ICON \"name\" \"description\"")
             if a[1] not in art.ICONS:
@@ -323,7 +348,8 @@ class Compiler:
             self.need_args(a, 2, "@shout SPEAKER \"text\"")
             if self.font.width(a[1]) * 2 > 232:
                 self.err("shout text too wide (drawn at 2x)")
-            self.emit(OPS["SHOUT"], self.speaker(a[0]), self.text(a[1]))
+            spk, por = self.speaker_portrait(a[0])
+            self.emit(OPS["SHOUT"], spk, self.text(a[1]), por)
         elif cmd == "ending":
             self.need_args(a, 2, "@ending bad|true \"title\"")
             self.emit(OPS["ENDING"], 1 if a[0] == "true" else 0, self.wrapped(a[1], TEXT_W, 2, "ending title"))
@@ -427,6 +453,7 @@ def build(story_path, font_path, out_dir):
          f"#define SCENE_COUNT {len(scene_keys)}", f"#define PORTRAIT_COUNT {len(portrait_keys)}",
          f"#define ICON_COUNT {len(art.ICONS)}",
          f"#define PORTRAIT_W {art.PORTRAIT_W}", f"#define PORTRAIT_H {art.PORTRAIT_H}",
+         f"#define THUMB_W {art.THUMB_W}", f"#define THUMB_H {art.THUMB_H}",
          f"#define ICON_SIZE {art.ICON_SIZE}", "#define TRANSPARENT 0xFFFF", "#define NONE 0xFFFF",
          "#define TXT_NL 0xFFFE", "#define TXT_END 0xFFFF"]
     for k, v in OPS.items():
@@ -441,7 +468,7 @@ def build(story_path, font_path, out_dir):
         h.append(f"#define EV_{eid.upper()} {comp.evidence[eid]['idx']}")
     h += ["extern const u16 script[];", "extern const u16 text_data[];", "extern const u32 text_ofs[];",
           "extern const u16 glyph_bits[];", "extern const u8 glyph_adv[];",
-          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];",
+          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u16 *const portrait_thumb[];",
           "extern const u16 icon_img[];",
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
           "extern const u16 char_profile[];",
@@ -460,6 +487,9 @@ def build(story_path, font_path, out_dir):
     for k in portrait_keys:
         c.append(c_array(f"portrait_{k}", "u16", art.render_portrait(k), fmt="0x{:04X}"))
     c.append("const u16 *const portrait_img[] = {" + ",".join(f"portrait_{k}" for k in portrait_keys) + ("" if portrait_keys else "0") + "};")
+    for k in portrait_keys:
+        c.append(c_array(f"thumb_{k}", "u16", art.render_thumb(k), fmt="0x{:04X}"))
+    c.append("const u16 *const portrait_thumb[] = {" + ",".join(f"thumb_{k}" for k in portrait_keys) + ("" if portrait_keys else "0") + "};")
     icons = []
     for k in art.ICONS:
         icons.extend(art.render_icon(k))
@@ -478,6 +508,9 @@ def build(story_path, font_path, out_dir):
         f.write("\n".join(h) + "\n")
     with open(os.path.join(out_dir, "gen_data.c"), "w", encoding="utf-8") as f:
         f.write("\n".join(c) + "\n")
+    if comp.missing_expr:
+        print("note: expression images not found, using base portraits: "
+              + ", ".join(f"assets/portraits/{k}.png" for k in sorted(comp.missing_expr)))
     print(f"script: {len(comp.code)} words, {len(comp.texts)} strings, {len(chars)} glyphs (h={gh}), "
           f"{len(comp.evidence)} evidence, {len(comp.chars)} chars, {len(scene_keys)} scenes")
 
