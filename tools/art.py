@@ -10,7 +10,7 @@ import math
 import os
 import random
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 W, H = 240, 160
 PORTRAIT_W, PORTRAIT_H = 128, 144   # dialogue bust, bottom-centred behind the text box
@@ -1142,13 +1142,54 @@ def fit(img, w, h, anchor_bottom=True):
     return canvas
 
 
+# ---------------------------------------------------------------- pixel-art conversion of user images
+#   KMT_PIXEL=chunky (default): characters 64x72 and scenes 120x80, shown at 2x
+#   KMT_PIXEL=native: GBA resolution with a reduced palette
+#   KMT_PIXEL=off: images as they are
+PIXEL_STYLE = os.environ.get("KMT_PIXEL", "chunky")
+
+
+def outline_rgba(img, color=(24, 16, 28, 255)):
+    src = img.copy()
+    sp, dp = src.load(), img.load()
+    w, h = img.size
+    for y in range(h):
+        for x in range(w):
+            if sp[x, y][3] == 0:
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < w and 0 <= ny < h and sp[nx, ny][3]:
+                        dp[x, y] = color
+                        break
+    return img
+
+
+def pixelize(img, w, h, colors, scale):
+    """Downscale, flatten the palette, outline the silhouette, blow back up with hard pixels."""
+    img = img.convert("RGBA")
+    rgb = ImageEnhance.Color(img.convert("RGB")).enhance(1.15)
+    rgb = ImageEnhance.Contrast(rgb).enhance(1.08)
+    small = rgb.resize((w, h), Image.LANCZOS).filter(ImageFilter.UnsharpMask(1, 80, 1))
+    small = small.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).convert("RGBA")
+    alpha = img.getchannel("A").resize((w, h), Image.LANCZOS).point(lambda v: 255 if v >= 120 else 0)
+    small.putalpha(alpha)
+    if alpha.getextrema()[0] == 0:
+        small = outline_rgba(small)
+    return small.resize((w * scale, h * scale), Image.NEAREST)
+
+
 def scene_image(key):
     if key in USER_SCENES:
         img = Image.open(USER_SCENES[key]).convert("RGB")
         scale = max(W / img.width, H / img.height)
         img = img.resize((max(W, round(img.width * scale)), max(H, round(img.height * scale))), Image.LANCZOS)
         x, y = (img.width - W) // 2, (img.height - H) // 2
-        return img.crop((x, y, x + W, y + H))
+        img = img.crop((x, y, x + W, y + H))
+        if PIXEL_STYLE == "chunky":
+            img = pixelize(img, W // 2, H // 2, 40, 2).convert("RGB")
+        elif PIXEL_STYLE == "native":
+            img = pixelize(img, W, H, 64, 1).convert("RGB")
+        return img
     return BUILTIN_SCENES[key]()
 
 
@@ -1173,6 +1214,12 @@ def framed(img):
 
 
 def portrait_image(key):
+    if key in USER_PORTRAITS and PIXEL_STYLE != "off":
+        # the whole picture keeps its framing (crop it to 128:144 beforehand); cut-outs get an outline
+        img = Image.open(USER_PORTRAITS[key]).convert("RGBA").resize((PORTRAIT_W * 2, PORTRAIT_H * 2), Image.LANCZOS)
+        if PIXEL_STYLE == "chunky":
+            return framed(pixelize(img, PORTRAIT_W // 2, PORTRAIT_H // 2, 20, 2))
+        return framed(pixelize(img, PORTRAIT_W, PORTRAIT_H, 32, 1))
     if key in USER_PORTRAITS:
         img = load_rgba(USER_PORTRAITS[key], PORTRAIT_W, PORTRAIT_H)
         if img.getextrema()[3][0] == 255:  # opaque: fill the whole bust area
@@ -1188,6 +1235,14 @@ def thumb_image(key):
     """Face crop: upper part of the figure, centred."""
     if key not in USER_PORTRAITS:
         return _procedural_portrait(key).resize((THUMB_W, THUMB_H), Image.NEAREST)
+    if PIXEL_STYLE != "off":  # pixelized face crop from the (unframed) centre of the portrait
+        img = Image.open(USER_PORTRAITS[key]).convert("RGBA")
+        w = img.width * 0.62
+        box = ((img.width - w) / 2, img.height * 0.04, (img.width + w) / 2, img.height * 0.04 + w * THUMB_H / THUMB_W)
+        img = img.crop(tuple(int(v) for v in box)).resize((THUMB_W * 2, THUMB_H * 2), Image.LANCZOS)
+        if PIXEL_STYLE == "chunky":
+            return pixelize(img, THUMB_W // 2, THUMB_H // 2, 16, 2)
+        return pixelize(img, THUMB_W, THUMB_H, 24, 1)
     img = load_rgba(USER_PORTRAITS[key], PORTRAIT_W * 2, PORTRAIT_H * 2)
     cw = min(img.width, int(img.height * 0.6))
     ch = int(cw * THUMB_H / THUMB_W)
@@ -1210,6 +1265,11 @@ def icon_image(key):
         if img.getextrema()[3][0] == 255:
             w = min(img.width, img.height)
             img = img.crop(((img.width - w) // 2, (img.height - w) // 2, (img.width + w) // 2, (img.height + w) // 2))
+            img = img.resize((ICON_SIZE * 2, ICON_SIZE * 2), Image.LANCZOS)
+            if PIXEL_STYLE == "chunky":
+                return pixelize(img, ICON_SIZE // 2, ICON_SIZE // 2, 16, 2)
+            if PIXEL_STYLE == "native":
+                return pixelize(img, ICON_SIZE, ICON_SIZE, 24, 1)
             return img.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
         return fit(img, ICON_SIZE, ICON_SIZE, anchor_bottom=False)
     img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
