@@ -1143,12 +1143,29 @@ def fit(img, w, h, anchor_bottom=True):
 
 
 # ---------------------------------------------------------------- pixel-art conversion of user images
-#   KMT_PIXEL=gbc (default): redrawn like the Game Boy Color Kindaichi game - black 1px line art traced
+#   KMT_PIXEL=sprite (default): clean Ace-Attorney-style sprites - transparent cut-out art is scaled to
+#                               the bust size, palette-limited and outlined (opaque images fall back to gbc)
+#   KMT_PIXEL=gbc: redrawn like the Game Boy Color Kindaichi game - black 1px line art traced
 #                            from the reference, flat cel colours from a small palette, GBA resolution
 #   KMT_PIXEL=chunky: characters 64x72 and scenes 120x80, shown at 2x
 #   KMT_PIXEL=native: GBA resolution with a reduced palette
 #   KMT_PIXEL=off: images as they are
-PIXEL_STYLE = os.environ.get("KMT_PIXEL", "gbc")
+PIXEL_STYLE = os.environ.get("KMT_PIXEL", "sprite")
+
+
+def sprite(img, w, h, colors=48):
+    """Transparent illustration -> GBA sprite: fit to w x h, hard alpha, reduced palette, dark outline."""
+    img = img.convert("RGBA")
+    scale = min(w / img.width, h / img.height)
+    img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
+    canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    canvas.paste(img, ((w - img.width) // 2, h - img.height))
+    alpha = canvas.getchannel("A").point(lambda v: 255 if v >= 140 else 0)
+    rgb = Image.new("RGB", (w, h), (0, 0, 0))
+    rgb.paste(canvas.convert("RGB"), (0, 0), alpha)
+    flat = rgb.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).convert("RGBA")
+    flat.putalpha(alpha)
+    return outline_rgba(flat, (30, 20, 26, 255))
 INK = (22, 16, 24)
 
 
@@ -1216,7 +1233,7 @@ def scene_image(key):
         img = img.resize((max(W, round(img.width * scale)), max(H, round(img.height * scale))), Image.LANCZOS)
         x, y = (img.width - W) // 2, (img.height - H) // 2
         img = img.crop((x, y, x + W, y + H))
-        if PIXEL_STYLE == "gbc":
+        if PIXEL_STYLE in ("gbc", "sprite"):
             src = Image.open(USER_SCENES[key]).convert("RGB")
             img = trace(src, W, H, 16)
         elif PIXEL_STYLE == "chunky":
@@ -1250,7 +1267,10 @@ def framed(img):
 def portrait_image(key):
     if key in USER_PORTRAITS and PIXEL_STYLE != "off":
         # the whole picture keeps its framing (crop it to 128:144 beforehand); cut-outs get an outline
-        if PIXEL_STYLE == "gbc":
+        src = Image.open(USER_PORTRAITS[key]).convert("RGBA")
+        if PIXEL_STYLE == "sprite" and src.getextrema()[3][0] < 255:
+            return sprite(src, PORTRAIT_W, PORTRAIT_H)
+        if PIXEL_STYLE in ("gbc", "sprite"):
             return framed(trace(Image.open(USER_PORTRAITS[key]), PORTRAIT_W, PORTRAIT_H, 10).convert("RGBA"))
         img = Image.open(USER_PORTRAITS[key]).convert("RGBA").resize((PORTRAIT_W * 2, PORTRAIT_H * 2), Image.LANCZOS)
         if PIXEL_STYLE == "chunky":
@@ -1276,7 +1296,9 @@ def thumb_image(key):
         w = img.width * 0.62
         box = ((img.width - w) / 2, img.height * 0.04, (img.width + w) / 2, img.height * 0.04 + w * THUMB_H / THUMB_W)
         img = img.crop(tuple(int(v) for v in box))
-        if PIXEL_STYLE == "gbc":
+        if PIXEL_STYLE == "sprite" and img.getextrema()[3][0] < 255:
+            return sprite(img, THUMB_W, THUMB_H)
+        if PIXEL_STYLE in ("gbc", "sprite"):
             return trace(img, THUMB_W, THUMB_H, 10).convert("RGBA")
         img = img.resize((THUMB_W * 2, THUMB_H * 2), Image.LANCZOS)
         if PIXEL_STYLE == "chunky":
@@ -1304,7 +1326,7 @@ def icon_image(key):
         if img.getextrema()[3][0] == 255:
             w = min(img.width, img.height)
             img = img.crop(((img.width - w) // 2, (img.height - w) // 2, (img.width + w) // 2, (img.height + w) // 2))
-            if PIXEL_STYLE == "gbc":
+            if PIXEL_STYLE in ("gbc", "sprite"):
                 return trace(img, ICON_SIZE, ICON_SIZE, 10).convert("RGBA")
             img = img.resize((ICON_SIZE * 2, ICON_SIZE * 2), Image.LANCZOS)
             if PIXEL_STYLE == "chunky":

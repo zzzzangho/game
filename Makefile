@@ -27,7 +27,7 @@ OBJS := $(BUILD)/crt0.o $(BUILD)/main.o $(BUILD)/plat_gba.o $(BUILD)/gen_data.o
 all: $(TARGET).gba
 
 ASSETS  := $(wildcard assets/portraits/* assets/scenes/* assets/icons/*)
-KMT_PIXEL ?= gbc
+KMT_PIXEL ?= sprite
 export KMT_PIXEL
 
 $(BUILD)/gen_data.c $(BUILD)/gen_data.h: $(STORY) $(FONT) tools/build_assets.py tools/art.py $(ASSETS) assets/portraits assets/scenes assets/icons
