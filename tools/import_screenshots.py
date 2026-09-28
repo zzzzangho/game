@@ -54,7 +54,7 @@ PORTRAITS = {  # frontal shots, 128:144 boxes; each crop is cut out with the ani
     "kin": ("p4/016", P(100)),
     "kin_serious": ("p4/053", P(130)),
     "kin_surprised": ("p1/350", P(106)),
-    "miyuki": ("p2/279", (190, 0, 617, 480)),
+    "miyuki": ("p1/104", (300, 40, 640, 422)),
     "miyuki_surprised": ("p2/289", P(80)),
     "saki": ("p1/119", (40, 20, 420, 447)),
     "kenmochi": ("p4/358", (40, 30, 440, 480)),

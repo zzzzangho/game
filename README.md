@@ -50,8 +50,9 @@
 - **배경이 투명한 PNG를 권장합니다.** 투명하지 않은 이미지는 테두리의 단색 배경을 자동으로 지웁니다. 배경이 복잡하면 미리 지워 주세요.
 - **표정**: 스크립트에서 `이름[표정]: 대사`라고 쓰면 `<초상화>_<표정>.png`를 사용합니다. 파일이 없으면 기본 초상화를 쓰고, 빌드할 때 어떤 파일이 비어 있는지 알려 줍니다.
   지금 스크립트에서 쓰는 표정: `kin_surprised`, `kin_serious`, `miyuki_surprised`, `yurama_angry`, `takato_surprised`, `takato_smile`, `takato_shock`, `takato_cold`
-- 넣은 이미지는 빌드할 때 **도트 그래픽으로 자동 변환**됩니다 (인물 64×72·배경 120×80을 2배로 표시, 색 수 제한).
-  `make KMT_PIXEL=native`는 GBA 원본 해상도 도트, `make KMT_PIXEL=off`는 원본 그대로입니다.
+- 넣은 이미지는 빌드할 때 **GBC 김전일 게임풍 도트로 다시 그려집니다** (기본 `KMT_PIXEL=gbc`):
+  원본을 밑그림 삼아 1px 검은 선을 따고, 색은 10~16색의 평면 셀 색으로 다시 칠합니다.
+  다른 스타일: `make KMT_PIXEL=chunky`(굵은 도트), `native`(GBA 해상도 감색), `off`(원본 그대로).
 - 애니 캡처로 에셋을 다시 만들려면: `python3 tools/import_screenshots.py` (캡처 다운로드 → 정면샷 잘라서 `assets/`에 저장).
   잘라낼 위치만 스크립트에 들어 있고, 이미지는 git에 올라가지 않습니다.
 - `make preview` → `build/preview/`에서 변환 결과를 미리 볼 수 있습니다.

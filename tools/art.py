@@ -1143,10 +1143,41 @@ def fit(img, w, h, anchor_bottom=True):
 
 
 # ---------------------------------------------------------------- pixel-art conversion of user images
-#   KMT_PIXEL=chunky (default): characters 64x72 and scenes 120x80, shown at 2x
+#   KMT_PIXEL=gbc (default): redrawn like the Game Boy Color Kindaichi game - black 1px line art traced
+#                            from the reference, flat cel colours from a small palette, GBA resolution
+#   KMT_PIXEL=chunky: characters 64x72 and scenes 120x80, shown at 2x
 #   KMT_PIXEL=native: GBA resolution with a reduced palette
 #   KMT_PIXEL=off: images as they are
-PIXEL_STYLE = os.environ.get("KMT_PIXEL", "chunky")
+PIXEL_STYLE = os.environ.get("KMT_PIXEL", "gbc")
+INK = (22, 16, 24)
+
+
+def vivid(img, sat=1.35, contrast=1.1):
+    """Undo the old-video yellow cast (hue-preserving levels + gentle grey world) and boost colour."""
+    import numpy as np
+    a = np.asarray(img.convert("RGB"), dtype=np.float32)
+    lum = a.mean(axis=2)
+    lo, hi = np.percentile(lum, 1), np.percentile(lum, 99)
+    a = np.clip((a - lo) / max(hi - lo, 1) * 255, 0, 255)
+    mean = a.reshape(-1, 3).mean(axis=0)
+    a = np.clip(a * (mean.mean() / mean) ** 0.3, 0, 255)
+    img = Image.fromarray(a.astype(np.uint8))
+    return ImageEnhance.Color(ImageEnhance.Contrast(img).enhance(contrast)).enhance(sat)
+
+
+def trace(img, w, h, colors=10, dark=70, rel=38):
+    """GBC-style redraw: 1px black line art + flat colours reduced to a small palette."""
+    import numpy as np
+    img = vivid(img)
+    big = img.resize((w * 2, h * 2), Image.LANCZOS)
+    lum = np.asarray(big.convert("L"), dtype=np.float32)
+    blur = np.asarray(big.convert("L").filter(ImageFilter.GaussianBlur(3)), dtype=np.float32)
+    ink = (((lum < dark) | (lum < blur - rel)).reshape(h, 2, w, 2).sum(axis=(1, 3))) >= 2
+    base = img.resize((w, h), Image.LANCZOS).filter(ImageFilter.MedianFilter(3))
+    flat = base.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    out = np.asarray(flat.filter(ImageFilter.ModeFilter(3)).convert("RGB")).copy()
+    out[ink] = INK
+    return Image.fromarray(out)
 
 
 def outline_rgba(img, color=(24, 16, 28, 255)):
@@ -1185,7 +1216,10 @@ def scene_image(key):
         img = img.resize((max(W, round(img.width * scale)), max(H, round(img.height * scale))), Image.LANCZOS)
         x, y = (img.width - W) // 2, (img.height - H) // 2
         img = img.crop((x, y, x + W, y + H))
-        if PIXEL_STYLE == "chunky":
+        if PIXEL_STYLE == "gbc":
+            src = Image.open(USER_SCENES[key]).convert("RGB")
+            img = trace(src, W, H, 16)
+        elif PIXEL_STYLE == "chunky":
             img = pixelize(img, W // 2, H // 2, 40, 2).convert("RGB")
         elif PIXEL_STYLE == "native":
             img = pixelize(img, W, H, 64, 1).convert("RGB")
@@ -1216,6 +1250,8 @@ def framed(img):
 def portrait_image(key):
     if key in USER_PORTRAITS and PIXEL_STYLE != "off":
         # the whole picture keeps its framing (crop it to 128:144 beforehand); cut-outs get an outline
+        if PIXEL_STYLE == "gbc":
+            return framed(trace(Image.open(USER_PORTRAITS[key]), PORTRAIT_W, PORTRAIT_H, 10).convert("RGBA"))
         img = Image.open(USER_PORTRAITS[key]).convert("RGBA").resize((PORTRAIT_W * 2, PORTRAIT_H * 2), Image.LANCZOS)
         if PIXEL_STYLE == "chunky":
             return framed(pixelize(img, PORTRAIT_W // 2, PORTRAIT_H // 2, 20, 2))
@@ -1239,7 +1275,10 @@ def thumb_image(key):
         img = Image.open(USER_PORTRAITS[key]).convert("RGBA")
         w = img.width * 0.62
         box = ((img.width - w) / 2, img.height * 0.04, (img.width + w) / 2, img.height * 0.04 + w * THUMB_H / THUMB_W)
-        img = img.crop(tuple(int(v) for v in box)).resize((THUMB_W * 2, THUMB_H * 2), Image.LANCZOS)
+        img = img.crop(tuple(int(v) for v in box))
+        if PIXEL_STYLE == "gbc":
+            return trace(img, THUMB_W, THUMB_H, 10).convert("RGBA")
+        img = img.resize((THUMB_W * 2, THUMB_H * 2), Image.LANCZOS)
         if PIXEL_STYLE == "chunky":
             return pixelize(img, THUMB_W // 2, THUMB_H // 2, 16, 2)
         return pixelize(img, THUMB_W, THUMB_H, 24, 1)
@@ -1265,6 +1304,8 @@ def icon_image(key):
         if img.getextrema()[3][0] == 255:
             w = min(img.width, img.height)
             img = img.crop(((img.width - w) // 2, (img.height - w) // 2, (img.width + w) // 2, (img.height + w) // 2))
+            if PIXEL_STYLE == "gbc":
+                return trace(img, ICON_SIZE, ICON_SIZE, 10).convert("RGBA")
             img = img.resize((ICON_SIZE * 2, ICON_SIZE * 2), Image.LANCZOS)
             if PIXEL_STYLE == "chunky":
                 return pixelize(img, ICON_SIZE // 2, ICON_SIZE // 2, 16, 2)
