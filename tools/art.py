@@ -1128,7 +1128,7 @@ def load_rgba(path, max_w, max_h):
     scale = min(1.0, max_w * 3 / img.width, max_h * 3 / img.height)  # shrink huge images first
     if scale < 1.0:
         img = img.resize((max(1, int(img.width * scale)), max(1, int(img.height * scale))), Image.LANCZOS)
-    if not has_alpha or img.getextrema()[3][0] == 255:
+    if not has_alpha:  # images with an alpha channel are used as-is (opaque ones become framed busts)
         img = remove_background(img)
     bbox = img.getchannel("A").point(lambda a: 255 if a >= 128 else 0).getbbox()
     return img.crop(bbox) if bbox else img
@@ -1162,9 +1162,22 @@ def _procedural_portrait(key):
     return outline(img)
 
 
+def framed(img):
+    """Opaque (screenshot-style) portraits get a thin frame so they read as a cut-in window."""
+    if img.getextrema()[3][0] < 255:
+        return img
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, img.width - 1, img.height - 1], outline=(20, 16, 24, 255), width=2)
+    d.rectangle([2, 2, img.width - 3, img.height - 3], outline=(200, 160, 70, 255), width=1)
+    return img
+
+
 def portrait_image(key):
     if key in USER_PORTRAITS:
-        return fit(load_rgba(USER_PORTRAITS[key], PORTRAIT_W, PORTRAIT_H), PORTRAIT_W, PORTRAIT_H)
+        img = load_rgba(USER_PORTRAITS[key], PORTRAIT_W, PORTRAIT_H)
+        if img.getextrema()[3][0] == 255:  # opaque: fill the whole bust area
+            return framed(img.resize((PORTRAIT_W, PORTRAIT_H), Image.LANCZOS))
+        return fit(img, PORTRAIT_W, PORTRAIT_H)
     small = _procedural_portrait(key).resize((96, 120), Image.NEAREST)
     canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
     canvas.paste(small, ((PORTRAIT_W - 96) // 2, 0))  # keep the face above the text box
@@ -1193,7 +1206,12 @@ def render_thumb(key):
 
 def icon_image(key):
     if key in USER_ICONS:
-        return fit(load_rgba(USER_ICONS[key], ICON_SIZE, ICON_SIZE), ICON_SIZE, ICON_SIZE, anchor_bottom=False)
+        img = load_rgba(USER_ICONS[key], ICON_SIZE, ICON_SIZE)
+        if img.getextrema()[3][0] == 255:
+            w = min(img.width, img.height)
+            img = img.crop(((img.width - w) // 2, (img.height - w) // 2, (img.width + w) // 2, (img.height + w) // 2))
+            return img.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
+        return fit(img, ICON_SIZE, ICON_SIZE, anchor_bottom=False)
     img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
     BUILTIN_ICONS[key](ImageDraw.Draw(img))
     return outline(img).resize((ICON_SIZE, ICON_SIZE), Image.NEAREST)

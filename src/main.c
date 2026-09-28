@@ -21,7 +21,7 @@
 #define TEXT_X 8
 #define TEXT_Y 109
 #define PORTRAIT_X ((SCREEN_W - PORTRAIT_W) / 2)
-#define PORTRAIT_Y (SCREEN_H - PORTRAIT_H) /* bust sits behind the translucent text box */
+#define PORTRAIT_Y 0 /* bust hangs from the top; the translucent text box covers only the chest */
 
 #define REC_ROWS 5
 #define REC_LIST_Y 21
