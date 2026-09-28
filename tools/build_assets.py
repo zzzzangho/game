@@ -246,6 +246,7 @@ class Compiler:
 
     # -- statements
     def say(self, spk, text, portrait=NONE):
+        text = text.replace("\\n", "\n")  # "-장소-\n본문" style line breaks in dialogue lines
         lines = wrap(self.font, text, TEXT_W)
         for i in range(0, len(lines), TEXT_LINES):
             self.emit(OPS["SAY"], spk, self.text("\n".join(lines[i:i + TEXT_LINES])), portrait)
