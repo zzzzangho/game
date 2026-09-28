@@ -1,7 +1,9 @@
 /* Host (PC) platform used by the automated playthrough tests.
  *
  * Environment:
- *   ROUTE      comma separated answers for menus / accusations / presentations (evidence ids)
+ *   ROUTE      comma separated answers for @ask / @accuse / @present (evidence ids)
+ *   VIDEO      comma separated frame choices for the video player (n = stop watching)
+ *   Exploration menus (@investigate / @menu) are walked round-robin, skipping trap options.
  *   TITLE      title menu choice (0 = new game, 1 = continue)
  *   SRAM_FILE  file used as battery save
  *   SHOTS      directory for PPM screenshots (optional), MAX_SHOTS limits the count
@@ -18,6 +20,8 @@ static u8 sram[32768];
 static unsigned long frames;
 static int route[512], route_len, route_pos;
 static int invest_counter;
+static int video_route[64], video_len, video_pos;
+static unsigned short menu_next[65536];
 static int shots, max_shots = 400;
 static const char *shot_dir, *sram_file;
 
@@ -26,6 +30,12 @@ void plat_init(void)
     const char *r = getenv("ROUTE");
     while (r && *r) {
         route[route_len++] = atoi(r);
+        r = strchr(r, ',');
+        if (r) r++;
+    }
+    r = getenv("VIDEO");
+    while (r && *r) {
+        video_route[video_len++] = atoi(r);
         r = strchr(r, ',');
         if (r) r++;
     }
@@ -100,6 +110,10 @@ int plat_debug_choice(int kind, int n)
         invest_counter++;
         printf("invest -> %d\n", c);
         return c;
+    case DBG_VIDEO:
+        c = video_pos < video_len ? video_route[video_pos++] : n;
+        printf("video -> %d\n", c);
+        return c;
     case DBG_PRESENT:
         c = next_route("present");
         printf("present -> evidence %d\n", c);
@@ -109,6 +123,18 @@ int plat_debug_choice(int kind, int n)
         printf("%s -> %d\n", kind == DBG_ACCUSE ? "accuse" : "menu", c);
         return c;
     }
+}
+
+/* Round-robin over the options of each exploration menu (the last one is the exit), skipping traps. */
+int plat_debug_menu(int id, int n, u32 traps)
+{
+    for (int k = 0; k < n; k++) {
+        int c = (menu_next[id] + k) % n;
+        if (!getenv("TRAPS") && c < 32 && (traps >> c) & 1) continue;
+        menu_next[id] = (unsigned short)(c + 1);
+        return c;
+    }
+    return n - 1;
 }
 
 static void shot(const char *what)

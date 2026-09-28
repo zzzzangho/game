@@ -23,7 +23,9 @@ LIST_W = 150          # court record list width
 
 OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PRESENT=9,
            ACCUSE=10, GOTO=11, ENDING=12, LIVES=13, GAMEOVER=14, MEET=15, WAIT=16, SHOUT=17,
-           PROFILE=18)
+           PROFILE=18, MENU=19, SET=20, IF=21, PENALTY=22, BANNER=23, VIDEO=24)
+BLOCKS = ("investigate", "ask", "accuse", "menu", "video")
+MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
 FX = dict(flash=0, shock=1, shake=2, red=3)
 NL = 0xFFFE
@@ -47,6 +49,10 @@ UI_STRINGS = [
     ("UI_PROFILE_UPDATED", "인물 파일 갱신!"),
     ("UI_INVEST_Q", "어디를 조사할까?"),
     ("UI_INVEST_DONE", "조사를 마친다"),
+    ("UI_BACK", "돌아간다"),
+    ("UI_BANNER_INVEST", "조사 개시!"),
+    ("UI_BANNER_DEDUCE", "추리 개시!"),
+    ("UI_VIDEO_HINT", "←→ 넘기기  A 여기다!  B 그만"),
     ("UI_INVEST_NOTYET", "아직 알아내지 못한 게 있어.\n좀 더 조사해 보자."),
     ("UI_WRONG", "틀렸다...!"),
     ("UI_BAD_END", "BAD END"),
@@ -168,7 +174,12 @@ class Compiler:
         self.scenes = {}          # key -> idx
         self.portraits = {}       # key -> idx
         self.lineno = 0
-        self.missing_expr = set()  # 이름[표정] used in the script without an image file
+        self.missing_expr = set()
+        self.flag_names = {}       # @set / if= names -> flag index (from 0 up)
+        self.next_mark = MAX_FLAGS - 1  # "option already chosen" marks (from the top down)  # 이름[표정] used in the script without an image file
+
+    def ui(self, key):
+        return self.text(dict(UI_STRINGS)[key])
 
     def err(self, msg):
         raise CompileError(f"story.txt:{self.lineno}: {msg}")
@@ -273,7 +284,7 @@ class Compiler:
             if block is not None:
                 return self.block_cmd(block, cmd, args)
             self.command(cmd, args)
-            if cmd in ("investigate", "ask", "accuse"):
+            if cmd in BLOCKS:
                 return (cmd, args, [], [])
             return block
         if block is not None:
@@ -375,38 +386,115 @@ class Compiler:
             self.emit(OPS["PRESENT"], self.speaker(a[0]), self.wrapped(a[1], TEXT_W, TEXT_LINES, "question"),
                       self.ev(a[2]))
             self.label_ref(a[3])
-        elif cmd in ("investigate", "ask", "accuse"):
+        elif cmd == "set":
+            self.need_args(a, 1, "@set FLAG")
+            self.emit(OPS["SET"], self.flag(a[0]))
+        elif cmd == "if":
+            self.need_args(a, 2, "@if [!]FLAG_OR_EVIDENCE LABEL")
+            self.emit(OPS["IF"], self.cond(a[0]))
+            self.label_ref(a[1])
+        elif cmd == "penalty":
+            self.emit(OPS["PENALTY"])
+        elif cmd == "banner":
+            if not a or a[0] not in ("invest", "deduce"):
+                self.err("@banner invest|deduce")
+            self.emit(OPS["BANNER"], 0 if a[0] == "invest" else 1)
+        elif cmd in BLOCKS:
             pass  # handled as a block
         else:
             self.err(f"unknown command @{cmd}")
 
+    def flag(self, name):
+        if name in self.evidence:
+            self.err(f"{name!r} is an evidence id; flags need their own names")
+        if name not in self.flag_names:
+            self.flag_names[name] = len(self.flag_names)
+            if len(self.flag_names) >= self.next_mark:
+                self.err("too many flags")
+        return self.flag_names[name]
+
+    def cond(self, text):
+        neg = text.startswith("!")
+        name = text[1:] if neg else text
+        c = (0x4000 | self.evidence[name]["idx"]) if name in self.evidence else self.flag(name)
+        return c | (0x8000 if neg else 0)
+
+    def mark(self):
+        m = self.next_mark
+        self.next_mark -= 1
+        if m <= len(self.flag_names):
+            self.err("too many menu options (flag space full)")
+        return m
+
     def block_cmd(self, block, cmd, a):
         kind, head, items, need = block
+        if kind == "video":
+            if cmd == "frame":
+                self.need_args(a, 3, "@frame SCENE \"timecode\" \"caption\" [correct]")
+                items.append((self.scene(a[0]), self.text(a[1]),
+                              self.wrapped(a[2], TEXT_W, 2, "video caption"), "correct" in a[3:]))
+                return block
+            if cmd != "end":
+                self.err("only @frame / @end inside @video")
+            self.need_args(head, 3, "@video \"title\" OK_LABEL WRONG_LABEL")
+            correct = [i for i, it in enumerate(items) if it[3]]
+            if len(correct) != 1 or not 2 <= len(items) <= 32:
+                self.err("@video needs 2-32 frames with exactly one marked correct")
+            self.emit(OPS["VIDEO"], self.text(head[0]), len(items), correct[0])
+            self.label_ref(head[1])
+            self.label_ref(head[2])
+            for sc, tc, cap, _ in items:
+                self.emit(sc, tc, cap)
+            return None
         if cmd in ("spot", "opt"):
-            self.need_args(a, 2, f"@{cmd} \"text\" LABEL")
+            self.need_args(a, 2, f"@{cmd} \"text\" LABEL [if=[!]FLAG] [trap]")
             if self.font.width(a[0]) > MENU_W:
                 self.err(f"option text too wide: {a[0]}")
-            items.append((self.text(a[0]), a[1], self.lineno))
+            cond, trap = NONE, False
+            for extra in a[2:]:
+                if extra.startswith("if="):
+                    cond = self.cond(extra[3:])
+                elif extra == "trap":
+                    trap = True
+                else:
+                    self.err(f"unknown option flag {extra!r}")
+            if cond != NONE and kind not in ("investigate", "menu"):
+                self.err("if= only works in @investigate / @menu")
+            items.append((self.text(a[0]), a[1], self.lineno, cond, trap))
             return block
         if cmd == "need" and kind == "investigate":
             need.extend(self.ev(x) for x in a)
             return block
         if cmd != "end":
             self.err(f"@{cmd} not allowed inside @{kind}")
+        if kind in ("investigate", "menu"):
+            if not items or len(items) > 12 or sum(1 for it in items if it[3] == NONE) > 6:
+                self.err(f"@{kind} needs 1-12 options, at most 6 without if=")
+            if kind == "investigate":
+                mask = 0
+                for e in need:
+                    mask |= 1 << e
+                self.emit(OPS["INVEST"], len(items), mask & 0xFFFF, mask >> 16)
+            else:
+                self.need_args(head, 2, "@menu SPEAKER \"prompt\"")
+                self.emit(OPS["MENU"], self.speaker(head[0]),
+                          self.wrapped(head[1], TEXT_W, TEXT_LINES, "menu prompt"), self.ui("UI_BACK"), len(items))
+            for tid, lbl, lineno, cond, trap in items:
+                self.emit(tid)
+                saved, self.lineno = self.lineno, lineno
+                self.label_ref(lbl)
+                self.lineno = saved
+                self.emit(cond, self.mark() | (0x8000 if trap else 0))
+            return None
         if not items or len(items) > 6:
             self.err(f"@{kind} needs 1-6 options")
-        if kind == "investigate":
-            mask = 0
-            for e in need:
-                mask |= 1 << e
-            self.emit(OPS["INVEST"], len(items), mask & 0xFFFF, mask >> 16)
-        else:
+        if True:
             self.need_args(head, 2, f"@{kind} SPEAKER \"question\"")
             op = OPS["ASK"] if kind == "ask" else OPS["ACCUSE"]
             self.emit(op, self.speaker(head[0]), self.wrapped(head[1], TEXT_W, TEXT_LINES, "question"), len(items))
-        if kind == "ask" and sum(1 for _, l, _ in items if l == "ok") != 1:
+        if kind == "ask" and sum(1 for it in items if it[1] == "ok") != 1:
             self.err("@ask needs exactly one option marked ok")
-        for tid, lbl, lineno in items:
+        for tid, lbl, lineno, _, _ in items:
             self.emit(tid)
             if lbl == "ok":
                 self.emit(NONE)

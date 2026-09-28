@@ -28,8 +28,11 @@ def load_ids():
     return ids
 
 
-def run(exe, route, ids, title=0, sram=None, shots=None):
+def run(exe, route, ids, title=0, sram=None, shots=None, video="3", traps=False):
     env = dict(os.environ)
+    env["VIDEO"] = video
+    if traps:
+        env["TRAPS"] = "1"
     env["ROUTE"] = ",".join(str(ids[x]) if isinstance(x, str) else str(x) for x in route)
     env["TITLE"] = str(title)
     if sram:
@@ -77,6 +80,16 @@ def main():
              4, 0, 0]
     code, out, err = run(args.exe, route, ids)
     results.append(check("game over in final deduction", code == 0 and "EVENT bad_end" in out
+                         and "true_end" not in out, out[-500:] + err))
+
+    # stopping on the wrong video frames first costs nothing
+    code, out, err = run(args.exe, CH1 + CH2 + FINAL_TRUE, ids, video="0,5,3")
+    results.append(check("wrong video frames, then the right one", code == 0 and "EVENT true_end" in out,
+                         out[-500:] + err))
+
+    # walking into every trap drains all five hearts
+    code, out, err = run(args.exe, CH1 + CH2 + FINAL_TRUE, ids, traps=True)
+    results.append(check("every trap taken -> game over", code == 0 and "EVENT bad_end" in out
                          and "true_end" not in out, out[-500:] + err))
 
     # chapter save: stop inside chapter 2, then continue from the title screen

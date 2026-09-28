@@ -514,6 +514,28 @@ def scene_swamp():
     return img
 
 
+def scene_cabin_roses_hand():
+    img = scene_cabin_roses()
+    d = ImageDraw.Draw(img)
+    d.line([(112, 118), (100, 104)], fill=(24, 24, 30), width=3)   # left arm raised a little
+    d.ellipse([96, 100, 102, 106], fill=(230, 200, 180))           # hand
+    d.line([(99, 100), (97, 84)], fill=(220, 220, 230))            # string
+    d.ellipse([90, 70, 104, 86], fill=(230, 60, 70))               # small balloon
+    d.point((94, 74), fill=(255, 200, 200))
+    return img
+
+
+def scene_cabin_smoke():
+    img = scene_cabin_roses()
+    rng = random.Random(11)
+    px = img.load()
+    for y in range(H):
+        for x in range(W):
+            t = 0.55 + 0.25 * rng.random()
+            px[x, y] = mix(px[x, y], (230, 230, 235), t)
+    return img
+
+
 BUILTIN_SCENES = {
     "black": scene_black,
     "title": scene_title,
@@ -532,6 +554,8 @@ BUILTIN_SCENES = {
     "hotel_room": scene_hotel_room,
     "theater": scene_theater,
     "swamp": scene_swamp,
+    "cabin_roses_hand": scene_cabin_roses_hand,
+    "cabin_smoke": scene_cabin_smoke,
 }
 
 

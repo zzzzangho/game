@@ -39,6 +39,19 @@ static int cur_scene, cur_portrait = NONE;
 static int lives, max_lives, in_game;
 static u32 ev_flags, prof_flags;
 static u16 prof_text[32]; /* current profile text per character (@profile_update changes it) */
+static u32 flags[32];     /* 1024 script flags: named @set flags + "already chosen" marks for menu options */
+
+static int flag_get(int f) { return (flags[f >> 5] >> (f & 31)) & 1; }
+static void flag_set(int f) { flags[f >> 5] |= 1u << (f & 31); }
+
+/* Option condition word: NONE = always; bit 15 negates; bit 14 = evidence (else flag); low 12 bits = index. */
+static int cond_true(u16 c)
+{
+    if (c == NONE) return 1;
+    int idx = c & 0x0FFF;
+    int v = (c & 0x4000) ? (int)((ev_flags >> idx) & 1) : flag_get(idx);
+    return (c & 0x8000) ? !v : v;
+}
 static u16 gameover_pc;
 
 /* ------------------------------------------------------------------ frame / input */
@@ -476,13 +489,15 @@ static void chapter_card(int t)
 
 /* ------------------------------------------------------------------ menus */
 
-/* opts: pairs (text id, label) with stride 2. extra: optional trailing option (UI text) or NONE. */
-static int menu(int spk, int q, const u16 *opts, int n, u32 greyed, int extra, int dbg_kind)
+/* texts: option text ids. extra: optional trailing option (UI text) or NONE.
+ * dbg_id/traps only feed the host test harness (which option set this is, which ones to avoid). */
+static int choose(int spk, int q, const u16 *texts, int n, u32 greyed, int extra, int dbg_kind, int dbg_id,
+                  u32 traps)
 {
     int total = n + (extra != NONE);
     int sel = 0, w = 120;
     for (int i = 0; i < total; i++) {
-        int tw = text_width(i < n ? opts[i * 2] : extra, 1) + 30;
+        int tw = text_width(i < n ? texts[i] : extra, 1) + 30;
         if (tw > w) w = tw;
     }
     int row = total > 6 ? 13 : 14; /* compact rows so 7 options still clear the text box */
@@ -504,7 +519,7 @@ static int menu(int spk, int q, const u16 *opts, int n, u32 greyed, int extra, i
             restore_screen();
             for (int i = 0; i < total; i++) {
                 int oy = y + 4 + i * row;
-                int t = i < n ? opts[i * 2] : extra;
+                int t = i < n ? texts[i] : extra;
                 if (i == sel) {
                     fill(x + 4, oy, w - 8, row, C_HILITE);
                     draw_cursor(x + 8, oy + 3, C_GOLD);
@@ -515,7 +530,7 @@ static int menu(int spk, int q, const u16 *opts, int n, u32 greyed, int extra, i
             redraw = 0;
         }
         plat_debug_event("menu", sel);
-        int d = plat_debug_choice(dbg_kind, total);
+        int d = dbg_id >= 0 ? plat_debug_menu(dbg_id, total, traps) : plat_debug_choice(dbg_kind, total);
         if (d >= 0 && d < total) {
             plat_sfx(SFX_OK);
             return d;
@@ -536,6 +551,14 @@ static int menu(int spk, int q, const u16 *opts, int n, u32 greyed, int extra, i
             record(0, NONE);
         }
     }
+}
+
+/* opts: pairs (text id, label), as used by @ask / @accuse. */
+static int menu(int spk, int q, const u16 *opts, int n, u32 greyed, int extra, int dbg_kind)
+{
+    u16 texts[8];
+    for (int i = 0; i < n && i < 8; i++) texts[i] = opts[i * 2];
+    return choose(spk, q, texts, n, greyed, extra, dbg_kind, -1, 0);
 }
 
 /* ------------------------------------------------------------------ court record (증거물 / 인물) */
@@ -666,7 +689,7 @@ static int record(int present, int question)
 
 /* ------------------------------------------------------------------ save data (SRAM) */
 
-#define SAVE_MAGIC 0x324D4A4Bu /* "KJM2" (v2: profile texts) */
+#define SAVE_MAGIC 0x334D4A4Bu /* "KJM3" (v3: script flags) */
 
 typedef struct {
     u32 magic;
@@ -674,6 +697,7 @@ typedef struct {
     u16 pc, scene, gameover;
     u8 lives, max_lives;
     u16 prof_text[32];
+    u32 flags[32];
     u32 check;
 } SaveData;
 
@@ -682,6 +706,7 @@ static u32 save_sum(const SaveData *s)
     u32 sum = s->ev * 3 + s->prof * 5 + s->pc * 7 + s->scene * 11 + s->gameover * 13 + s->lives * 17 +
               s->max_lives * 19 + 0x1234;
     for (int i = 0; i < 32; i++) sum = sum * 31 + s->prof_text[i];
+    for (int i = 0; i < 32; i++) sum = sum * 37 + s->flags[i];
     return sum;
 }
 
@@ -697,6 +722,7 @@ static void save_game(u16 pc)
     s.lives = lives;
     s.max_lives = max_lives;
     for (int i = 0; i < 32; i++) s.prof_text[i] = prof_text[i];
+    for (int i = 0; i < 32; i++) s.flags[i] = flags[i];
     s.check = save_sum(&s);
     plat_sram_write(&s, 0, sizeof s);
 }
@@ -711,19 +737,116 @@ static int load_game(SaveData *s)
 
 static int run(u16 pc);
 
-static int investigate(int n, u32 need, const u16 *spots)
+/* Option menu shared by @investigate and @menu. opts: n entries of (text, label, cond, mark) where
+ * mark = flag remembering the option was chosen (greys it out), bit 15 = trap (test harness avoids it).
+ * need: evidence required before the exit option works (0 = exit any time). */
+static int option_menu(int id, int spk, int q, int exit_text, u32 need, int n, const u16 *opts)
 {
-    u32 visited = 0;
-    plat_debug_event("invest", n);
     for (;;) {
-        int sel = menu(NONE, UI_INVEST_Q, spots, n, visited, UI_INVEST_DONE, DBG_INVEST);
-        if (sel == n) {
+        u16 texts[8], idx[8];
+        u32 grey = 0, traps = 0;
+        int m = 0;
+        for (int i = 0; i < n && m < 7; i++) {
+            const u16 *o = opts + i * 4;
+            if (!cond_true(o[2])) continue;
+            if (flag_get(o[3] & 0x7FFF)) grey |= 1u << m;
+            if (o[3] & 0x8000) traps |= 1u << m;
+            texts[m] = o[0];
+            idx[m++] = i;
+        }
+        int sel = choose(spk, q, texts, m, grey, exit_text, DBG_MENU, id, traps);
+        if (sel >= m) {
             if ((ev_flags & need) == need) return RET_RETURN;
             say(NONE, UI_INVEST_NOTYET, NONE);
             continue;
         }
-        visited |= 1u << sel;
-        if (run(spots[sel * 2 + 1]) == RET_TITLE) return RET_TITLE;
+        const u16 *o = opts + idx[sel] * 4;
+        flag_set(o[3] & 0x7FFF);
+        if (run(o[1]) == RET_TITLE) return RET_TITLE;
+    }
+}
+
+static void banner(int kind)
+{
+    int t = kind ? UI_BANNER_DEDUCE : UI_BANNER_INVEST;
+    u16 band = kind ? RGB(20, 2, 4) : RGB(3, 6, 18);
+    save_screen();
+    plat_sfx(kind ? SFX_OBJECTION : SFX_GET);
+    for (int f = 0; f < 90; f++) {
+        int off = f < 12 ? (12 - f) * 20 : f > 78 ? -(f - 78) * 20 : 0;
+        restore_screen();
+        shade(0, 0, SCREEN_W, SCREEN_H, 0);
+        fill(off, 54, SCREEN_W, 52, band);
+        fill(off, 54, SCREEN_W, 2, C_GOLD);
+        fill(off, 104, SCREEN_W, 2, C_GOLD);
+        /* magnifying glass (invest) or exclamation (deduce) */
+        int gx = off + 26, gy = 66;
+        if (!kind) {
+            for (int a = 0; a < 64; a++) {
+                static const s16 c[16] = {0, 38, 71, 92, 100, 92, 71, 38, 0, -38, -71, -92, -100, -92, -71, -38};
+                int dx = c[a & 15] * 11 / 100, dy = c[(a + 4) & 15] * 11 / 100;
+                fill(gx + 12 + dx, gy + 12 + dy, 2, 2, C_WHITE);
+            }
+            for (int i = 0; i < 10; i++) fill(gx + 20 + i, gy + 20 + i, 3, 3, C_GOLD);
+        } else {
+            fill(gx + 10, gy, 6, 20, C_WHITE);
+            fill(gx + 10, gy + 24, 6, 6, C_WHITE);
+        }
+        draw_text_ex(off + SCREEN_W / 2 + 12, 66, t, C_WHITE, 2, 1);
+        if (f == 12) {
+            plat_debug_event("banner", kind);
+            shake(6, 2);
+        }
+        frame();
+        if (f > 20 && f < 78 && (keys_new & KEY_A)) f = 78;
+    }
+    restore_screen();
+    frame();
+}
+
+/* Video player: step through frames and stop on the suspicious one. Returns frame index or -1. */
+static int video(int title, int n, const u16 *frames)
+{
+    int cur = 0;
+    for (int redraw = 1;;) {
+        if (redraw) {
+            const u16 *f = frames + cur * 3;
+            plat_copy32(fb, scene_img[f[0]], SCREEN_W * SCREEN_H / 2);
+            mark(0, SCREEN_H);
+            for (int y = 0; y < BOX_Y; y += 2) shade(0, y, SCREEN_W, 1, RGB(0, 6, 2)); /* scanlines */
+            fill(0, 0, SCREEN_W, 16, RGB(1, 2, 1));
+            draw_text(8, 2, title, RGB(10, 31, 12));
+            draw_text(SCREEN_W - 8 - text_width(f[1], 1), 2, f[1], RGB(10, 31, 12));
+            if (cur > 0) for (int r = 0; r < 4; r++) fill(4 + r, 56 - r, 1, 1 + 2 * r, C_WHITE);
+            if (cur < n - 1) for (int r = 0; r < 4; r++) fill(SCREEN_W - 5 - r, 56 - r, 1, 1 + 2 * r, C_WHITE);
+            shade(0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, C_BOX);
+            fill(0, BOX_Y, SCREEN_W, 1, RGB(10, 31, 12));
+            draw_text(TEXT_X, TEXT_Y, f[2], C_WHITE);
+            draw_text(SCREEN_W - 8 - text_width(UI_VIDEO_HINT, 1), 146, UI_VIDEO_HINT, C_GREY);
+            save_screen();
+            redraw = 0;
+        }
+        restore_rect(SCREEN_W - 70, 2, 10, 10);
+        if ((frame_count >> 4) & 1) fill(SCREEN_W - 68, 4, 7, 7, C_RED); /* REC lamp */
+        plat_debug_event("video", cur);
+        int d = plat_debug_choice(DBG_VIDEO, n);
+        if (d != -1) return d < n ? d : -1;
+        frame();
+        if ((keys_new & KEY_LEFT) && cur > 0) {
+            cur--;
+            plat_sfx(SFX_MOVE);
+            redraw = 1;
+        } else if ((keys_new & KEY_RIGHT) && cur < n - 1) {
+            cur++;
+            plat_sfx(SFX_MOVE);
+            redraw = 1;
+        } else if (keys_new & KEY_A) {
+            plat_sfx(SFX_OK);
+            return cur;
+        } else if (keys_new & KEY_B) {
+            plat_sfx(SFX_CANCEL);
+            return -1;
+        }
     }
 }
 
@@ -803,9 +926,38 @@ static int run(u16 pc)
         case OP_INVEST: {
             int n = S[pc];
             u32 need = S[pc + 1] | ((u32)S[pc + 2] << 16);
-            const u16 *spots = &S[pc + 3];
-            pc += 3 + n * 2;
-            if (investigate(n, need, spots) == RET_TITLE) return RET_TITLE;
+            const u16 *opts = &S[pc + 3];
+            pc += 3 + n * 4;
+            banner(0);
+            if (option_menu(op_pc, NONE, UI_INVEST_Q, UI_INVEST_DONE, need, n, opts) == RET_TITLE) return RET_TITLE;
+            break;
+        }
+        case OP_MENU: {
+            int spk = S[pc], q = S[pc + 1], exit_text = S[pc + 2], n = S[pc + 3];
+            const u16 *opts = &S[pc + 4];
+            pc += 4 + n * 4;
+            if (option_menu(op_pc, spk, q, exit_text, 0, n, opts) == RET_TITLE) return RET_TITLE;
+            break;
+        }
+        case OP_SET:
+            flag_set(S[pc++]);
+            break;
+        case OP_IF:
+            pc = cond_true(S[pc]) ? S[pc + 1] : pc + 2;
+            break;
+        case OP_PENALTY:
+            lose_life();
+            if (lives == 0) pc = gameover_pc;
+            break;
+        case OP_BANNER:
+            banner(S[pc++]);
+            break;
+        case OP_VIDEO: {
+            int title = S[pc], n = S[pc + 1], correct = S[pc + 2], ok = S[pc + 3], wrong = S[pc + 4];
+            const u16 *frames = &S[pc + 5];
+            pc += 5 + n * 3;
+            int sel = video(title, n, frames);
+            if (sel >= 0 && run(sel == correct ? ok : wrong) == RET_TITLE) return RET_TITLE;
             break;
         }
         case OP_RETURN:
@@ -951,6 +1103,7 @@ int main(void)
         gameover_pc = 0;
         cur_scene = SCENE_BLACK;
         for (int i = 0; i < 32; i++) prof_text[i] = i < CHAR_COUNT ? char_profile[i] : NONE;
+        for (int i = 0; i < 32; i++) flags[i] = 0;
         if (choice == 1 && has_save) {
             ev_flags = s.ev;
             prof_flags = s.prof;
@@ -958,6 +1111,7 @@ int main(void)
             max_lives = s.max_lives;
             gameover_pc = s.gameover;
             for (int i = 0; i < 32; i++) prof_text[i] = s.prof_text[i];
+            for (int i = 0; i < 32; i++) flags[i] = s.flags[i];
             cur_scene = s.scene;
             pc = s.pc;
         }

@@ -163,4 +163,5 @@ void plat_sram_write(const void *src, int ofs, int n)
 }
 
 int plat_debug_choice(int kind, int n) { (void)kind; (void)n; return -1; }
+int plat_debug_menu(int id, int n, u32 traps) { (void)id; (void)n; (void)traps; return -1; }
 void plat_debug_event(const char *what, int value) { (void)what; (void)value; }

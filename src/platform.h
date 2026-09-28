@@ -31,7 +31,7 @@ typedef signed int s32;
 enum { SFX_BLIP, SFX_MOVE, SFX_OK, SFX_CANCEL, SFX_GET, SFX_WRONG, SFX_SHOCK, SFX_OBJECTION };
 
 /* Debug hooks used only by the host harness. */
-enum { DBG_MENU, DBG_ACCUSE, DBG_PRESENT, DBG_INVEST, DBG_TITLE };
+enum { DBG_MENU, DBG_ACCUSE, DBG_PRESENT, DBG_INVEST, DBG_TITLE, DBG_VIDEO };
 
 void plat_init(void);
 u16 *plat_fb(void);                     /* 240x160 BGR555 back buffer */
@@ -46,6 +46,7 @@ void plat_sram_write(const void *src, int ofs, int n);
 void plat_copy32(void *dst, const void *src, int words);
 
 int plat_debug_choice(int kind, int n); /* -1 on hardware */
+int plat_debug_menu(int id, int n, u32 traps); /* explore-menu choice for the test harness; -1 on hardware */
 void plat_debug_event(const char *what, int value);
 
 #endif
