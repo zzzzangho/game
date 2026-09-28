@@ -23,8 +23,9 @@ LIST_W = 150          # court record list width
 
 OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PRESENT=9,
            ACCUSE=10, GOTO=11, ENDING=12, LIVES=13, GAMEOVER=14, MEET=15, WAIT=16, SHOUT=17,
-           PROFILE=18, MENU=19, SET=20, IF=21, PENALTY=22, BANNER=23, VIDEO=24)
-BLOCKS = ("investigate", "ask", "accuse", "menu", "video")
+           PROFILE=18, MENU=19, SET=20, IF=21, PENALTY=22, BANNER=23, VIDEO=24, TIMER=25, MASH=26,
+           TESTIMONY=27)
+BLOCKS = ("investigate", "ask", "accuse", "menu", "video", "testimony")
 MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
 FX = dict(flash=0, shock=1, shake=2, red=3)
@@ -53,6 +54,12 @@ UI_STRINGS = [
     ("UI_BANNER_INVEST", "조사 개시!"),
     ("UI_BANNER_DEDUCE", "추리 개시!"),
     ("UI_VIDEO_HINT", "←→ 넘기기  A 여기다!  B 그만"),
+    ("UI_TESTI_HINT", "◀▶ 넘기기  A 추궁  R 증거 제시"),
+    ("UI_PRESS_SHOUT", "잠깐!"),
+    ("UI_OBJECTION", "그건 모순이야!"),
+    ("UI_TIMEOUT", "시간이 없어…! 머뭇거리는 사이에 기회를 놓쳤다."),
+    ("UI_DANGER", "더 이상 실수할 수 없다…!"),
+    ("UI_MASH_HINT", "A 버튼을 연타해!"),
     ("UI_INVEST_NOTYET", "아직 알아내지 못한 게 있어.\n좀 더 조사해 보자."),
     ("UI_WRONG", "틀렸다...!"),
     ("UI_BAD_END", "BAD END"),
@@ -396,6 +403,13 @@ class Compiler:
             self.label_ref(a[1])
         elif cmd == "penalty":
             self.emit(OPS["PENALTY"])
+        elif cmd == "timer":
+            self.need_args(a, 1, "@timer SECONDS   (applies to the next @ask / @present)")
+            self.emit(OPS["TIMER"], int(a[0]))
+        elif cmd == "mash":
+            self.need_args(a, 3, "@mash \"prompt\" SECONDS FAIL_LABEL")
+            self.emit(OPS["MASH"], self.wrapped(a[0], TEXT_W, TEXT_LINES, "mash prompt"), int(a[1]))
+            self.label_ref(a[2])
         elif cmd == "banner":
             if not a or a[0] not in ("invest", "deduce"):
                 self.err("@banner invest|deduce")
@@ -429,6 +443,28 @@ class Compiler:
 
     def block_cmd(self, block, cmd, a):
         kind, head, items, need = block
+        if kind == "testimony":
+            if cmd == "stmt":
+                self.need_args(a, 2, "@stmt \"statement\" PRESS_LABEL [CONTRADICTING_EVIDENCE]")
+                items.append((self.wrapped(a[0], TEXT_W, 2, "testimony statement"), a[1],
+                              self.ev(a[2]) if len(a) > 2 else NONE, self.lineno))
+                return block
+            if cmd != "end":
+                self.err("only @stmt / @end inside @testimony")
+            self.need_args(head, 3, "@testimony SPEAKER \"title\" WRONG_LABEL")
+            if not 2 <= len(items) <= 8 or not any(it[2] != NONE for it in items):
+                self.err("@testimony needs 2-8 statements, at least one with contradicting evidence")
+            if self.font.width(head[1]) > HEADER_W:
+                self.err("testimony title must fit on one line")
+            self.emit(OPS["TESTIMONY"], self.speaker(head[0]), self.text(head[1]), len(items))
+            self.label_ref(head[2])
+            for tid, lbl, ev, lineno in items:
+                self.emit(tid)
+                saved, self.lineno = self.lineno, lineno
+                self.label_ref(lbl)
+                self.lineno = saved
+                self.emit(ev)
+            return None
         if kind == "video":
             if cmd == "frame":
                 self.need_args(a, 3, "@frame SCENE \"timecode\" \"caption\" [correct]")

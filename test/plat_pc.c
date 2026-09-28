@@ -3,6 +3,9 @@
  * Environment:
  *   ROUTE      comma separated answers for @ask / @accuse / @present (evidence ids)
  *   VIDEO      comma separated frame choices for the video player (n = stop watching)
+ *   MASH=fail  let every button-mash crisis fail
+ *   ROUTE value 9999 = give no answer and release no keys until the timer runs out
+ *   ROUTE values for @testimony: s = press statement s, 1000 + s*100 + e = present evidence e on statement s
  *   Exploration menus (@investigate / @menu) are walked round-robin, skipping trap options.
  *   TITLE      title menu choice (0 = new game, 1 = continue)
  *   SRAM_FILE  file used as battery save
@@ -20,6 +23,7 @@ static u8 sram[32768];
 static unsigned long frames;
 static int route[512], route_len, route_pos;
 static int invest_counter;
+static int muted; /* waiting for a timer to run out */
 static int video_route[64], video_len, video_pos;
 static unsigned short menu_next[65536];
 static int shots, max_shots = 400;
@@ -68,7 +72,7 @@ void plat_vsync(void)
 }
 
 /* Tap A every other frame. */
-u16 plat_keys(void) { return (frames & 1) ? KEY_A : 0; }
+u16 plat_keys(void) { return (!muted && (frames & 1)) ? KEY_A : 0; }
 
 void plat_fade(int level) { (void)level; }
 void plat_offset(int dx, int dy) { (void)dx; (void)dy; }
@@ -102,7 +106,14 @@ static int next_route(const char *what)
 int plat_debug_choice(int kind, int n)
 {
     int c;
+    if (muted) return -1;
     switch (kind) {
+    case DBG_MASH:
+        return getenv("MASH") && !strcmp(getenv("MASH"), "fail") ? 1 : 0;
+    case DBG_TESTIMONY:
+        c = next_route("testimony");
+        printf("testimony -> %d\n", c);
+        return c;
     case DBG_TITLE:
         return getenv("TITLE") ? atoi(getenv("TITLE")) : 0;
     case DBG_INVEST:
@@ -116,10 +127,20 @@ int plat_debug_choice(int kind, int n)
         return c;
     case DBG_PRESENT:
         c = next_route("present");
+        if (c == 9999) {
+            muted = 1;
+            printf("waiting for the timer\n");
+            return -1;
+        }
         printf("present -> evidence %d\n", c);
         return c;
     default:
         c = next_route(kind == DBG_ACCUSE ? "accuse" : "menu");
+        if (c == 9999) {
+            muted = 1;
+            printf("waiting for the timer\n");
+            return -1;
+        }
         printf("%s -> %d\n", kind == DBG_ACCUSE ? "accuse" : "menu", c);
         return c;
     }
@@ -158,6 +179,11 @@ void plat_debug_event(const char *what, int value)
     static const char *last;
     static int last_value = -1;
     if (!strcmp(what, "invest")) invest_counter = 0;
+    if (!strcmp(what, "timeout")) {
+        muted = 0;
+        printf("EVENT timeout\n");
+    }
+    if (!strcmp(what, "mash") || !strcmp(what, "contradiction")) printf("EVENT %s %d\n", what, value);
     if (!strcmp(what, "true_end") || !strcmp(what, "bad_end") || !strcmp(what, "chapter") ||
         !strcmp(what, "invest"))
         printf("EVENT %s %d\n", what, value);

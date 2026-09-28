@@ -14,9 +14,13 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 GEN_H = os.path.join(HERE, "..", "build", "gen_data.h")
 
-CH1 = [2, "video", 0, "toilet", 0, "bombnote"]
+# route tokens: int = menu index, "id" = evidence to present, ("T", s, "id") = present on testimony
+# statement s, ("P", s) = press statement s, "TIMEOUT" = let the timer run out
+CROSS1 = [("P", 1), ("T", 1, "satomitalk")]
+CH1 = CROSS1 + [2, "video", 0, "toilet", 0, "bombnote"]
 CH2 = [1, "yurama", 1, "rope", 1, "register"]
-FINAL_TRUE = [4, 2, "jadebelow", "weights", "bagcheck", 1]
+CROSS_F = [("P", 1), ("T", 3, "jadebelow")]
+FINAL_TRUE = [4, 2] + CROSS_F + ["weights", "bagcheck", 1]
 ACCUSE_BAD = [(0, "sakonji"), (1, "sakuraba"), (2, "satomi"), (3, "nagasaki"), (5, "akechi")]
 
 
@@ -28,12 +32,19 @@ def load_ids():
     return ids
 
 
-def run(exe, route, ids, title=0, sram=None, shots=None, video="3", traps=False):
+def run(exe, route, ids, title=0, sram=None, shots=None, video="3", traps=False, mash="win"):
     env = dict(os.environ)
     env["VIDEO"] = video
     if traps:
         env["TRAPS"] = "1"
-    env["ROUTE"] = ",".join(str(ids[x]) if isinstance(x, str) else str(x) for x in route)
+    def code(x):
+        if isinstance(x, tuple):
+            return x[1] if x[0] == "P" else 1000 + x[1] * 100 + ids[x[2]]
+        if x == "TIMEOUT":
+            return 9999
+        return ids[x] if isinstance(x, str) else x
+    env["ROUTE"] = ",".join(str(code(x)) for x in route)
+    env["MASH"] = mash
     env["TITLE"] = str(title)
     if sram:
         env["SRAM_FILE"] = sram
@@ -66,21 +77,39 @@ def main():
                              and "true_end" not in out, out[-500:] + err))
 
     # five wrong answers in the first deduction -> game over
-    code, out, err = run(args.exe, [0, 1, 3, 0, 1], ids)
+    code, out, err = run(args.exe, CROSS1 + [0, 1, 3, 0, 1], ids)
     results.append(check("game over after 5 mistakes", code == 0 and "EVENT bad_end" in out, out[-500:] + err))
 
     # four mistakes spread over the game still reach the true ending
-    route = [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 0, 1, "yurama", 1, "rope", 1, "register",
-             4, 2, "jadebelow", "weights", "bagcheck", 0, 1]
+    route = CROSS1 + [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 0, 1, "yurama", 1, "rope", 1,
+                      "register", 4, 2] + CROSS_F + ["weights", "bagcheck", 0, 1]
     code, out, err = run(args.exe, route, ids)
     results.append(check("true ending with 4 mistakes", code == 0 and "EVENT true_end" in out, out[-500:] + err))
 
     # a fifth mistake in the final deduction -> game over
-    route = [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 0, 1, "yurama", 1, "rope", 1, "register",
-             4, 0, 0]
+    route = CROSS1 + [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 0, 1, "yurama", 1, "rope", 1,
+                      "register", 4, 0, 0]
     code, out, err = run(args.exe, route, ids)
     results.append(check("game over in final deduction", code == 0 and "EVENT bad_end" in out
                          and "true_end" not in out, out[-500:] + err))
+
+    # cross-examination: a wrong presentation costs a heart, then the contradiction clears it
+    route = [("T", 0, "joker"), ("T", 1, "satomitalk")] + CH1[2:] + CH2 + FINAL_TRUE
+    code, out, err = run(args.exe, route, ids)
+    results.append(check("cross-examination: wrong evidence then contradiction",
+                         code == 0 and "EVENT true_end" in out and out.count("EVENT contradiction") == 2,
+                         out[-500:] + err))
+
+    # letting the timers run out in the finale costs hearts but the case can still be won
+    route = CH1 + CH2 + [4, 2] + CROSS_F + ["TIMEOUT", "weights", "TIMEOUT", "bagcheck", 1]
+    code, out, err = run(args.exe, route, ids)
+    results.append(check("timeouts in the finale", code == 0 and "EVENT true_end" in out
+                         and out.count("EVENT timeout") == 2, out[-500:] + err))
+
+    # failing the swamp escape costs a heart, the story carries on
+    code, out, err = run(args.exe, CH1 + CH2 + FINAL_TRUE, ids, mash="fail")
+    results.append(check("failed button-mash", code == 0 and "EVENT true_end" in out and "EVENT mash 0" in out,
+                         out[-500:] + err))
 
     # stopping on the wrong video frames first costs nothing
     code, out, err = run(args.exe, CH1 + CH2 + FINAL_TRUE, ids, video="0,5,3")

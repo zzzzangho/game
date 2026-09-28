@@ -300,6 +300,33 @@ static void draw_cursor(int x, int y, u16 c)
 
 static int record(int present, int question);
 
+/* Countdown for the next @ask / @present (set by @timer). 0 = no time limit. */
+static int timer_left, timer_total;
+#define TIMEOUT (-2)
+
+static void draw_timer(void)
+{
+    if (!timer_total) return;
+    int w = (SCREEN_W - 8) * timer_left / timer_total;
+    u16 c = timer_left * 4 < timer_total ? ((frame_count & 8) ? C_RED : C_WHITE) : C_GOLD;
+    fill(4, 0, SCREEN_W - 8, 3, RGB(6, 2, 2));
+    fill(4, 0, w, 3, c);
+}
+
+/* Called once per frame while a timed question is open; returns 1 when time runs out. */
+static int timer_tick(void)
+{
+    if (!timer_total) return 0;
+    if (timer_left > 0) timer_left--;
+    draw_timer();
+    if (timer_left == 0) {
+        plat_debug_event("timeout", 0);
+        return 1;
+    }
+    if (timer_left % 60 == 0 && timer_left <= 300) plat_sfx(SFX_MOVE); /* last five seconds tick */
+    return 0;
+}
+
 static void restore_rect(int x, int y, int w, int h)
 {
     for (int j = y; j < y + h; j++)
@@ -456,6 +483,14 @@ static int lose_life(void)
     }
     plat_offset(0, 0);
     wait_frames(20);
+    if (lives == 1) { /* last heart: make it hurt */
+        fill(0, 96, SCREEN_W, 22, RGB(10, 0, 0));
+        draw_text_ex(SCREEN_W / 2, 101, UI_DANGER, C_RED, 1, 1);
+        for (int i = 0; i < 70; i++) {
+            if ((i % 30) == 0 || (i % 30) == 8) plat_sfx(SFX_SHOCK); /* heartbeat */
+            frame();
+        }
+    }
     restore_screen();
     draw_hearts();
     frame();
@@ -536,6 +571,7 @@ static int choose(int spk, int q, const u16 *texts, int n, u32 greyed, int extra
             return d;
         }
         frame();
+        if (timer_tick()) return TIMEOUT;
         if (keys_new & KEY_UP) {
             sel = (sel + total - 1) % total;
             redraw = 1;
@@ -663,6 +699,10 @@ static int record(int present, int question)
             }
         }
         frame();
+        if (present && timer_tick()) {
+            result = TIMEOUT;
+            break;
+        }
         if (keys_new & (KEY_UP | KEY_DOWN)) {
             if (n) {
                 sel[tab] = (sel[tab] + ((keys_new & KEY_UP) ? n - 1 : 1)) % n;
@@ -850,6 +890,118 @@ static int video(int title, int n, const u16 *frames)
     }
 }
 
+/* Button-mash crisis: fill the gauge with A before time runs out. Returns 1 on success. */
+static int mash(int t, int frames)
+{
+    int gauge = 0; /* 0..1000 */
+    set_speaker_portrait(NONE);
+    draw_scene();
+    draw_box(NONE);
+    draw_text(TEXT_X, TEXT_Y, t, C_WHITE);
+    save_screen();
+    plat_sfx(SFX_SHOCK);
+    int forced = plat_debug_choice(DBG_MASH, 0);
+    for (int f = 0; f < frames; f++) {
+        restore_rect(20, 60, 200, 40);
+        popup_window(20, 60, 200, 40);
+        draw_text_ex(SCREEN_W / 2, 64, UI_MASH_HINT, (f & 8) ? C_GOLD : C_WHITE, 1, 1);
+        fill(30, 82, 180, 8, RGB(4, 2, 2));
+        fill(30, 82, 180 * gauge / 1000, 8, gauge > 700 ? C_GOLD : C_RED);
+        fill(30, 92, 180 * (frames - f) / frames, 2, C_GREY); /* time left */
+        plat_offset((f & 2) ? 1 : -1, 0);
+        frame();
+        if (forced == 1) continue;                      /* test harness: let it fail */
+        if (keys_new & KEY_A) {
+            gauge += 90;
+            plat_sfx(SFX_BLIP);
+        }
+        gauge -= 6;
+        if (gauge < 0) gauge = 0;
+        if (gauge >= 1000) {
+            plat_offset(0, 0);
+            plat_sfx(SFX_OK);
+            plat_debug_event("mash", 1);
+            restore_screen();
+            return 1;
+        }
+    }
+    plat_offset(0, 0);
+    plat_debug_event("mash", 0);
+    restore_screen();
+    return 0;
+}
+
+/* Cross-examination. stmts: n x (text, press label, contradicting evidence or NONE).
+ * Returns RET_RETURN when the contradiction is found, RET_TITLE, or 2 when the last heart is lost. */
+static int testimony(int spk, int title, int n, const u16 *stmts, int wrong)
+{
+    int cur = 0;
+    for (int redraw = 1;;) {
+        const u16 *st = stmts + cur * 3;
+        if (redraw) {
+            set_speaker_portrait(spk);
+            draw_scene();
+            fill(0, 6, SCREEN_W, 14, RGB(2, 10, 4));
+            fill(0, 6, SCREEN_W, 1, RGB(10, 31, 12));
+            fill(0, 19, SCREEN_W, 1, RGB(10, 31, 12));
+            draw_text(8, 7, title, RGB(16, 31, 16));
+            draw_hearts();
+            draw_box(spk);
+            draw_text(TEXT_X, TEXT_Y, st[0], RGB(20, 31, 20));
+            draw_text(SCREEN_W - 8 - text_width(UI_TESTI_HINT, 1), 146, UI_TESTI_HINT, C_GREY);
+            for (int i = 0; i < n; i++) fill(8 + i * 8, 148, 5, 5, i == cur ? RGB(16, 31, 16) : C_GREY);
+            save_screen();
+            redraw = 0;
+        }
+        plat_debug_event("testimony", cur);
+        int d = plat_debug_choice(DBG_TESTIMONY, n);
+        int press = -1, present = 0;
+        if (d >= 1000) {
+            cur = (d - 1000) / 100 % n;
+            st = stmts + cur * 3;
+            present = 1;
+        } else if (d >= 0) {
+            cur = d % n;
+            st = stmts + cur * 3;
+            press = cur;
+        } else {
+            frame();
+            if (keys_new & KEY_RIGHT) {
+                cur = (cur + 1) % n;
+                plat_sfx(SFX_MOVE);
+                redraw = 1;
+                continue;
+            }
+            if (keys_new & KEY_LEFT) {
+                cur = (cur + n - 1) % n;
+                plat_sfx(SFX_MOVE);
+                redraw = 1;
+                continue;
+            }
+            if (keys_new & KEY_A) press = cur;
+            else if (keys_new & (KEY_R | KEY_SELECT)) present = 1;
+            else if (keys_new & KEY_START) record(0, NONE);
+            if (press < 0 && !present) continue;
+        }
+        if (press >= 0) { /* 추궁: dig into this statement */
+            do_shout(NONE, UI_PRESS_SHOUT, char_portrait[0]);
+            if (run(st[1]) == RET_TITLE) return RET_TITLE;
+            redraw = 1;
+            continue;
+        }
+        int ev = d >= 1000 ? d % 100 : record(1, title);
+        if (st[2] != NONE && ev == st[2]) {
+            do_shout(NONE, UI_OBJECTION, char_portrait[0]);
+            plat_debug_event("contradiction", cur);
+            return RET_RETURN;
+        }
+        lose_life();
+        if (run(wrong) == RET_TITLE) return RET_TITLE;
+        if (lives == 0) return 2;
+        redraw = 1;
+    }
+}
+
 static void ending(int kind, int t)
 {
     fade_out();
@@ -960,17 +1112,42 @@ static int run(u16 pc)
             if (sel >= 0 && run(sel == correct ? ok : wrong) == RET_TITLE) return RET_TITLE;
             break;
         }
+        case OP_TIMER:
+            timer_total = S[pc++] * 60; /* armed for the next @ask / @present */
+            break;
+        case OP_MASH: {
+            int t = S[pc], frames = S[pc + 1] * 60, fail = S[pc + 2];
+            pc += 3;
+            if (!mash(t, frames) && run(fail) == RET_TITLE) return RET_TITLE;
+            if (lives == 0) pc = gameover_pc;
+            break;
+        }
+        case OP_TESTIMONY: {
+            int spk = S[pc], title = S[pc + 1], n = S[pc + 2], wrong = S[pc + 3];
+            const u16 *stmts = &S[pc + 4];
+            pc += 4 + n * 3;
+            int r = testimony(spk, title, n, stmts, wrong);
+            if (r == RET_TITLE) return RET_TITLE;
+            if (r == 2) pc = gameover_pc;
+            break;
+        }
         case OP_RETURN:
             return RET_RETURN;
         case OP_ASK: {
             int spk = S[pc], q = S[pc + 1], n = S[pc + 2];
             const u16 *opts = &S[pc + 3];
             pc += 3 + n * 2;
+            int limit = timer_total;
             for (;;) {
+                timer_left = timer_total = limit;
                 int sel = menu(spk, q, opts, n, 0, NONE, DBG_MENU);
-                if (opts[sel * 2 + 1] == NONE) break;
+                timer_total = 0;
+                if (sel != TIMEOUT && opts[sel * 2 + 1] == NONE) break;
                 lose_life();
-                if (run(opts[sel * 2 + 1]) == RET_TITLE) return RET_TITLE;
+                if (sel == TIMEOUT)
+                    say(NONE, UI_TIMEOUT, NONE);
+                else if (run(opts[sel * 2 + 1]) == RET_TITLE)
+                    return RET_TITLE;
                 if (lives == 0) {
                     pc = gameover_pc;
                     break;
@@ -981,16 +1158,24 @@ static int run(u16 pc)
         case OP_PRESENT: {
             int spk = S[pc], q = S[pc + 1], target = S[pc + 2], wrong = S[pc + 3];
             pc += 4;
+            int limit = timer_total;
+            timer_total = 0;
             for (;;) {
                 set_speaker_portrait(spk);
                 say(spk, q, cur_portrait);
-                if (record(1, q) == target) {
+                timer_left = timer_total = limit;
+                int chosen = record(1, q);
+                timer_total = 0;
+                if (chosen == target) {
                     plat_sfx(SFX_OBJECTION);
                     flash(C_WHITE, 2);
                     break;
                 }
                 lose_life();
-                if (run(wrong) == RET_TITLE) return RET_TITLE;
+                if (chosen == TIMEOUT)
+                    say(NONE, UI_TIMEOUT, NONE);
+                else if (run(wrong) == RET_TITLE)
+                    return RET_TITLE;
                 if (lives == 0) {
                     pc = gameover_pc;
                     break;

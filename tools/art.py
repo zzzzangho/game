@@ -1143,14 +1143,14 @@ def fit(img, w, h, anchor_bottom=True):
 
 
 # ---------------------------------------------------------------- pixel-art conversion of user images
-#   KMT_PIXEL=sprite (default): clean Ace-Attorney-style sprites - transparent cut-out art is scaled to
+#   KMT_PIXEL=off (default): user images are used exactly as drawn (resized/colour-converted only)
+#   KMT_PIXEL=sprite: clean Ace-Attorney-style sprites - transparent cut-out art is scaled to
 #                               the bust size, palette-limited and outlined (opaque images fall back to gbc)
 #   KMT_PIXEL=gbc: redrawn like the Game Boy Color Kindaichi game - black 1px line art traced
 #                            from the reference, flat cel colours from a small palette, GBA resolution
 #   KMT_PIXEL=chunky: characters 64x72 and scenes 120x80, shown at 2x
 #   KMT_PIXEL=native: GBA resolution with a reduced palette
-#   KMT_PIXEL=off: images as they are
-PIXEL_STYLE = os.environ.get("KMT_PIXEL", "sprite")
+PIXEL_STYLE = os.environ.get("KMT_PIXEL", "off")
 
 
 def sprite(img, w, h, colors=48):
