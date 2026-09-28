@@ -2,3 +2,12 @@ build/
 *.sav
 *.elf
 __pycache__/
+
+# 개인용 이미지는 로컬에만 (git에 올리지 않음)
+assets/portraits/*
+assets/scenes/*
+assets/icons/*
+!assets/*/.gitkeep
+
+# 이미지가 들어간 롬도 로컬에만
+*.gba

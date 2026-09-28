@@ -8,7 +8,7 @@
 
 ## 플레이 방법
 
-`kindaichi_magic_train.gba`를 mGBA 같은 에뮬레이터나 GBA 플래시 카트리지로 실행하세요.
+`make`로 빌드한 `kindaichi_magic_train.gba`를 mGBA 같은 에뮬레이터나 GBA 플래시 카트리지로 실행하세요. (롬은 git에 올리지 않습니다.)
 
 | 버튼 | 기능 |
 |---|---|
@@ -51,7 +51,7 @@
   지금 스크립트에서 쓰는 표정: `kin_surprised`, `kin_serious`, `miyuki_surprised`, `kenmochi_surprised`, `kenmochi_angry`, `yamagami_angry`, `reika_sad`, `kuroki_scared`, `izumi_angry`, `takato_smile`, `takato_shock`, `takato_cold`
 - `make preview` → `build/preview/`에서 변환 결과를 미리 볼 수 있습니다.
 - 용량: GBA 롬은 하드웨어상 최대 **32MB**입니다. 상반신 1장이 약 37KB, 배경 1장이 약 77KB라서 표정을 많이 넣어도 충분합니다.
-- 원작 그림을 넣을 경우, 저작권 때문에 저장소를 공개하거나 롬을 배포하는 데 주의하세요.
+- 이 폴더들의 이미지와 빌드된 `.gba`는 `.gitignore`에 들어 있어서 git에 올라가지 않습니다 (로컬 전용).
 
 ## 빌드
 
