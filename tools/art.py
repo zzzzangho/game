@@ -375,6 +375,145 @@ def scene_black():
     return Image.new("RGB", (W, H), (0, 0, 0))
 
 
+def roses(d, rng, box, n):
+    x0, y0, x1, y1 = box
+    for _ in range(n):
+        x, y = rng.randrange(x0, x1), rng.randrange(y0, y1)
+        r = rng.randrange(2, 4)
+        d.ellipse([x - r, y - r, x + r, y + r], fill=rng.choice([(200, 10, 30), (160, 0, 20), (230, 30, 50)]))
+        d.point((x, y), fill=(90, 0, 10))
+
+
+def scene_cabin_roses():
+    rng = random.Random(7)
+    img, d = cabin_base(rng)
+    roses(d, rng, (60, 100, 240, 160), 260)
+    roses(d, rng, (160, 70, 240, 100), 60)
+    d.ellipse([112, 104, 132, 124], fill=(230, 200, 180))  # the "body" among the roses
+    d.polygon([(118, 120), (170, 118), (190, 140), (120, 146)], fill=(24, 24, 30))
+    d.rectangle([108, 100, 136, 106], fill=(20, 20, 26))
+    tint(img, (60, 0, 20), 0.15)
+    return img
+
+
+def scene_cabin_empty():
+    rng = random.Random(7)
+    img, d = cabin_base(rng)
+    roses(d, rng, (60, 100, 240, 160), 260)
+    roses(d, rng, (160, 70, 240, 100), 60)
+    for _ in range(14):  # burst rubber scraps
+        x, y = rng.randrange(90, 200), rng.randrange(110, 150)
+        d.polygon([(x, y), (x + 4, y + 1), (x + 1, y + 3)], fill=(220, 210, 190))
+    return img
+
+
+def scene_police():
+    img = Image.new("RGB", (W, H))
+    d = ImageDraw.Draw(img)
+    vgrad(d, (0, 0, W, 110), (170, 176, 170), (140, 146, 140))
+    d.rectangle([20, 12, 150, 80], fill=(120, 150, 190))
+    for x in range(26, 150, 18):  # city skyline
+        h = 20 + (x * 37) % 40
+        d.rectangle([x, 80 - h, x + 12, 80], fill=(80, 96, 120))
+    for y in range(12, 80, 5):  # blinds
+        d.line([(20, y), (150, y)], fill=(210, 214, 210))
+    d.rectangle([20, 12, 150, 80], outline=(90, 90, 90), width=2)
+    d.rectangle([170, 20, 226, 100], fill=(110, 110, 104), outline=(80, 80, 76))
+    for y in range(30, 100, 16):
+        d.line([(170, y), (226, y)], fill=(80, 80, 76))
+    d.rectangle([0, 110, W, H], fill=(90, 90, 96))
+    d.polygon([(10, 118), (230, 118), (240, 140), (0, 140)], fill=(120, 96, 70))
+    d.rectangle([60, 104, 110, 118], fill=(220, 220, 214))
+    d.rectangle([140, 100, 176, 118], fill=(40, 40, 44))
+    # the twisted marionette in its box
+    d.rectangle([96, 88, 146, 118], fill=(150, 110, 70), outline=(90, 60, 40))
+    d.ellipse([112, 84, 124, 96], fill=(240, 230, 220), outline=OUTLINE[:3])
+    d.line([(118, 96), (108, 108), (126, 104), (116, 116)], fill=(40, 30, 60), width=2)
+    d.line([(118, 98), (134, 92)], fill=(40, 30, 60), width=2)
+    d.ellipse([130, 84, 138, 92], fill=(200, 10, 30))
+    return img
+
+
+def scene_hotel():
+    img = Image.new("RGB", (W, H))
+    d = ImageDraw.Draw(img)
+    vgrad(d, (0, 0, W, 104), (120, 86, 56), (90, 60, 40))
+    for x in range(0, W, 30):
+        d.line([(x, 0), (x, 104)], fill=(80, 54, 34))
+    d.rectangle([0, 104, W, H], fill=(70, 40, 34))
+    for x in range(0, W, 20):
+        d.line([(x, 104), (x - 30, H)], fill=(60, 34, 28))
+    d.rectangle([30, 60, 150, 104], fill=(60, 36, 24), outline=(170, 130, 60))  # front desk
+    d.rectangle([30, 56, 150, 62], fill=(170, 130, 60))
+    d.rectangle([60, 20, 120, 50], fill=(40, 26, 18), outline=(170, 130, 60))  # key board
+    for x in range(64, 118, 8):
+        for y in (26, 36):
+            d.point((x, y), fill=(230, 200, 90))
+    d.rectangle([176, 50, 212, 104], fill=(50, 34, 24))  # jade display
+    for x, y in [(184, 64), (198, 70), (190, 84)]:
+        d.ellipse([x, y, x + 8, y + 6], fill=(60, 170, 110), outline=(30, 90, 60))
+    d.ellipse([110, 4, 130, 14], fill=(255, 236, 180))
+    glow(img, 120, 10, 50, (255, 220, 150), 0.35)
+    night_window(img, d, random.Random(8), (190, 10, 230, 40), frame=(140, 100, 50))
+    return img
+
+
+def scene_hotel_room():
+    img = Image.new("RGB", (W, H))
+    d = ImageDraw.Draw(img)
+    rng = random.Random(9)
+    vgrad(d, (0, 0, W, 112), (200, 190, 160), (170, 158, 128))
+    d.rectangle([0, 112, W, H], fill=(110, 90, 70))
+    night_window(img, d, rng, (70, 14, 170, 90), frame=(120, 90, 60))
+    d.line([(96, 90), (104, 40), (130, 20)], fill=(30, 26, 30), width=4)  # tree outside
+    d.line([(104, 40), (86, 24)], fill=(30, 26, 30), width=2)
+    d.rectangle([184, 76, 236, 124], fill=(120, 80, 56))
+    d.rectangle([188, 70, 236, 90], fill=(236, 232, 220))
+    d.rectangle([8, 70, 50, 112], fill=(100, 70, 46))  # dresser with jade
+    for x in (14, 26, 38):
+        d.ellipse([x, 62, x + 8, 69], fill=(60, 170, 110), outline=(30, 90, 60))
+    return img
+
+
+def scene_theater():
+    img = scene_stage()
+    d = ImageDraw.Draw(img)
+    d.rectangle([90, 38, 150, 102], fill=(40, 20, 30))  # hide the magic box
+    d.rectangle([0, 0, W, 5], fill=(200, 160, 60))
+    for x in (100, 140):  # ropes from the ceiling rigging
+        d.line([(x, 0), (x, 40)], fill=(200, 190, 160))
+    d.rectangle([90, 0, 150, 6], fill=(60, 50, 50))
+    d.rectangle([106, 70, 134, 100], fill=(120, 60, 30))  # chair
+    d.rectangle([108, 60, 132, 72], fill=(120, 60, 30))
+    d.ellipse([112, 42, 128, 58], fill=(236, 226, 214), outline=OUTLINE[:3])  # marionette
+    d.rectangle([110, 58, 130, 80], fill=(170, 30, 40))
+    d.line([(115, 80), (115, 96)], fill=(170, 30, 40), width=3)
+    d.line([(125, 80), (125, 96)], fill=(170, 30, 40), width=3)
+    return img
+
+
+def scene_swamp():
+    img = Image.new("RGB", (W, H))
+    d = ImageDraw.Draw(img)
+    rng = random.Random(10)
+    vgrad(d, (0, 0, W, 90), (20, 26, 40), (60, 70, 80))
+    for x in range(0, W, 3):
+        h = 30 + int(12 * math.sin(x * 0.05)) + rng.randrange(8)
+        d.line([(x, 90 - h), (x, 90)], fill=(24, 34, 30))
+    vgrad(d, (0, 90, W, H), (40, 50, 44), (20, 26, 22))
+    for _ in range(80):
+        x, y = rng.randrange(W), rng.randrange(96, H)
+        d.line([(x, y), (x + rng.randrange(4, 14), y)], fill=(70, 86, 80))
+    for x in (30, 200):  # dead trees
+        d.line([(x, 90), (x + 4, 30)], fill=(16, 16, 16), width=3)
+        d.line([(x + 3, 50), (x + 16, 40)], fill=(16, 16, 16), width=2)
+    for y in range(40, 110, 6):  # fog
+        for x in range(0, W, 2):
+            if rng.random() < 0.18:
+                d.point((x, y + rng.randrange(6)), fill=(150, 160, 170))
+    return img
+
+
 BUILTIN_SCENES = {
     "black": scene_black,
     "title": scene_title,
@@ -386,6 +525,13 @@ BUILTIN_SCENES = {
     "dining": scene_dining,
     "baggage": scene_baggage,
     "snowfield": scene_snowfield,
+    "police": scene_police,
+    "cabin_roses": scene_cabin_roses,
+    "cabin_empty": scene_cabin_empty,
+    "hotel": scene_hotel,
+    "hotel_room": scene_hotel_room,
+    "theater": scene_theater,
+    "swamp": scene_swamp,
 }
 
 
@@ -501,70 +647,6 @@ def p_yamagami(d):
     mouth(d, "smile", 26)
 
 
-def p_reika(d):
-    hair = (110, 56, 130)
-    d.rectangle([7, 12, 25, 26], fill=hair)
-    body(d, (170, 20, 50))
-    d.point((10, 35), fill=(255, 230, 120))
-    d.point((22, 36), fill=(255, 230, 120))
-    d.point((16, 38), fill=(255, 230, 120))
-    face(d, skin=(248, 220, 200))
-    d.ellipse([11, 0, 21, 8], fill=hair)
-    d.ellipse([7, 5, 25, 16], fill=hair)
-    d.polygon([(8, 10), (16, 10), (9, 17)], fill=hair)
-    d.rectangle([7, 22, 8, 24], fill=(250, 210, 80))
-    d.rectangle([24, 22, 25, 24], fill=(250, 210, 80))
-    eyes(d, "female", color=(90, 40, 90))
-    mouth(d, "lips")
-
-
-def p_kuroki(d):
-    body(d, (30, 30, 34))
-    d.polygon([(6, 34), (10, 31), (10, 40), (5, 40)], fill=(190, 150, 120))
-    d.polygon([(26, 34), (22, 31), (22, 40), (27, 40)], fill=(190, 150, 120))
-    face(d, skin=(206, 160, 120), wide=1)
-    d.ellipse([8, 4, 24, 14], fill=(30, 26, 26))
-    d.rectangle([7, 9, 25, 12], fill=(180, 30, 30))
-    d.polygon([(25, 10), (29, 14), (27, 16), (24, 12)], fill=(180, 30, 30))
-    eyes(d, "sharp")
-    for x, y in [(12, 25), (14, 26), (18, 26), (20, 25), (16, 27)]:
-        d.point((x, y), fill=(120, 90, 70))
-    mouth(d, "frown", 23)
-
-
-def p_okada(d):
-    body(d, (34, 44, 84))
-    for y in (33, 36, 39):
-        d.point((16, y), fill=(230, 200, 80))
-    face(d, skin=(236, 200, 170))
-    d.rectangle([8, 12, 10, 17], fill=(170, 170, 176))
-    d.rectangle([22, 12, 24, 17], fill=(170, 170, 176))
-    d.rectangle([8, 4, 24, 11], fill=(34, 44, 84))
-    d.rectangle([6, 10, 26, 12], fill=(20, 24, 50))
-    d.rectangle([14, 6, 18, 9], fill=(230, 200, 80))
-    for x in (10, 17):
-        d.ellipse([x, 16, x + 5, 21], outline=(60, 60, 70))
-    d.line([(15, 18), (17, 18)], fill=(60, 60, 70))
-    eyes(d, y=18)
-    d.line([(11, 24), (12, 25)], fill=(200, 160, 130))
-    mouth(d, "normal", 25)
-
-
-def p_izumi(d):
-    hair = (70, 44, 34)
-    d.rectangle([7, 10, 25, 26], fill=hair)
-    body(d, (200, 170, 120), shirt=(250, 250, 250))
-    d.line([(10, 31), (20, 40)], fill=(40, 40, 40), width=1)
-    face(d)
-    d.ellipse([7, 4, 25, 17], fill=hair)
-    d.polygon([(8, 9), (24, 9), (24, 13), (8, 14)], fill=hair)
-    for x in (10, 17):
-        d.ellipse([x, 16, x + 5, 21], outline=(150, 40, 50))
-    d.line([(15, 18), (17, 18)], fill=(150, 40, 50))
-    eyes(d, "female", color=(70, 50, 40), y=17)
-    mouth(d, "smile")
-
-
 def p_takato(d):
     hair = (26, 24, 34)
     d.rectangle([8, 10, 24, 24], fill=hair)
@@ -578,19 +660,152 @@ def p_takato(d):
     mouth(d, "smile")
 
 
-def p_puppet(d):
+def p_saki(d):
+    hair = (40, 34, 30)
+    body(d, (30, 36, 60), shirt=(240, 240, 240))
+    face(d)
+    d.ellipse([8, 5, 24, 16], fill=hair)
+    d.rectangle([8, 9, 24, 13], fill=hair)
+    for x in (10, 17):
+        d.rectangle([x, 16, x + 5, 20], outline=(50, 50, 60))
+    d.line([(15, 18), (17, 18)], fill=(50, 50, 60))
+    eyes(d, y=17)
+    mouth(d, "normal", 24)
+    d.rectangle([22, 30, 31, 37], fill=(60, 60, 66))  # camcorder
+    d.ellipse([27, 31, 31, 35], fill=(20, 20, 30))
+    d.point((24, 32), fill=(220, 40, 40))
+
+
+def p_akechi(d):
+    hair = (170, 150, 120)
+    d.rectangle([8, 10, 24, 20], fill=hair)
+    body(d, (60, 60, 70), shirt=(240, 240, 240))
+    d.line([(16, 31), (16, 38)], fill=(40, 60, 120), width=2)
+    face(d, skin=(248, 222, 200))
+    d.ellipse([7, 3, 25, 15], fill=hair)
+    d.polygon([(7, 8), (18, 8), (9, 17)], fill=hair)
+    d.polygon([(25, 8), (20, 8), (24, 16)], fill=hair)
+    eyes(d, "sharp", color=(40, 60, 80))
+    mouth(d, "smile")
+
+
+def p_yumi(d):
+    hair = (40, 100, 120)
+    d.polygon([(6, 10), (26, 10), (29, 38), (3, 38)], fill=hair)
+    body(d, (30, 120, 150))
+    for x, y in [(9, 36), (22, 34), (16, 39)]:
+        d.point((x, y), fill=(200, 240, 255))
+    face(d, skin=(250, 222, 205))
+    d.ellipse([7, 4, 25, 16], fill=hair)
+    d.polygon([(9, 9), (20, 9), (10, 16)], fill=hair)
+    eyes(d, "female", color=(30, 80, 100))
+    mouth(d, "lips")
+    d.rectangle([7, 22, 8, 24], fill=(200, 240, 255))
+
+
+def p_sakonji(d):
+    body(d, (200, 60, 60))
+    for x in (8, 16, 24):
+        d.ellipse([x - 2, 31, x + 2, 35], fill=(250, 230, 80))
+    d.polygon([(10, 32), (16, 30), (22, 32), (16, 35)], fill=(250, 250, 250))
+    face(d, skin=(245, 245, 245))
+    d.polygon([(8, 11), (24, 11), (16, 0)], fill=(60, 60, 170))
+    d.ellipse([14, 0, 18, 3], fill=(250, 230, 80))
+    d.rectangle([7, 11, 9, 17], fill=(230, 120, 40))
+    d.rectangle([23, 11, 25, 17], fill=(230, 120, 40))
+    for x in (11, 19):
+        d.line([(x, 15), (x + 2, 15)], fill=(40, 40, 60))
+        d.line([(x + 1, 21), (x + 1, 22)], fill=(60, 60, 170))
+    eyes(d, "smile", color=(30, 30, 40))
+    d.ellipse([14, 20, 18, 23], fill=(220, 30, 30))
+    d.arc([11, 21, 21, 27], 10, 170, fill=(200, 30, 40))
+
+
+def p_yurama(d):
+    hair = (230, 200, 110)
+    body(d, (240, 240, 244), shirt=(40, 40, 50))
+    d.polygon([(13, 31), (16, 32), (19, 31), (19, 34), (16, 33), (13, 34)], fill=(200, 170, 60))
+    face(d, skin=(248, 220, 196))
+    d.ellipse([7, 3, 26, 13], fill=hair)
+    d.polygon([(7, 8), (26, 6), (27, 10), (14, 11)], fill=hair)
+    d.rectangle([7, 9, 9, 15], fill=hair)
+    eyes(d, "sharp", color=(40, 70, 120))
+    d.line([(14, 24), (18, 23)], fill=(150, 70, 70))
+
+
+def p_sakuraba(d):
+    hair = (20, 20, 24)
+    body(d, (80, 40, 110))
+    d.polygon([(11, 30), (16, 38), (21, 30)], fill=(220, 190, 80))
+    face(d, skin=(245, 242, 238), wide=1)
+    d.ellipse([8, 3, 24, 13], fill=hair)
+    d.ellipse([13, 0, 19, 5], fill=hair)
+    d.line([(9, 15), (13, 13)], fill=(200, 20, 30), width=1)
+    d.line([(23, 15), (19, 13)], fill=(200, 20, 30), width=1)
+    d.line([(10, 19), (12, 24)], fill=(200, 20, 30))
+    d.line([(22, 19), (20, 24)], fill=(200, 20, 30))
+    eyes(d, "normal", color=(20, 20, 20))
+    mouth(d, "frown", 25)
+
+
+def p_satomi(d):
+    hair = (90, 50, 30)
+    d.ellipse([3, 12, 9, 24], fill=hair)
+    d.ellipse([23, 12, 29, 24], fill=hair)
+    body(d, (40, 50, 90), collar=(230, 200, 80))
+    face(d)
+    d.ellipse([8, 5, 24, 16], fill=hair)
+    d.rectangle([8, 5, 24, 9], fill=(40, 50, 90))
+    d.rectangle([6, 8, 26, 10], fill=(20, 26, 50))
+    d.rectangle([14, 5, 18, 7], fill=(230, 200, 80))
+    eyes(d, "female", color=(80, 50, 30))
+    mouth(d, "smile")
+    d.ellipse([23, 29, 29, 35], fill=(245, 235, 225))  # little marionette "로버트"
+    d.rectangle([24, 35, 28, 40], fill=(170, 30, 40))
+    d.line([(24, 22), (26, 29)], fill=(230, 230, 240))
+
+
+def p_nagasaki(d):
+    body(d, (50, 40, 36), shirt=(240, 240, 236))
+    d.polygon([(13, 31), (16, 32), (19, 31), (19, 34), (16, 33), (13, 34)], fill=(20, 60, 50))
+    face(d, skin=(232, 196, 164), wide=1)
+    d.rectangle([7, 11, 10, 18], fill=(190, 190, 196))
+    d.rectangle([22, 11, 25, 18], fill=(190, 190, 196))
+    for x in (10, 17):
+        d.ellipse([x, 16, x + 5, 20], outline=(90, 80, 60))
+    d.line([(15, 18), (17, 18)], fill=(90, 80, 60))
+    eyes(d, y=17)
+    d.polygon([(12, 23), (16, 22), (20, 23), (19, 25), (13, 25)], fill=(200, 200, 206))
+    d.line([(11, 13), (13, 12)], fill=(200, 170, 140))
+
+
+def p_clown(d):
     cloak = (18, 14, 22)
     d.polygon([(0, 40), (4, 26), (8, 6), (16, 1), (24, 6), (28, 26), (32, 40)], fill=cloak)
     d.ellipse([10, 10, 22, 27], fill=(240, 236, 230))
     d.polygon([(11, 17), (14, 16), (15, 19), (12, 19)], fill=(0, 0, 0))
     d.polygon([(21, 17), (18, 16), (17, 19), (20, 19)], fill=(0, 0, 0))
     d.line([(12, 23), (16, 25), (20, 23)], fill=(200, 20, 30))
-    d.point((13, 21), fill=(90, 150, 220))
+    d.ellipse([22, 29, 28, 35], fill=(210, 20, 40))  # blood-red rose
+    d.line([(25, 35), (24, 40)], fill=(40, 120, 50))
+
+
+def p_mario(d):
+    body(d, (70, 60, 50))
+    d.rectangle([10, 26, 22, 32], fill=(150, 30, 30))  # scarf
+    d.ellipse([9, 9, 23, 28], fill=(236, 236, 240))
+    d.rectangle([12, 17, 14, 18], fill=(10, 10, 10))
+    d.rectangle([18, 17, 20, 18], fill=(10, 10, 10))
+    d.line([(14, 24), (18, 24)], fill=(120, 120, 130))
+    d.rectangle([9, 6, 23, 11], fill=(40, 34, 30))
+    d.rectangle([4, 10, 28, 12], fill=(40, 34, 30))
 
 
 BUILTIN_PORTRAITS = {
-    "kin": p_kin, "miyuki": p_miyuki, "kenmochi": p_kenmochi, "yamagami": p_yamagami, "reika": p_reika,
-    "kuroki": p_kuroki, "okada": p_okada, "izumi": p_izumi, "takato": p_takato, "puppet": p_puppet,
+    "kin": p_kin, "miyuki": p_miyuki, "saki": p_saki, "kenmochi": p_kenmochi, "akechi": p_akechi,
+    "yamagami": p_yamagami, "yumi": p_yumi, "sakonji": p_sakonji, "yurama": p_yurama,
+    "sakuraba": p_sakuraba, "takato": p_takato, "satomi": p_satomi, "nagasaki": p_nagasaki,
+    "clown": p_clown, "mario": p_mario,
 }
 
 
@@ -738,11 +953,86 @@ def i_clock(d):
     d.line([(16, 16), (22, 19)], fill=(200, 30, 40), width=2)
 
 
+def i_jade(d):
+    for x, y in [(4, 14), (14, 8), (17, 18)]:
+        d.ellipse([x, y, x + 12, y + 9], fill=(60, 170, 110), outline=(30, 90, 60))
+        d.point((x + 3, y + 2), fill=(200, 255, 220))
+
+
+def i_balloon(d):
+    d.ellipse([8, 2, 24, 20], fill=(230, 220, 200))
+    d.polygon([(15, 20), (17, 20), (16, 23)], fill=(230, 220, 200))
+    d.line([(16, 23), (13, 30)], fill=(200, 200, 210))
+    d.point((12, 6), fill=(255, 255, 255))
+    for x, y in [(4, 26), (24, 24), (26, 28)]:
+        d.polygon([(x, y), (x + 4, y + 1), (x + 1, y + 3)], fill=(220, 210, 190))
+
+
+def i_rose(d):
+    d.ellipse([9, 4, 23, 17], fill=(200, 10, 30))
+    d.arc([12, 7, 20, 14], 0, 300, fill=(120, 0, 20))
+    d.line([(16, 17), (15, 30)], fill=(40, 120, 50), width=2)
+    d.polygon([(15, 22), (8, 20), (12, 25)], fill=(50, 140, 60))
+
+
+def i_camera(d):
+    d.rectangle([3, 10, 22, 24], fill=(60, 60, 66))
+    d.polygon([(22, 12), (29, 8), (29, 26), (22, 22)], fill=(40, 40, 46))
+    d.ellipse([6, 13, 14, 21], fill=(20, 20, 30), outline=(120, 120, 140))
+    d.point((19, 13), fill=(230, 40, 40))
+
+
+def i_bag(d):
+    d.rectangle([6, 12, 26, 28], fill=(120, 70, 40), outline=(70, 40, 20))
+    d.arc([11, 4, 21, 16], 180, 360, fill=(70, 40, 20), width=2)
+    d.line([(6, 20), (26, 20)], fill=(90, 50, 26))
+    d.rectangle([14, 18, 18, 22], fill=(220, 190, 80))
+
+
+def i_rope(d):
+    d.rectangle([4, 2, 28, 5], fill=(90, 80, 80))
+    d.ellipse([12, 4, 20, 12], outline=(160, 160, 170), width=2)
+    d.line([(13, 10), (8, 30)], fill=(210, 190, 140), width=2)
+    d.line([(19, 10), (24, 22)], fill=(210, 190, 140), width=2)
+    d.ellipse([20, 20, 28, 30], fill=(170, 30, 40))
+
+
+def i_scale(d):
+    d.rectangle([4, 20, 28, 29], fill=(220, 220, 226), outline=(120, 120, 130))
+    d.ellipse([9, 6, 23, 20], fill=(250, 250, 250), outline=(120, 120, 130))
+    d.line([(16, 13), (20, 9)], fill=(200, 30, 40))
+    for x in (11, 16, 21):
+        d.point((x, 8), fill=(40, 40, 40))
+
+
+def i_nail(d):
+    for i, x in enumerate((8, 16, 24)):
+        d.rectangle([x - 3, 5, x + 3, 7], fill=(170, 170, 180) if i else (120, 80, 50))
+        d.line([(x, 7), (x, 26)], fill=(190, 190, 200) if i else (130, 90, 60), width=2)
+    d.rectangle([2, 26, 30, 30], fill=(140, 100, 60))
+
+
+def i_mask(d):
+    d.ellipse([7, 4, 25, 28], fill=(236, 236, 240))
+    d.rectangle([11, 13, 14, 15], fill=(10, 10, 10))
+    d.rectangle([18, 13, 21, 15], fill=(10, 10, 10))
+    d.line([(13, 22), (19, 22)], fill=(120, 120, 130))
+
+
+def i_train(d):
+    d.rectangle([2, 10, 30, 24], fill=(70, 60, 50), outline=(40, 34, 28))
+    for x in (5, 14, 23):
+        d.rectangle([x, 13, x + 5, 20], fill=(120, 100, 70))
+    for x in (7, 24):
+        d.ellipse([x - 3, 22, x + 3, 28], fill=(30, 30, 30))
+
+
 BUILTIN_ICONS = {
     "letter": i_letter, "puppet": i_puppet, "chain": i_chain, "window": i_window, "box": i_box,
     "paper": i_paper, "talk": i_talk, "cough": i_cough, "ice": i_ice, "watch": i_watch,
     "clipboard": i_clipboard, "glove": i_glove, "photo": i_photo, "voice": i_voice, "tape": i_tape,
-    "clock": i_clock,
+    "clock": i_clock, "jade": i_jade, "balloon": i_balloon, "rose": i_rose, "camera": i_camera,
+    "bag": i_bag, "rope": i_rope, "scale": i_scale, "nail": i_nail, "mask": i_mask, "train": i_train,
 }
 
 

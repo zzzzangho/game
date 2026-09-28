@@ -4,7 +4,7 @@
 대사 중심으로 스토리를 진행하고, 증거를 모은 뒤, 중간 추리와 최종 추리로 범인을 밝혀냅니다.
 
 > 비공식 2차 창작물입니다. 원작의 모든 권리는 원작자와 출판사에 있습니다.
-> 시나리오는 원작의 설정(마술열차, 마술단, 지옥의 꼭두각시)을 바탕으로 새로 쓴 팬 창작이며, 조연 인물 일부와 트릭은 오리지널입니다.
+> 원작(File 15)의 인물·사건·트릭을 따르고, 대사는 게임용으로 새로 썼습니다.
 
 ## 플레이 방법
 
@@ -21,14 +21,15 @@
 ### 게임 흐름
 
 ```
-프롤로그 (인물 소개)
-  → 제1장: 사건 발생 → 증거 수집 → 중간 추리 ①
-  → 제2장: 두 번째 사건 → 증거 수집 → 중간 추리 ②
-  → 최종장: 범인 지목 → 증거 제시로 범인 몰아붙이기 → TRUE END
+프롤로그  지옥에서 온 소포 (경시청, 은유성호 탑승)
+제1장     은유성호의 사라진 시체 → 증거 수집 → 중간 추리 ①
+제2장     살아있는 마리오네트 (시츠겐 호텔) → 증거 수집 → 중간 추리 ②
+제3장     비취의 무게 → 증거 수집
+최종장    지옥의 광대: 범인 지목 → 증거 제시 → TRUE END
 ```
 
 - **목숨(♥ 5개)**: 추리 선택지나 증거 제시를 틀릴 때마다 하나씩 줄어듭니다. 0이 되면 `BAD END: 추리 실패`.
-- **범인 지목**: 잘못된 사람을 지목하면 인물별 배드 엔딩(4종)으로 갑니다.
+- **범인 지목**: 잘못된 사람을 지목하면 인물별 배드 엔딩(5종)으로 갑니다.
 - **증거 수집**: 조사 장소를 골라 살펴보고, 필요한 증거를 모두 찾아야 "조사를 마친다"가 가능합니다.
 - **수첩**: 모은 증거물(아이콘+설명)과 만난 인물(얼굴+프로필)을 볼 수 있습니다.
   인물 파일은 그 인물과 **처음 대화한 직후** 자동으로 추가되고, 사건이 진행되면 프로필이 갱신됩니다.
@@ -41,14 +42,14 @@
 
 | 폴더 | 파일 이름 | 변환 결과 |
 |---|---|---|
-| `assets/portraits/` | `kin.png`, `miyuki.png`, `kenmochi.png`, `yamagami.png`, `reika.png`, `kuroki.png`, `okada.png`, `izumi.png`, `takato.png`, `puppet.png` | 128×144 상반신. 화면 가운데, 대사창 뒤에 표시. 수첩용 얼굴(64×80)은 윗부분을 잘라 자동 생성 |
+| `assets/portraits/` | `kin` 김전일, `miyuki` 미유키, `saki` 사키, `kenmochi` 켄모치, `akechi` 아케치, `yamagami` 야마가미, `yumi` 유미, `sakonji` 사콘지, `yurama` 유라마, `sakuraba` 사쿠라바, `takato` 타카토, `satomi` 사토미, `nagasaki` 나가사키, `mario` 트네 마리오, `clown` 지옥의 광대 (+ `.png`) | 128×144 상반신. 화면 가운데, 대사창 뒤에 표시. 수첩용 얼굴(64×80)은 윗부분을 잘라 자동 생성 |
 | `assets/portraits/` | `kin_surprised.png` 같은 `<초상화>_<표정>.png` | 표정 차분 (아래 참고) |
-| `assets/scenes/` | `platform.png`, `corridor.png`, `stage.png`, `cabin.png`, `cabin_crime.png`, `dining.png`, `baggage.png`, `snowfield.png`, `title.png` | 240×160으로 꽉 차게 잘라서 사용. 새 이름으로 넣으면 `@scene 새이름`으로 쓸 수 있는 새 배경 |
-| `assets/icons/` | `letter.png`, `puppet.png`, `chain.png`, `watch.png` 등 (story.txt의 `@evidence` 아이콘 이름) | 64×64 증거물 아이콘 |
+| `assets/scenes/` | `title` 타이틀, `police` 경시청, `platform` 승강장, `corridor` 열차 복도, `stage` 열차 마술쇼 차량, `snowfield` 눈밭의 열차, `cabin_roses` 장미 객실(시체), `cabin_empty` 장미 객실(사라진 뒤), `hotel` 호텔 로비, `theater` 스테이션 극장, `swamp` 습지, `hotel_room` 호텔 객실 (+ `.png`) | 240×160으로 꽉 차게 잘라서 사용. 새 이름으로 넣으면 `@scene 새이름`으로 쓸 수 있는 새 배경 |
+| `assets/icons/` | `puppet`, `letter`, `paper`, `train`, `rose`, `balloon`, `window`, `chain`, `camera`, `bag`, `mask`, `clipboard`, `clock`, `rope`, `scale`, `nail`, `jade`, `talk` (story.txt의 `@evidence` 아이콘 이름, + `.png`) | 64×64 증거물 아이콘 |
 
 - **배경이 투명한 PNG를 권장합니다.** 투명하지 않은 이미지는 테두리의 단색 배경을 자동으로 지웁니다. 배경이 복잡하면 미리 지워 주세요.
 - **표정**: 스크립트에서 `이름[표정]: 대사`라고 쓰면 `<초상화>_<표정>.png`를 사용합니다. 파일이 없으면 기본 초상화를 쓰고, 빌드할 때 어떤 파일이 비어 있는지 알려 줍니다.
-  지금 스크립트에서 쓰는 표정: `kin_surprised`, `kin_serious`, `miyuki_surprised`, `kenmochi_surprised`, `kenmochi_angry`, `yamagami_angry`, `reika_sad`, `kuroki_scared`, `izumi_angry`, `takato_smile`, `takato_shock`, `takato_cold`
+  지금 스크립트에서 쓰는 표정: `kin_surprised`, `kin_serious`, `miyuki_surprised`, `yurama_angry`, `takato_surprised`, `takato_smile`, `takato_shock`, `takato_cold`
 - `make preview` → `build/preview/`에서 변환 결과를 미리 볼 수 있습니다.
 - 용량: GBA 롬은 하드웨어상 최대 **32MB**입니다. 상반신 1장이 약 37KB, 배경 1장이 약 77KB라서 표정을 많이 넣어도 충분합니다.
 - 이 폴더들의 이미지와 빌드된 `.gba`는 `.gitignore`에 들어 있어서 git에 올라가지 않습니다 (로컬 전용).
@@ -90,7 +91,7 @@ assets/fonts/           갈무리11 Condensed (BDF)
 그냥 문장                 ← 나레이션
 *라벨                     ← 점프 목적지
 
-@char 이름 초상화키 #색     인물 선언 (초상화키: kin miyuki kenmochi yamagami reika kuroki okada izumi takato puppet, 없으면 -)
+@char 이름 초상화키 #색     인물 선언 (초상화키는 위 표 참고, 없으면 -)
 @profile 이름 "설명"        수첩의 인물 프로필 (처음 대사를 한 뒤 자동으로 수첩에 추가)
 @profile_update 이름 "설명" 프로필 갱신 (팝업)
 @evidence ID 아이콘 "이름" "설명"   증거물 정의
@@ -98,7 +99,7 @@ assets/fonts/           갈무리11 Condensed (BDF)
 @get ID                     증거물 입수 (팝업)
 
 @chapter "제목\n부제"       챕터 카드 + 자동 저장
-@scene 배경키               배경 전환 (black title platform corridor stage cabin cabin_crime dining baggage snowfield)
+@scene 배경키               배경 전환 (위 표의 배경 이름, 또는 black)
 @fx flash|shock|shake|red   화면 효과
 @shout 이름[표정] "대사"    큰 글씨 외침 연출 (예: 수수께끼는 모두 풀렸어!)
 @lives 5                    목숨 설정

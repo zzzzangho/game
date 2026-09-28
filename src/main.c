@@ -485,9 +485,12 @@ static int menu(int spk, int q, const u16 *opts, int n, u32 greyed, int extra, i
         int tw = text_width(i < n ? opts[i * 2] : extra, 1) + 30;
         if (tw > w) w = tw;
     }
-    int h = total * 14 + 8;
+    int row = total > 6 ? 13 : 14; /* compact rows so 7 options still clear the text box */
+    int h = total * row + 8;
     int x = (SCREEN_W - w) / 2, y = (BOX_Y - 14 - h) / 2 + 4;
     if (y < 12) y = 12;
+    if (y + h > BOX_Y - 2) y = BOX_Y - 2 - h;
+    if (y < 2) y = 2;
 
     set_speaker_portrait(spk);
     draw_scene();
@@ -500,10 +503,10 @@ static int menu(int spk, int q, const u16 *opts, int n, u32 greyed, int extra, i
         if (redraw) {
             restore_screen();
             for (int i = 0; i < total; i++) {
-                int oy = y + 4 + i * 14;
+                int oy = y + 4 + i * row;
                 int t = i < n ? opts[i * 2] : extra;
                 if (i == sel) {
-                    fill(x + 4, oy, w - 8, 14, C_HILITE);
+                    fill(x + 4, oy, w - 8, row, C_HILITE);
                     draw_cursor(x + 8, oy + 3, C_GOLD);
                 }
                 u16 c = (i < n && (greyed & (1u << i))) ? C_GREY : (i == sel ? C_GOLD : C_WHITE);
@@ -589,7 +592,7 @@ static int record(int present, int question)
                 draw_hearts();
             }
             int hint = present ? UI_PRESENT_HINT : UI_RECORD_HINT;
-            draw_text(160 - text_width(hint, 1), 86, hint, C_GREY);
+            draw_text(144 - text_width(hint, 1), 86, hint, C_GREY);
 
             if (n == 0) {
                 draw_text(12, REC_LIST_Y + 4, UI_EMPTY, C_GREY);

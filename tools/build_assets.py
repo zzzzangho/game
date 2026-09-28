@@ -104,6 +104,8 @@ class Font:
         return ord(ch) in self.glyphs
 
     def adv(self, ch):
+        if ord(ch) not in self.glyphs:
+            raise CompileError(f"font has no glyph for {ch!r} (U+{ord(ch):04X})")
         return self.glyphs[ord(ch)][0]
 
     def pixels(self, ch):
@@ -174,6 +176,8 @@ class Compiler:
     # -- tables
     def text(self, s):
         for ch in s:
+            if re.match(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", ch):
+                self.err(f"한자/일본어는 쓰지 않습니다: {ch!r}")
             if ch != "\n" and not self.font.has(ch):
                 self.err(f"font has no glyph for {ch!r} (U+{ord(ch):04X})")
         if s not in self.text_index:
@@ -239,40 +243,51 @@ class Compiler:
         lines = src.split("\n")
         block = None  # (kind, header data, items list)
         for self.lineno, raw in enumerate(lines, 1):
-            ln = raw.strip()
-            if not ln or ln.startswith("#"):
-                continue
-            if ln.startswith("*"):
-                name = ln[1:].strip()
-                if name in self.labels:
-                    self.err(f"duplicate label {name}")
-                self.labels[name] = len(self.code)
-                continue
-            if ln.startswith("@"):
-                try:
-                    args = shlex.split(ln[1:])
-                except ValueError as e:
-                    self.err(str(e))
-                args = [a.replace("\\n", "\n") for a in args]
-                cmd, args = args[0], args[1:]
-                if block is not None:
-                    block = self.block_cmd(block, cmd, args)
-                    continue
-                self.command(cmd, args)
-                if cmd in ("investigate", "ask", "accuse"):
-                    block = (cmd, args, [], [])
-                continue
-            if block is not None:
-                self.err("text inside a block; close it with @end")
-            name, sep, rest = ln.partition(":")
-            m = SPEAKER_RE.match(name.strip()) if sep else None
-            if m and m.group(1).strip() in self.chars:
-                spk, por = self.speaker_portrait(name.strip())
-                self.say(spk, rest.strip(), por)
-            else:
-                self.say(NONE, ln)
+            try:
+                block = self.compile_line(raw, block)
+            except CompileError as e:
+                if str(e).startswith("story.txt:"):
+                    raise
+                self.err(str(e))
         if block is not None:
             self.err("unterminated block at end of file")
+        self.resolve()
+
+    def compile_line(self, raw, block):
+        ln = raw.strip()
+        if not ln or ln.startswith("#"):
+            return block
+        if ln.startswith("*"):
+            name = ln[1:].strip()
+            if name in self.labels:
+                self.err(f"duplicate label {name}")
+            self.labels[name] = len(self.code)
+            return block
+        if ln.startswith("@"):
+            try:
+                args = shlex.split(ln[1:])
+            except ValueError as e:
+                self.err(str(e))
+            args = [a.replace("\\n", "\n") for a in args]
+            cmd, args = args[0], args[1:]
+            if block is not None:
+                return self.block_cmd(block, cmd, args)
+            self.command(cmd, args)
+            if cmd in ("investigate", "ask", "accuse"):
+                return (cmd, args, [], [])
+            return block
+        if block is not None:
+            self.err("text inside a block; close it with @end")
+        name, sep, rest = ln.partition(":")
+        m = SPEAKER_RE.match(name.strip()) if sep else None
+        if m and m.group(1).strip() in self.chars:
+            spk, por = self.speaker_portrait(name.strip())
+            self.say(spk, rest.strip(), por)
+        else:
+            self.say(NONE, ln)
+        return block
+
+    def resolve(self):
         for pos, name, lineno in self.fixups:
             if name not in self.labels:
                 self.lineno = lineno

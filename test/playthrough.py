@@ -14,9 +14,10 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 GEN_H = os.path.join(HERE, "..", "build", "gen_data.h")
 
-CH1 = [1, "chain", 1, "schedule"]
-CH2 = [1, "ice", 1, "patrol", 1, "glove"]
-FINAL_TRUE = [3, "tape", "ice", "alibi", 1, "puppet"]
+CH1 = [2, "video", 0, "toilet", 0, "bombnote"]
+CH2 = [1, "yurama", 1, "rope", 1, "register"]
+FINAL_TRUE = [4, 2, "jadebelow", "weights", "bagcheck", 1]
+ACCUSE_BAD = [(0, "sakonji"), (1, "sakuraba"), (2, "satomi"), (3, "nagasaki"), (5, "akechi")]
 
 
 def load_ids():
@@ -56,24 +57,24 @@ def main():
     code, out, err = run(args.exe, CH1 + CH2 + FINAL_TRUE, ids, shots=args.shots)
     results.append(check("true ending", code == 0 and "EVENT true_end" in out, out[-800:] + err))
 
-    for idx, who in [(0, "reika"), (1, "okada"), (2, "izumi"), (4, "kenmochi")]:
+    for idx, who in ACCUSE_BAD:
         code, out, err = run(args.exe, CH1 + CH2 + [idx], ids)
         results.append(check(f"bad ending: accuse {who}", code == 0 and "EVENT bad_end" in out
                              and "true_end" not in out, out[-500:] + err))
 
     # five wrong answers in the first deduction -> game over
-    code, out, err = run(args.exe, [0, 0, 2, 3, 0], ids)
+    code, out, err = run(args.exe, [0, 1, 3, 0, 1], ids)
     results.append(check("game over after 5 mistakes", code == 0 and "EVENT bad_end" in out, out[-500:] + err))
 
     # four mistakes spread over the game still reach the true ending
-    route = [0, 1, "window", "chain", 1, "schedule", 0, 1, "ice", 1, "patrol", 1, "glove",
-             3, "tape", "ice", "alibi", 0, 1, "puppet"]
+    route = [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 0, 1, "yurama", 1, "rope", 1, "register",
+             4, 2, "jadebelow", "weights", "bagcheck", 0, 1]
     code, out, err = run(args.exe, route, ids)
     results.append(check("true ending with 4 mistakes", code == 0 and "EVENT true_end" in out, out[-500:] + err))
 
     # a fifth mistake in the final deduction -> game over
-    route = [0, 1, "window", "chain", 1, "schedule", 0, 1, "ice", 1, "patrol", 1, "glove",
-             3, "letter", "letter"]
+    route = [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 0, 1, "yurama", 1, "rope", 1, "register",
+             4, 0, 0]
     code, out, err = run(args.exe, route, ids)
     results.append(check("game over in final deduction", code == 0 and "EVENT bad_end" in out
                          and "true_end" not in out, out[-500:] + err))
@@ -86,7 +87,7 @@ def main():
                              out[-500:] + err))
         code, out, err = run(args.exe, CH2 + FINAL_TRUE, ids, title=1, sram=sram)
         results.append(check("continue from chapter 2 save", code == 0 and "EVENT true_end" in out
-                             and out.count("EVENT chapter") == 2, out[-500:] + err))
+                             and out.count("EVENT chapter") == 3, out[-500:] + err))
 
     failed = results.count(False)
     print(f"\n{len(results) - failed}/{len(results)} passed")
