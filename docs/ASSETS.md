@@ -125,6 +125,12 @@
 `python3 tools/import_blink.py <폴더>`는 `pairs/<표정>/open.png`, `closed.png` 짝에서 이 파일들을 만듭니다(현재 김전일만 해당).
 ROM에는 바뀐 눈 부분만 작은 사각형으로 들어갑니다.
 
+## 화면 가운데 작은 그림 (`@inset`)
+
+대본에 `@inset ins_rose`처럼 쓰면, 화면 가운데 금테 네모 안에 작은 그림(132×88)이 뜹니다. 대사가 이어져도 `@inset off`나 장면이 바뀔 때까지 그대로 떠 있습니다.
+그림은 `assets/cuts/ins_*.png`에 두며, git에는 올라가지 않습니다. `tools/import_bg.py`의 `INSETS` 목록이 카페 캡처에서 이 파일들을 만듭니다.
+파일이 없으면 빈 카드가 대신 뜹니다.
+
 ## 배경 그림 교체
 
 `assets/scenes/<키>.png`(240×160 비율, 아무 크기)를 넣으면 그 배경이 그려 둔 그림 대신 쓰입니다.

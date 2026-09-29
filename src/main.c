@@ -378,9 +378,40 @@ FAST static void anim_apply(int t, int *y0, int *y1)
 
 static void blink_draw(int y0, int y1);
 
+/* @inset: a small framed picture over the middle of the screen (gold rim, dark inner line). */
+static int cur_inset = NONE;
+#define INSET_X ((SCREEN_W - INSET_W) / 2)
+#define INSET_Y 14
+static void draw_inset(int y0, int y1)
+{
+    if (cur_inset == NONE || cut_mode) return;
+    int top = INSET_Y - 2, bot = INSET_Y + INSET_H + 2;
+    if (y0 < top) y0 = top;
+    if (y1 > bot) y1 = bot;
+    for (int j = y0; j < y1; j++) {
+        u16 *row = fb + j * SCREEN_W + INSET_X - 2;
+        if (j == top || j == bot - 1) {
+            for (int i = 0; i < INSET_W + 4; i++) row[i] = C_BORDER;
+            continue;
+        }
+        row[0] = row[INSET_W + 3] = C_BORDER;
+        if (j == top + 1 || j == bot - 2) {
+            for (int i = 1; i < INSET_W + 3; i++) row[i] = RGB(2, 2, 4);
+            continue;
+        }
+        row[1] = row[INSET_W + 2] = RGB(2, 2, 4);
+        const u16 *src = inset_img[cur_inset] + (j - INSET_Y) * INSET_W;
+        for (int i = 0; i < INSET_W; i++) row[i + 2] = src[i];
+    }
+    if (y1 > y0) mark(y0, y1);
+}
+
 FAST static void blit_portrait_rows(int y0, int y1)
 {
-    if (cur_portrait == NONE || cut_mode) return;
+    if (cur_portrait == NONE || cut_mode) {
+        draw_inset(y0, y1);
+        return;
+    }
     const u16 *src = portrait_img[cur_portrait];
     int x0 = PORTRAIT_X + portrait_dx;
     for (int j = y0; j < y1; j++) {
@@ -396,6 +427,7 @@ FAST static void blit_portrait_rows(int y0, int y1)
         }
     }
     if (blink_shut && blink_img[cur_portrait]) blink_draw(y0, y1);
+    draw_inset(y0, y1);
     mark(y0, y1);
 }
 
@@ -483,7 +515,7 @@ static void breathe_tick(void)
 static int blink_wait = 150;
 static void blink_tick(void)
 {
-    if (cur_portrait == NONE || cut_mode || !blink_img[cur_portrait] || portrait_dx || --blink_wait > 0) return;
+    if (cur_portrait == NONE || cut_mode || !blink_img[cur_portrait] || portrait_dx || cur_inset != NONE || --blink_wait > 0) return;
     blink_shut ^= 1;
     blink_wait = blink_shut ? 7 : 120 + (int)((frame_count * 37u) % 120);
     const u8 *r = blink_rect + cur_portrait * 4;
@@ -1563,6 +1595,7 @@ static int run_inner(u16 pc)
             cut_mode = S[pc] >> 15;
             cur_scene = S[pc++] & 0x7FFF;
             cur_portrait = NONE;
+            cur_inset = NONE;
             draw_scene();
             fade_in();
             break;
@@ -1594,6 +1627,20 @@ static int run_inner(u16 pc)
             do_shout(spk, t, por);
             break;
         }
+        case OP_INSET:
+            cur_inset = S[pc++];
+            if (cur_inset == NONE) {
+                /* the next line redraws the screen without it */
+                break;
+            }
+            plat_sfx(SFX_MOVE);
+            for (int h = 8; h <= INSET_H / 2 + 2; h += 12) { /* opens from the middle */
+                draw_inset(INSET_Y + INSET_H / 2 - h, INSET_Y + INSET_H / 2 + h);
+                frame();
+            }
+            draw_inset(0, SCREEN_H);
+            frame();
+            break;
         case OP_INTRO:
             intro_card(S[pc], S[pc + 1], S[pc + 2], S[pc + 3]);
             pc += 4;
@@ -1605,6 +1652,7 @@ static int run_inner(u16 pc)
         case OP_CHAPTER:
             cur_chapter = S[pc];
             cur_place = NONE;
+            cur_inset = NONE;
             save_game(op_pc);
             chapter_card(S[pc], S[pc + 1]);
             pc += 2;

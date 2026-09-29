@@ -33,7 +33,7 @@ LIST_W = 150          # court record list width
 OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PRESENT=9,
            ACCUSE=10, GOTO=11, ENDING=12, LIVES=13, GAMEOVER=14, MEET=15, WAIT=16, SHOUT=17,
            PROFILE=18, MENU=19, SET=20, IF=21, PENALTY=22, BANNER=23, VIDEO=24, TIMER=25, MASH=26,
-           TESTIMONY=27, PRESENT_CHOICE=28, PLACE=29, INTRO=30)
+           TESTIMONY=27, PRESENT_CHOICE=28, PLACE=29, INTRO=30, INSET=31)
 BLOCKS = ("investigate", "ask", "accuse", "choice", "menu", "video", "testimony")
 MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
@@ -227,6 +227,7 @@ class Compiler:
         self.ev_order = []
         self.scenes = {}          # key -> idx
         self.portraits = {}       # key -> idx
+        self.insets = {}          # ins_* key -> idx
         self.lineno = 0
         self.missing_expr = set()
         self.flag_names = {}       # @set / if= names -> flag index (from 0 up)
@@ -462,6 +463,14 @@ class Compiler:
                 self.err("@cut takes a cut_* image (assets/cuts)")
             self.emit(OPS["FX"], FX["flash"])
             self.emit(OPS["SCENE"], self.scene(a[0]) | 0x8000)
+        elif cmd == "inset":  # small framed picture over the middle of the screen, until "@inset off"
+            self.need_args(a, 1, "@inset ins_KEY | off")
+            if a[0] == "off":
+                self.emit(OPS["INSET"], NONE)
+            elif not a[0].startswith("ins_"):
+                self.err("@inset takes an ins_* image (assets/cuts) or off")
+            else:
+                self.emit(OPS["INSET"], self.insets.setdefault(a[0], len(self.insets)))
         elif cmd == "get":
             self.emit(OPS["GET"], self.ev(a[0]))
         elif cmd == "meet":
@@ -744,6 +753,7 @@ def build(story_path, font_path, out_dir):
          f"#define ICON_COUNT {len(art.ICONS)}",
          f"#define PORTRAIT_W {art.PORTRAIT_W}", f"#define PORTRAIT_H {art.PORTRAIT_H}",
          f"#define THUMB_W {art.THUMB_W}", f"#define THUMB_H {art.THUMB_H}",
+         f"#define INSET_W {art.INSET_W}", f"#define INSET_H {art.INSET_H}",
          f"#define ICON_SIZE {art.ICON_SIZE}", "#define TRANSPARENT 0xFFFF", "#define NONE 0xFFFF",
          "#define TXT_NL 0xFFFE", "#define TXT_END 0xFFFF",
          "#define TXT_EMPH_ON 0xFFFD", "#define TXT_EMPH_OFF 0xFFFC"]
@@ -764,7 +774,7 @@ def build(story_path, font_path, out_dir):
     h += ["extern const u16 script[];", "extern const u16 text_data[];", "extern const u32 text_ofs[];",
           "extern const u16 glyph_bits[];", "extern const u8 glyph_adv[];",
           "extern const u16 anim_data[];", "extern const u32 anim_ofs[];", "extern const u8 anim_count[];",
-          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u8 portrait_breathe[];", "extern const u8 blink_rect[];", "extern const u16 *const blink_img[];", "extern const u16 *const portrait_thumb[];",
+          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u8 portrait_breathe[];", "extern const u8 blink_rect[];", "extern const u16 *const inset_img[];", "extern const u16 *const blink_img[];", "extern const u16 *const portrait_thumb[];",
           "extern const u16 icon_img[];",
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
           "extern const u16 char_profile[];",
@@ -852,6 +862,13 @@ def build(story_path, font_path, out_dir):
     c.append("const u16 *const portrait_img[] = {" + ",".join(f"portrait_{k}" for k in portrait_keys) + ("" if portrait_keys else "0") + "};")
     # idle breathing (test: Kindaichi only)
     c.append(c_array("portrait_breathe", "u8", [1 if k == "kin" or k.startswith("kin_") else 0 for k in portrait_keys] or [0]))
+    inset_keys = sorted(comp.insets, key=comp.insets.get)
+    for k in inset_keys:
+        c.append(c_array(f"inset_{k}", "u16", art.render_inset(k), fmt="0x{:04X}"))
+    c.append("const u16 *const inset_img[] = {" + ",".join(f"inset_{k}" for k in inset_keys) + ("" if inset_keys else "0") + "};")
+    missing = [k for k in inset_keys if k not in art.USER_INSETS]
+    if missing:
+        print("note: inset pictures not found, using plain cards: " + ", ".join(f"assets/cuts/{k}.png" for k in missing))
     for k in portrait_keys:
         c.append(c_array(f"thumb_{k}", "u16", art.render_thumb(k), fmt="0x{:04X}"))
     c.append("const u16 *const portrait_thumb[] = {" + ",".join(f"thumb_{k}" for k in portrait_keys) + ("" if portrait_keys else "0") + "};")

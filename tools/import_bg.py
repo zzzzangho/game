@@ -49,6 +49,15 @@ FRAMES = {
     "prison": ("p4/322", C32),            # the cell, light from the window
 }
 
+# Small pictures shown in a frame over the middle of the screen (@inset): key -> (frame, crop)
+INSETS = {
+    "ins_rose": ("p1/037", C32),          # the gloved hand through the berth curtain, holding a rose
+    "ins_salad_served": ("p1/099", C32),  # the waitress brings Kenmochi the rose salad
+    "ins_salad": ("p1/100", C32),         # the rose salad
+    "ins_robert": ("p1/110", C32),        # Robert greets the dining car
+}
+CUTS = os.path.join(HERE, "..", "assets", "cuts")
+
 
 def process(img, box):
     img = img.convert("RGB").crop(box)
@@ -67,6 +76,15 @@ def main():
             continue
         process(Image.open(found[0]), box).save(os.path.join(OUT, key + ".png"))
         print(f"{frame} -> scenes/{key}.png")
+    os.makedirs(CUTS, exist_ok=True)
+    for key, (frame, box) in INSETS.items():
+        found = glob.glob(os.path.join(src, frame + ".*"))
+        if not found:
+            print(f"skip {key}: {frame} not found")
+            continue
+        img = Image.open(found[0]).convert("RGB").crop(box).filter(ImageFilter.MedianFilter(3))
+        ImageEnhance.Color(img).enhance(1.08).resize((264, 176), Image.LANCZOS).save(os.path.join(CUTS, key + ".png"))
+        print(f"{frame} -> cuts/{key}.png")
 
 
 if __name__ == "__main__":

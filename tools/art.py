@@ -19,6 +19,7 @@ W, H = 240, 160
 PORTRAIT_W, PORTRAIT_H = 160, 160   # dialogue bust: full screen height so cut-outs reach the bottom edge
 CAPTURE_W, CAPTURE_H = 128, 144     # framed screenshot busts keep their old window size
 THUMB_W, THUMB_H = 64, 80           # face crop for the court record / popups
+INSET_W, INSET_H = 132, 88          # small framed picture over the middle of the screen (@inset)
 ICON_SIZE = 64
 OUTLINE = (28, 20, 32, 255)
 
@@ -1412,6 +1413,27 @@ def render_portrait(key):
                     c = 0xFFFE
             out.append(c)
     return out
+
+
+USER_INSETS = {k: v for k, v in user_files("cuts").items() if k.startswith("ins_")}
+
+
+def render_inset(key):
+    """@inset picture: assets/cuts/ins_*.png (anime frame, made by tools/import_bg.py), or a plain
+    dark card when the capture is missing so the story still builds."""
+    if key in USER_INSETS:
+        img = Image.open(USER_INSETS[key]).convert("RGB")
+        w, h = img.size
+        if w * INSET_H > h * INSET_W:   # crop to the inset's shape, centred
+            nw = h * INSET_W // INSET_H
+            img = img.crop(((w - nw) // 2, 0, (w + nw) // 2, h))
+        else:
+            nh = w * INSET_H // INSET_W
+            img = img.crop((0, (h - nh) // 2, w, (h + nh) // 2))
+        img = img.resize((INSET_W, INSET_H), Image.LANCZOS)
+    else:
+        img = Image.new("RGB", (INSET_W, INSET_H), (24, 20, 36))
+    return to15(img, dither=False)
 
 
 def render_thumb(key):
