@@ -1220,13 +1220,52 @@ def render_scene(key):
     return to15(scene_image(key))
 
 
+ANIM_FRAMES = 16
+
+
+def scene_anim(key, max_y):
+    """Looping background animation for a built-in scene (falling snow, the view streaming
+    past train windows). Returns a list of ANIM_FRAMES diffs, entry t turning frame t-1 into
+    frame t (entry 0: last frame -> frame 0), each as (y0, y1, [(offset, [pixels])...]),
+    limited to rows < max_y; or None for a static scene."""
+    import numpy as np
+    if key in USER_SCENES or key not in art_hd.LOCATIONS:
+        return None
+    frames = []
+    for t in range(ANIM_FRAMES):
+        art_hd.ANIM = (t, ANIM_FRAMES)
+        try:
+            frames.append(np.array(to15(art_hd.LOCATIONS[key]()), dtype=np.uint16).reshape(H, W))
+        finally:
+            art_hd.ANIM = None
+        if t == 1 and np.array_equal(frames[0][:max_y], frames[1][:max_y]):
+            return None
+    out = []
+    for t in range(ANIM_FRAMES):
+        prev, cur = frames[t - 1][:max_y], frames[t][:max_y]
+        diff = prev != cur
+        rows = np.nonzero(diff.any(axis=1))[0]
+        runs = []
+        for y in rows:
+            xs = np.nonzero(diff[y])[0]
+            start = xs[0]
+            for i in range(1, len(xs) + 1):
+                if i == len(xs) or xs[i] != xs[i - 1] + 1:
+                    end = xs[i - 1] + 1
+                    runs.append((int(y) * W + int(start), [int(v) for v in cur[y, start:end]]))
+                    if i < len(xs):
+                        start = xs[i]
+        out.append((int(rows[0]) if len(rows) else 0, int(rows[-1]) + 1 if len(rows) else 0, runs))
+    return out
+
+
 def _procedural_portrait(key):
     img = Image.new("RGBA", (32, 40), (0, 0, 0, 0))
     BUILTIN_PORTRAITS[key](ImageDraw.Draw(img))
     return outline(img)
 
 
-def ace_sprite(img, w, h, crop=0.72):
+def ace_sprite(img, w, h, crop=1.0):
     """Cut-out drawing -> Ace-Attorney-style bust: cropped head to waist, scaled with
     premultiplied supersampling so the edges follow the drawing's own line art (no extra
     outline or shadow); partly covered edge pixels are pulled toward the line colour."""

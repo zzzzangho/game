@@ -106,6 +106,13 @@ static void fade_in(void)
 
 /* ------------------------------------------------------------------ drawing */
 
+/* Hot pixel loops run as ARM code from IWRAM on the GBA (ROM thumb code is ~4x slower). */
+#if defined(__arm__)
+#define FAST __attribute__((section(".iwram.fast"), target("arm"), long_call, noinline))
+#else
+#define FAST
+#endif
+
 static inline void px(int x, int y, u16 c)
 {
     if ((unsigned)x < SCREEN_W && (unsigned)y < SCREEN_H) fb[y * SCREEN_W + x] = c;
@@ -119,7 +126,7 @@ static void fill(int x, int y, int w, int h, u16 c)
 }
 
 /* 50% blend toward colour c (translucent panels). */
-static void shade(int x, int y, int w, int h, u16 c)
+FAST static void shade(int x, int y, int w, int h, u16 c)
 {
     u16 half = (c >> 1) & 0x3DEF;
     for (int j = y; j < y + h; j++) {
@@ -179,11 +186,18 @@ static int disp_height(int t) { return disp_of_text[t] == NONE ? LINE_H : disp_h
 /* small Galmuri9 key hint, right-aligned at xr, top at y */
 static void draw_hint_right(int t, int xr, int y) { draw_disp(t, xr - disp_width(t) / 2, y + disp_height(t) / 2); }
 
-static void save_screen(void) { plat_copy32(snapshot, fb, SCREEN_W * SCREEN_H / 2); }
+static int anim_t, anim_snap_t; /* background animation frame (see ambient_tick) */
+
+static void save_screen(void)
+{
+    plat_copy32(snapshot, fb, SCREEN_W * SCREEN_H / 2);
+    anim_snap_t = anim_t;
+}
 
 static void restore_screen(void)
 {
     plat_copy32(fb, snapshot, SCREEN_W * SCREEN_H / 2);
+    anim_t = anim_snap_t;
     mark(0, SCREEN_H);
 }
 
@@ -269,6 +283,8 @@ static void draw_text_ex(int x, int y, int id, u16 c, int scale, int centred)
 static void draw_text(int x, int y, int id, u16 c) { draw_text_ex(x, y, id, c, 1, 0); }
 
 /* Typewriter effect; A or B finishes the page instantly. */
+static void ambient_tick(void);
+
 static void type_text(int x, int y, int id, u16 c)
 {
     const u16 *s = txt(id);
@@ -289,6 +305,7 @@ static void type_text(int x, int y, int id, u16 c)
         cx += glyph_adv[*s];
         if (!instant && (++n & 1) == 0) {
             if ((n & 3) == 0) plat_sfx(SFX_BLIP);
+            ambient_tick();
             frame();
             if (keys_new & (KEY_A | KEY_B)) instant = 1;
         }
@@ -317,12 +334,79 @@ static void draw_hearts(void)
         draw_heart(SCREEN_W - 4 - (max_lives - i) * 10, 3, i < lives ? C_RED : RGB(8, 6, 8));
 }
 
+/* ---- looping background animation (snow, the view past the train windows) ----
+ * anim_data holds per scene ANIM_FRAMES diffs; entry t turns frame t-1 into frame t. */
+static int anim_scene = NONE, anim_on, portrait_dx, portrait_dither;
+
+/* Writes diff t into the back buffer. Where the portrait covers a changed pixel, the
+ * portrait pixel wins, so the character never needs a full redraw. */
+FAST static void anim_apply(int t, int *y0, int *y1)
+{
+    const u16 *d = anim_data + anim_ofs[cur_scene * ANIM_FRAMES + t];
+    *y0 = d[0];
+    *y1 = d[1];
+    int n = d[2];
+    d += 3;
+    const u16 *por = (cur_portrait != NONE && !cut_mode) ? portrait_img[cur_portrait] : 0;
+    int px0 = PORTRAIT_X + portrait_dx;
+    while (n--) {
+        int ofs = d[0], len = d[1];
+        u16 *dst = fb + ofs;
+        d += 2;
+        int y = ofs / SCREEN_W, x = ofs - y * SCREEN_W;
+        const u16 *prow = (por && y >= PORTRAIT_Y && y < PORTRAIT_Y + PORTRAIT_H) ? por + (y - PORTRAIT_Y) * PORTRAIT_W : 0;
+        for (int i = 0; i < len; i++) {
+            int pxi = x + i - px0;
+            u16 c = d[i];
+            if (prow && (unsigned)pxi < PORTRAIT_W && prow[pxi] != TRANSPARENT && !(portrait_dither && ((x + i) ^ y) & 1))
+                c = prow[pxi];
+            dst[i] = c;
+        }
+        d += len;
+    }
+}
+
+FAST static void blit_portrait_rows(int y0, int y1)
+{
+    if (cur_portrait == NONE || cut_mode) return;
+    const u16 *src = portrait_img[cur_portrait];
+    int x0 = PORTRAIT_X + portrait_dx;
+    for (int j = y0; j < y1 && j < PORTRAIT_Y + PORTRAIT_H; j++) {
+        if (j < PORTRAIT_Y) continue;
+        const u16 *row = src + (j - PORTRAIT_Y) * PORTRAIT_W;
+        u16 *dst = fb + j * SCREEN_W;
+        for (int i = 0; i < PORTRAIT_W; i++) {
+            int x = x0 + i;
+            if (row[i] != TRANSPARENT && (unsigned)x < SCREEN_W && !(portrait_dither && ((x ^ j) & 1))) dst[x] = row[i];
+        }
+    }
+    mark(y0, y1);
+}
+
 static void draw_scene(void)
 {
     plat_copy32(fb, scene_img[cur_scene], SCREEN_W * SCREEN_H / 2);
     mark(0, SCREEN_H);
-    if (cur_portrait != NONE && !cut_mode) blit_keyed(PORTRAIT_X, PORTRAIT_Y, PORTRAIT_W, PORTRAIT_H, portrait_img[cur_portrait]);
+    if (anim_scene != cur_scene) {
+        anim_scene = cur_scene;
+        anim_t = 0;
+    }
+    if (anim_count[cur_scene] && !cut_mode)
+        for (int t = 1, y0, y1; t <= anim_t; t++) anim_apply(t, &y0, &y1);
+    blit_portrait_rows(0, SCREEN_H);
     draw_hearts();
+}
+
+/* Called every frame while a dialogue page is on screen: steps the background loop. */
+static void ambient_tick(void)
+{
+    if (!anim_on || cut_mode || !anim_count[cur_scene] || anim_scene != cur_scene || (frame_count & 3)) return;
+    int y0, y1;
+    anim_t = (anim_t + 1) % ANIM_FRAMES;
+    anim_apply(anim_t, &y0, &y1);
+    if (y1 <= y0) return;
+    if (y0 < 12) draw_hearts();
+    mark(y0, y1);
 }
 
 static void set_speaker_portrait(int spk)
@@ -401,6 +485,7 @@ static void wait_advance(void)
     for (;;) {
         restore_rect(224, 154, 8, 5);
         if ((frame_count >> 4) & 1) draw_arrow(225, 154, C_WHITE);
+        ambient_tick();
         frame();
         if (keys_new & KEY_A) return;
         if (keys_new & KEY_START) record(0, NONE);
@@ -417,14 +502,37 @@ static void meet(int c, int title)
         got_item(title, char_name[c], portrait_thumb[char_portrait[c]], THUMB_W, THUMB_H);
 }
 
+static int last_spk = NONE;
+
 static void say(int spk, int t, int portrait)
 {
+    /* a new speaker slides in from the right, fading in (dithered) over the first steps */
+    int slide = portrait != NONE && spk != last_spk && !cut_mode;
+    last_spk = spk;
     cur_portrait = portrait;
+    if (slide) {
+        static const signed char steps[] = {36, 20, 10, 4, 1};
+        cur_portrait = NONE;
+        draw_scene();              /* background (and its animation phase) once */
+        save_screen();
+        cur_portrait = portrait;
+        for (unsigned i = 0; i < sizeof steps; i++) {
+            portrait_dx = steps[i];
+            portrait_dither = i < 2;
+            restore_screen();
+            blit_portrait_rows(0, SCREEN_H);
+            draw_box(spk);
+            frame();
+        }
+        portrait_dx = portrait_dither = 0;
+    }
     draw_scene();
     draw_box(spk);
+    anim_on = 1;
     type_text(TEXT_X, TEXT_Y, t, C_WHITE);
     save_screen();
     wait_advance();
+    anim_on = 0;
     if (spk != NONE && prof_text[spk] != NONE && !(prof_flags & (1u << spk))) meet(spk, UI_MEET);
 }
 

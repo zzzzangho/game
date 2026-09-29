@@ -17,6 +17,8 @@ def lerp(a, b, t):
     return tuple(int(round(a[i] + (b[i] - a[i]) * t)) for i in range(len(a)))
 
 
+ANIM = None  # (t, frames) while rendering animation frames, else None
+
 class Canvas:
     """Draw in final-pixel coordinates; the canvas is S times larger underneath."""
 
@@ -112,12 +114,23 @@ class Canvas:
         self.d = ImageDraw.Draw(self.img)
 
     def snow(self, rng, n, box=None, big=0.2, color=(240, 244, 255)):
+        """Snowflakes. With ANIM = (t, frames) set, each flake moves along self.wind (whole
+        multiples of the box per loop, so frame `frames` equals frame 0)."""
         x0, y0, x1, y1 = box or (0, 0, self.w, self.h)
+        bw, bh = x1 - x0, y1 - y0
+        wx, wy = getattr(self, "wind", (0, 1))
         lay, d = self.layer()
         for _ in range(n):
             x, y = rng.uniform(x0, x1), rng.uniform(y0, y1)
             r = rng.uniform(0.35, 0.7) * (2.2 if rng.random() < big else 1)
             a = rng.randrange(150, 255)
+            k = 1 + (r > 0.9) + (rng.random() < 0.3)   # big (near) flakes move faster
+            ph = rng.uniform(0, 6.283)
+            if ANIM:
+                t, frames = ANIM
+                f = t / frames
+                x = x0 + (x - x0 + wx * k * bw * f + (0 if wx else 1.2 * math.sin(6.283 * f + ph))) % bw
+                y = y0 + (y - y0 + wy * k * bh * f) % bh
             d.ellipse([self.p(x - r), self.p(y - r), self.p(x + r), self.p(y + r)], fill=color + (a,))
         self.put(lay, blur=0.15)
 
@@ -991,6 +1004,7 @@ def night_view(c, rng, x0, y0, x1, y1, moonpos=None):
     if moonpos:
         moon(v, moonpos[0], moonpos[1], 4)
     mountains(v, rng, v.h * 0.85, v.h * 0.3, (60, 66, 108), (190, 198, 230), rng.uniform(0, 3))
+    v.wind = (-1, 0)  # seen from the moving train: snow streams past sideways
     v.snow(rng, v.w * v.h // 14, big=0.2)
     c.img.paste(v.img, (c.p(x0), c.p(y0)))
     c.d = ImageDraw.Draw(c.img)

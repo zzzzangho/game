@@ -21,6 +21,7 @@ import logo  # noqa: E402
 # ---- layout constants (must match src/main.c) ----
 TEXT_W = 224          # dialogue box text width in pixels
 TEXT_LINES = 3        # lines per dialogue page
+ANIM_MAX_Y = 100      # background animation stays above the name tag / text box
 # dialogue: every sentence starts on a new line. "…" only ends a sentence after a sentence-final syllable
 # ("그래요… 하지만"), not in the middle of one ("장미 한 송이와… 이 편지가").
 SENTENCE_END = re.compile(r"(?<=[.!?』])\s+|(?<=[다요까지야어아네군죠걸데래니나고][…])\s+")
@@ -732,6 +733,7 @@ def build(story_path, font_path, out_dir):
          f"#define GLYPH_H {gh}", f"#define GLYPH_COUNT {len(chars)}",
          f"#define CHAR_COUNT {len(comp.chars)}", f"#define EVIDENCE_COUNT {len(comp.evidence)}",
          f"#define GLYPH_DASH {gmap.get('-', 0xFFFF)}",  # "-장소-" lines are centred
+         f"#define ANIM_FRAMES {art.ANIM_FRAMES}", f"#define ANIM_MAX_Y {ANIM_MAX_Y}",
          f"#define SCENE_COUNT {len(scene_keys)}", f"#define PORTRAIT_COUNT {len(portrait_keys)}",
          f"#define ICON_COUNT {len(art.ICONS)}",
          f"#define PORTRAIT_W {art.PORTRAIT_W}", f"#define PORTRAIT_H {art.PORTRAIT_H}",
@@ -755,6 +757,7 @@ def build(story_path, font_path, out_dir):
         h.append(f"#define EV_{eid.upper()} {comp.evidence[eid]['idx']}")
     h += ["extern const u16 script[];", "extern const u16 text_data[];", "extern const u32 text_ofs[];",
           "extern const u16 glyph_bits[];", "extern const u8 glyph_adv[];",
+          "extern const u16 anim_data[];", "extern const u32 anim_ofs[];", "extern const u8 anim_count[];",
           "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u16 *const portrait_thumb[];",
           "extern const u16 icon_img[];",
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
@@ -805,6 +808,21 @@ def build(story_path, font_path, out_dir):
     for k in scene_keys:
         c.append(c_array(f"scene_{k}", "u16", art.render_scene(k), fmt="0x{:04X}"))
     c.append("const u16 *const scene_img[] = {" + ",".join(f"scene_{k}" for k in scene_keys) + "};")
+    # looping background animation: per scene ANIM_FRAMES diffs [y0, y1, nruns, (ofs, len, px...)...]
+    anim_data, anim_ofs, anim_n = [0], [], []
+    for k in scene_keys:
+        frames = art.scene_anim(k, ANIM_MAX_Y)
+        anim_n.append(len(frames) if frames else 0)
+        for y0, y1, runs in frames or []:
+            anim_ofs.append(len(anim_data))
+            anim_data += [y0, y1, len(runs)]
+            for ofs, pxs in runs:
+                anim_data += [ofs, len(pxs)] + pxs
+        if not frames:
+            anim_ofs += [0] * art.ANIM_FRAMES
+    c.append(c_array("anim_data", "u16", anim_data, fmt="0x{:04X}"))
+    c.append(c_array("anim_ofs", "u32", anim_ofs or [0]))
+    c.append(c_array("anim_count", "u8", anim_n or [0]))
     for k in portrait_keys:
         c.append(c_array(f"portrait_{k}", "u16", art.render_portrait(k), fmt="0x{:04X}"))
     c.append("const u16 *const portrait_img[] = {" + ",".join(f"portrait_{k}" for k in portrait_keys) + ("" if portrait_keys else "0") + "};")
