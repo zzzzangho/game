@@ -13,6 +13,7 @@ import random
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 import art_hd
+import art_scenes2
 
 W, H = 240, 160
 PORTRAIT_W, PORTRAIT_H = 160, 160   # dialogue bust: full screen height so cut-outs reach the bottom edge
@@ -507,6 +508,12 @@ BUILTIN_SCENES = {
     **art_hd.CARDS,
     **art_hd.LOCATIONS,
 }
+# every drawn location gets the finishing pass (soft bloom, grade, fine grain)
+for _k, _f in list(art_hd.LOCATIONS.items()):
+    if _k != "title":
+        BUILTIN_SCENES[_k] = (lambda f=_f, k=_k: art_scenes2.polish(f(), seed=sum(map(ord, k))))
+BUILTIN_SCENES.update(art_scenes2.SCENES2)
+BUILTIN_SCENES["lobby_night"] = lambda: art_scenes2.scene_lobby_night(art_hd.scene_hotel)
 
 # Anime captures shown with @cut at key moments (assets/cuts/cut_*.png, made by tools/import_screenshots.py).
 # Without the capture, a drawn stand-in is used so the story still builds.
@@ -1221,6 +1228,7 @@ def render_scene(key):
 
 
 ANIM_FRAMES = 16
+ANIMATE = False  # looping snow animation (off: backgrounds are still pictures)
 
 
 def scene_anim(key, max_y):
@@ -1229,7 +1237,7 @@ def scene_anim(key, max_y):
     frame t (entry 0: last frame -> frame 0), each as (y0, y1, [(offset, [pixels])...]),
     limited to rows < max_y; or None for a static scene."""
     import numpy as np
-    if key in USER_SCENES or key not in art_hd.LOCATIONS:
+    if not ANIMATE or key in USER_SCENES or key not in art_hd.LOCATIONS:
         return None
     frames = []
     for t in range(ANIM_FRAMES):

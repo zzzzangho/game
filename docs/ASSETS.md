@@ -120,3 +120,32 @@
 파일 이름은 `김전일.png`, `미유키.png`, `사쿠라바_무대분장.png`처럼 인물 이름으로 짓습니다.
 흰 배경만 투명하게 오려서 `assets/portraits/<키>.png`로 저장합니다(git에는 올라가지 않음).
 표정 파일(`kin_serious.png` 등)이 없으면 기본 원화가 대신 쓰입니다.
+
+## 배경 그림 교체
+
+`assets/scenes/<키>.png`(240×160 비율, 아무 크기)를 넣으면 그 배경이 그려 둔 그림 대신 쓰입니다.
+
+| 키 | 장면 |
+|---|---|
+| darkroom | 프롤로그, 마리오네트를 비트는 어두운 방 |
+| platform | 우에노역 승강장(밤) |
+| berth | 은유성호 침대칸 |
+| police | 경시청 사무실 |
+| dining | 식당차 |
+| freight_yard | 긴급 정차한 화물역(아침, 맞은편에 우편 열차) |
+| corridor | 열차 복도 |
+| cabin_roses / cabin_empty | 객실 5호(장미·시체 / 사라진 뒤) |
+| train_toilet | 객실 옆 화장실 |
+| country_station | 시코츠가하라역(해 질 녘) |
+| hotel_exterior | 늪 한가운데 호텔 외관 |
+| hotel / lobby_night | 호텔 로비(낮 / 밤) |
+| mario_room | 트네 마리오의 방 |
+| drawbridge | 연못 위 공연장과 올라간 도개교 |
+| theater / catwalk / dressing_room | 공연장 무대 / 천장 발판 / 분장실 |
+| swamp | 호텔 뒤 습지(밤, 안개) |
+| hotel_room / sickroom | 호텔 방(밤 / 아침) |
+| yumi_room / room_below | 유미의 방(창문이 열린 밤) / 아래층 빈 방 |
+| airport | 5년 전 공항 로비(회상) |
+| london_park | 런던 공원(회상) |
+| prison | 아사히카와 구치소 독방 |
+| magic_hall | 도쿄 공연장(사콘지 단독 공연) |
