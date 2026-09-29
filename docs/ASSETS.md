@@ -142,6 +142,7 @@ ROM에는 바뀐 눈 부분만 작은 사각형으로 들어갑니다.
 | berth | 은유성호 침대칸 |
 | police | 경시청 사무실 |
 | dining | 식당차 |
+| dining_show | 식당차 통로 (마술 공연) |
 | freight_yard | 긴급 정차한 화물역(아침, 맞은편에 우편 열차) |
 | corridor | 열차 복도 |
 | cabin_roses / cabin_empty | 객실 5호(장미·시체 / 사라진 뒤) |
