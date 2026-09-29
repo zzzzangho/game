@@ -90,20 +90,27 @@ def _sticker(parts, canvas):
 def render(max_w=232, max_h=78):
     if os.path.exists(USER_LOGO):
         img = Image.open(USER_LOGO).convert("RGBA")
-        a = np.asarray(img).copy()
-        white = (a[..., :3].min(axis=2) > 235)
-        # remove only the white connected to the border (keep the white sticker rim)
-        from collections import deque
-        h, w = white.shape
-        seen = np.zeros_like(white)
-        q = deque([(y, x) for y in (0, h - 1) for x in range(w)] + [(y, x) for x in (0, w - 1) for y in range(h)])
-        while q:
-            y, x = q.popleft()
-            if 0 <= y < h and 0 <= x < w and white[y, x] and not seen[y, x]:
-                seen[y, x] = True
-                q.extend(((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)))
-        a[seen, 3] = 0
-        img = Image.fromarray(a, "RGBA")
+        a = np.asarray(img).astype(np.int16)
+        r, g, b = a[..., 0], a[..., 1], a[..., 2]
+        red = (r > 150) & (g < 110) & (b < 110)
+        yellow = (r > 180) & (g > 150) & (b < 120)
+        dark = np.maximum(np.maximum(r, g), b) < 90
+        # thick black strokes only (the sticker's thin outline is opened away)
+        dark_img = Image.fromarray((dark * 255).astype(np.uint8))
+        thick = np.asarray(dark_img.filter(ImageFilter.MinFilter(7)).filter(ImageFilter.MaxFilter(7))) > 0
+        ink = red | yellow | thick
+        # keep a thin white rim around the ink; the white filling the gaps inside and between letters goes
+        rim = max(3, img.width // 180)
+        ink_img = Image.fromarray((ink * 255).astype(np.uint8))
+        keep = np.asarray(ink_img.filter(ImageFilter.MaxFilter(2 * rim + 1))) > 0
+        edge = np.asarray(ink_img.filter(ImageFilter.MaxFilter(2 * rim + 7))) > 0
+        out = np.zeros(a.shape, np.uint8)
+        out[edge] = (20, 16, 20, 255)                 # thin dark line around the rim
+        out[keep] = (255, 255, 255, 255)              # white rim
+        src = np.asarray(img)
+        out[ink] = src[ink]
+        out[ink, 3] = 255
+        img = Image.fromarray(out, "RGBA")
     else:
         shonen = _rough(_text_mask("소년\n탐정", 26, spacing=-4), 0.5 * K, 1)
         kin = _rough(_text_mask("김전일", 52), 0.8 * K, 2)

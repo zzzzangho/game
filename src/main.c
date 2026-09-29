@@ -599,7 +599,7 @@ static void eyecatch(void)
     frame();
     plat_fade(0);
     plat_debug_event("eyecatch", 0);
-    for (int step = 16; step <= 64; step += 2) {  /* from edge-on, one full turn (mirrored on the back) */
+    for (int step = 16; step <= 64; step += 4) {  /* from edge-on, one full turn (mirrored on the back) */
         int c = cos64[step & 63];
         for (int x = 0; x < SCREEN_W; x++) {
             int sx = -1;
@@ -619,11 +619,11 @@ static void eyecatch(void)
     plat_copy32(fb, eyecatch_img, SCREEN_W * SCREEN_H / 2);
     mark(0, SCREEN_H);
     plat_sfx(SFX_DUN);          /* du- */
-    wait_frames(10);
+    wait_frames(7);
     plat_sfx(SFX_DUN);          /* -dun! */
     flash(C_WHITE, 2);
-    shake(10, 2);
-    wait_frames(40);
+    shake(8, 2);
+    wait_frames(22);
 #endif
 }
 
