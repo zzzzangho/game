@@ -703,12 +703,12 @@ static void intro_card(int spk, int portrait, int epi, int name)
     for (int f = 0; f <= 14; f++) {
         int off = (14 - f) * 18;
         restore_screen();
-        shade(0, 104, SCREEN_W, 50, 0);
-        shade(0, 104, SCREEN_W, 50, 0);
-        fill(0, 103, SCREEN_W, 1, C_BORDER);
-        fill(0, 154, SCREEN_W, 1, C_BORDER);
-        draw_disp(epi, SCREEN_W / 2 + off, 115);
-        draw_disp(name, SCREEN_W / 2 - off, 138);
+        shade(0, 112, SCREEN_W, 48, 0);
+        shade(0, 112, SCREEN_W, 48, 0);
+        fill(0, 111, SCREEN_W, 1, C_BORDER);
+        fill(0, 159, SCREEN_W, 1, C_BORDER);
+        draw_disp(epi, SCREEN_W / 2 + off, 122);
+        draw_disp(name, SCREEN_W / 2 - off, 144);
         frame();
     }
     plat_debug_event("intro", spk);

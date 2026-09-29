@@ -1276,7 +1276,7 @@ def ace_sprite(img, w, h, crop=1.0):
     if img.width > max_w:
         x0 = (img.width - max_w) // 2
         img = img.crop((x0, 0, x0 + max_w, img.height))
-    sc = min(w / img.width, h / img.height)
+    sc = min(w * 0.86 / img.width, h * 0.84 / img.height)  # leave some of the scene visible around the bust
     tw, th = max(1, round(img.width * sc)), max(1, round(img.height * sc))
     K = 4
     big = img.resize((tw * K, th * K), Image.LANCZOS)
@@ -1285,17 +1285,13 @@ def ace_sprite(img, w, h, crop=1.0):
     cov = a.resize((tw, th), Image.BOX)
     out = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
     pp, cp, op = pm.load(), cov.load(), out.load()
-    line = (30, 22, 30)
     for y in range(th):
         for x in range(tw):
             c = cp[x, y]
-            if c < 110:
+            if c < 128:
                 continue
             f = 255 / c
             col = [min(255, int(v * f)) for v in pp[x, y]]
-            if c < 250:
-                t = 0.35 + 0.4 * (1 - c / 255)
-                col = [int(col[i] * (1 - t) + line[i] * t) for i in range(3)]
             op[x, y] = tuple(col) + (255,)
     canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     canvas.paste(out, ((w - tw) // 2, h - th))
