@@ -28,7 +28,7 @@ OBJS := $(BUILD)/crt0.o $(BUILD)/main.o $(BUILD)/plat_gba.o $(BUILD)/gen_data.o
 all: $(TARGET).gba
 
 ASSETS  := $(wildcard assets/portraits/* assets/scenes/* assets/icons/* assets/cuts/*)
-TOOLS   := tools/build_assets.py tools/art.py tools/art_hd.py tools/display_font.py assets/fonts/BlackHanSans-Regular.ttf
+TOOLS   := tools/build_assets.py tools/art.py tools/art_hd.py tools/display_font.py tools/eyecatch.py tools/logo.py assets/fonts/BlackHanSans-Regular.ttf
 KMT_PIXEL ?= off
 export KMT_PIXEL
 

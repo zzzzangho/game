@@ -15,6 +15,8 @@ from PIL import Image  # noqa: E402
 
 import art  # noqa: E402
 import display_font  # noqa: E402
+import eyecatch  # noqa: E402
+import logo  # noqa: E402
 
 # ---- layout constants (must match src/main.c) ----
 TEXT_W = 224          # dialogue box text width in pixels
@@ -673,7 +675,7 @@ def build(story_path, font_path, out_dir):
     with open(story_path, encoding="utf-8") as f:
         comp.compile(f.read())
     ui_ids = [(k, comp.text(v)) for k, v in UI_STRINGS]
-    ui_style = dict(UI_TITLE_MAIN="logo", UI_TITLE_SERIES="logo_sub", UI_BANNER_INVEST="banner",
+    ui_style = dict(UI_TITLE_MAIN="logo_img", UI_TITLE_SERIES="logo_sub", UI_BANNER_INVEST="banner",
                     UI_BANNER_DEDUCE="banner", UI_PRESS_SHOUT="shout", UI_OBJECTION="shout", UI_BAD_END="bad_label",
                     UI_TRUE_END="end_label", UI_GOOD_END="end_label", UI_BEST_END="end_label",
                     UI_NORMAL_END="end_label", UI_WRONG="banner",
@@ -744,7 +746,8 @@ def build(story_path, font_path, out_dir):
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
           "extern const u16 char_profile[];",
           "extern const u16 disp_of_text[];", "extern const u16 disp_data[];", "extern const u32 disp_ofs[];",
-          "extern const u16 disp_w[];", "extern const u16 disp_h[];",
+          "extern const u16 disp_w[];", "extern const u16 disp_h[];", "extern const u16 eyecatch_img[];",
+          f"#define HAVE_EYECATCH {1 if eyecatch.available() else 0}",
           "extern const u16 ev_name[];", "extern const u16 ev_desc[];", "extern const u16 ev_icon[];",
           "#endif"]
 
@@ -762,6 +765,8 @@ def build(story_path, font_path, out_dir):
     for tid, style in sorted(comp.display.items()):
         if style == "name":
             im = render_bdf(name_font, comp.texts[tid])
+        elif style == "logo_img":
+            im = logo.render()
         elif style == "hint":
             im = render_bdf(name_font, comp.texts[tid], colour=(176, 176, 196))
         else:
@@ -772,6 +777,11 @@ def build(story_path, font_path, out_dir):
         disp_h.append(im.height)
         disp_data.extend(art.to15(im, dither=False))
     c.append(c_array("disp_of_text", "u16", disp_of))
+    # chapter-change eyecatch (Kindaichi's glowing silhouette), if the source picture is present
+    if eyecatch.available():
+        c.append(c_array("eyecatch_img", "u16", art.to15(eyecatch.render(), dither=False), fmt="0x{:04X}"))
+    else:
+        c.append("const u16 eyecatch_img[1] = {0};")
     c.append(c_array("disp_data", "u16", disp_data or [0], fmt="0x{:04X}"))
     c.append(c_array("disp_ofs", "u32", disp_ofs or [0]))
     c.append(c_array("disp_w", "u16", disp_w or [0]))

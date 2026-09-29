@@ -140,6 +140,13 @@ void plat_sfx(int id)
         REG_SND4CNT = (15 << 12) | (4 << 8);
         REG_SND4FREQ = 0x8000 | (4 << 4) | 1;
         break;
+    case SFX_DUN: /* the eyecatch's heavy "dun": a low falling tone over a noise thump */
+        REG_SND1SWEEP = (7 << 4) | (1 << 3) | 3;
+        REG_SND1CNT = (15 << 12) | (6 << 8) | (2 << 6) | 0;
+        REG_SND1FREQ = rate(160) | 0xC000;
+        REG_SND4CNT = (15 << 12) | (5 << 8);
+        REG_SND4FREQ = 0x8000 | (6 << 4) | 3;
+        break;
     case SFX_OBJECTION:
         REG_SND1SWEEP = (3 << 4) | 1;
         REG_SND1CNT = (15 << 12) | (5 << 8) | (1 << 6) | 0;

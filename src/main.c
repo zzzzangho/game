@@ -584,8 +584,52 @@ static void place_caption(int t)
     frame();
 }
 
+/* Chapter-change eyecatch: Kindaichi's glowing silhouette spins once, then lands with "du-dun!". */
+static void eyecatch(void)
+{
+#if HAVE_EYECATCH
+    /* cos(2*pi*i/64) * 256 */
+    static const s16 cos64[64] = {
+        256, 255, 251, 245, 237, 226, 213, 198, 181, 162, 142, 121, 98, 74, 50, 25,
+        0, -25, -50, -74, -98, -121, -142, -162, -181, -198, -213, -226, -237, -245, -251, -255,
+        -256, -255, -251, -245, -237, -226, -213, -198, -181, -162, -142, -121, -98, -74, -50, -25,
+        0, 25, 50, 74, 98, 121, 142, 162, 181, 198, 213, 226, 237, 245, 251, 255};
+    fade_out();
+    fill(0, 0, SCREEN_W, SCREEN_H, 0);
+    frame();
+    plat_fade(0);
+    plat_debug_event("eyecatch", 0);
+    for (int step = 16; step <= 64; step += 2) {  /* from edge-on, one full turn (mirrored on the back) */
+        int c = cos64[step & 63];
+        for (int x = 0; x < SCREEN_W; x++) {
+            int sx = -1;
+            if (c > 6 || c < -6) sx = SCREEN_W / 2 + (x - SCREEN_W / 2) * 256 / c;
+            u16 *dst = fb + x;
+            if ((unsigned)sx >= SCREEN_W) {
+                for (int y = 0; y < SCREEN_H; y++, dst += SCREEN_W) *dst = 0;
+            } else {
+                const u16 *src = eyecatch_img + sx;
+                for (int y = 0; y < SCREEN_H; y++, dst += SCREEN_W, src += SCREEN_W) *dst = *src;
+            }
+        }
+        mark(0, SCREEN_H);
+        frame();
+        if (keys_new & (KEY_A | KEY_START)) break;
+    }
+    plat_copy32(fb, eyecatch_img, SCREEN_W * SCREEN_H / 2);
+    mark(0, SCREEN_H);
+    plat_sfx(SFX_DUN);          /* du- */
+    wait_frames(10);
+    plat_sfx(SFX_DUN);          /* -dun! */
+    flash(C_WHITE, 2);
+    shake(10, 2);
+    wait_frames(40);
+#endif
+}
+
 static void chapter_card(int t, int card)
 {
+    eyecatch();
     fade_out();
     int h = disp_height(t);
     if (card != NONE) {
@@ -1524,9 +1568,7 @@ static int title_screen(int has_save)
     cur_scene = SCENE_TITLE;
     cur_portrait = NONE;
     draw_scene();
-    shade(0, 22, SCREEN_W, 58, 0);
-    draw_disp(UI_TITLE_SERIES, SCREEN_W / 2, 33);
-    draw_disp(UI_TITLE_MAIN, SCREEN_W / 2, 58);
+    draw_disp(UI_TITLE_MAIN, SCREEN_W / 2, 6 + disp_height(UI_TITLE_MAIN) / 2);
     shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
     shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
     frame_rect(SCREEN_W / 2 - 56, 86, 112, 34, C_BORDER);
