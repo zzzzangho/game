@@ -176,6 +176,8 @@ static void draw_disp_part(int t, int cx, int cy, int vis)
 static void draw_disp(int t, int cx, int cy) { draw_disp_part(t, cx, cy, -1); }
 static int disp_width(int t) { return disp_of_text[t] == NONE ? 0 : disp_w[disp_of_text[t]]; }
 static int disp_height(int t) { return disp_of_text[t] == NONE ? LINE_H : disp_h[disp_of_text[t]]; }
+/* small Galmuri9 key hint, right-aligned at xr, top at y */
+static void draw_hint_right(int t, int xr, int y) { draw_disp(t, xr - disp_width(t) / 2, y + disp_height(t) / 2); }
 
 static void save_screen(void) { plat_copy32(snapshot, fb, SCREEN_W * SCREEN_H / 2); }
 
@@ -603,7 +605,7 @@ static void chapter_card(int t, int card)
         fill(40, 76 + h / 2 + 8, 160, 1, C_BORDER);
         draw_disp(t, SCREEN_W / 2, 76);
     }
-    draw_text_ex(SCREEN_W / 2, 145, UI_SAVED, C_GREY, 1, 1);
+    draw_disp(UI_SAVED, SCREEN_W / 2, 150);
     fade_in();
     plat_debug_event("chapter", 0);
     for (int i = 0; i < 180; i++) {
@@ -763,8 +765,8 @@ static int record(int present, int question)
                 draw_hearts();
             }
             int hint = present ? UI_PRESENT_HINT : UI_RECORD_HINT;
-            draw_text(144 - text_width(hint, 1), 86, hint, C_GREY);
-            if (!present && in_game) draw_text(182 - text_width(UI_RECORD_SAVE, 1), 4, UI_RECORD_SAVE, C_GREY);
+            draw_hint_right(hint, 146, 88);
+            if (!present && in_game) draw_hint_right(UI_RECORD_SAVE, 184, 7);
 
             if (n == 0) {
                 draw_text(12, REC_LIST_Y + 4, UI_EMPTY, C_GREY);
@@ -1103,7 +1105,7 @@ static int video(int title, int n, const u16 *frames, int cur)
             shade(0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, C_BOX);
             fill(0, BOX_Y, SCREEN_W, 1, RGB(10, 31, 12));
             draw_text(TEXT_X, TEXT_Y, f[2], C_WHITE);
-            draw_text(SCREEN_W - 8 - text_width(UI_VIDEO_HINT, 1), 146, UI_VIDEO_HINT, C_GREY);
+            draw_hint_right(UI_VIDEO_HINT, SCREEN_W - 6, 149);
             save_screen();
             redraw = 0;
         }
@@ -1189,7 +1191,7 @@ static int testimony(int spk, int title, int n, const u16 *stmts, int wrong)
             draw_hearts();
             draw_box(spk);
             draw_text(TEXT_X, TEXT_Y, st[0], RGB(20, 31, 20));
-            draw_text(SCREEN_W - 8 - text_width(UI_TESTI_HINT, 1), 146, UI_TESTI_HINT, C_GREY);
+            draw_hint_right(UI_TESTI_HINT, SCREEN_W - 6, 149);
             for (int i = 0; i < n; i++) fill(8 + i * 8, 148, 5, 5, i == cur ? RGB(16, 31, 16) : C_GREY);
             save_screen();
             redraw = 0;
@@ -1259,7 +1261,7 @@ static void ending(int kind, int t)
         draw_disp(UI_BAD_END, SCREEN_W / 2, 43);
         draw_disp(t, SCREEN_W / 2, 84);
     }
-    draw_text_ex(SCREEN_W / 2, 140, UI_PRESS_A, C_GREY, 1, 1);
+    draw_disp(UI_PRESS_A, SCREEN_W / 2, 146);
     fade_in();
     static const char *const events[5] = {"bad_end", "true_end", "good_end", "best_end", "normal_end"};
     plat_debug_event(events[kind <= 4 ? kind : 1], t);
@@ -1529,7 +1531,7 @@ static int title_screen(int has_save)
     shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
     frame_rect(SCREEN_W / 2 - 56, 86, 112, 34, C_BORDER);
     shade(0, 140, SCREEN_W, 16, 0);
-    draw_text_ex(SCREEN_W / 2, 142, UI_TITLE_FAN, C_GREY, 1, 1);
+    draw_disp(UI_TITLE_FAN, SCREEN_W / 2, 148);
     save_screen();
     fade_in();
     for (int redraw = 1;;) {

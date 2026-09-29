@@ -676,7 +676,10 @@ def build(story_path, font_path, out_dir):
     ui_style = dict(UI_TITLE_MAIN="logo", UI_TITLE_SERIES="logo_sub", UI_BANNER_INVEST="banner",
                     UI_BANNER_DEDUCE="banner", UI_PRESS_SHOUT="shout", UI_OBJECTION="shout", UI_BAD_END="bad_label",
                     UI_TRUE_END="end_label", UI_GOOD_END="end_label", UI_BEST_END="end_label",
-                    UI_NORMAL_END="end_label", UI_WRONG="banner")
+                    UI_NORMAL_END="end_label", UI_WRONG="banner",
+                    # small key hints in Galmuri9
+                    UI_RECORD_HINT="hint", UI_RECORD_SAVE="hint", UI_PRESENT_HINT="hint", UI_VIDEO_HINT="hint",
+                    UI_TESTI_HINT="hint", UI_PRESS_A="hint", UI_TITLE_FAN="hint", UI_SAVED="hint")
     for k, tid in ui_ids:
         if k in ui_style:
             comp.disp(tid, ui_style[k])
@@ -757,7 +760,12 @@ def build(story_path, font_path, out_dir):
     for n in comp.char_order:  # name tags use the small Galmuri9
         comp.disp(comp.text_index[n], "name")
     for tid, style in sorted(comp.display.items()):
-        im = render_bdf(name_font, comp.texts[tid]) if style == "name" else display_font.render(comp.texts[tid], style)
+        if style == "name":
+            im = render_bdf(name_font, comp.texts[tid])
+        elif style == "hint":
+            im = render_bdf(name_font, comp.texts[tid], colour=(176, 176, 196))
+        else:
+            im = display_font.render(comp.texts[tid], style)
         disp_of[tid] = len(disp_ofs)
         disp_ofs.append(len(disp_data))
         disp_w.append(im.width)
