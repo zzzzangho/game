@@ -19,7 +19,9 @@ import display_font  # noqa: E402
 # ---- layout constants (must match src/main.c) ----
 TEXT_W = 224          # dialogue box text width in pixels
 TEXT_LINES = 4        # lines per dialogue page
-SENTENCE_END = re.compile(r"(?<=[.!?…』])\s+")  # dialogue: every sentence starts on a new line
+# dialogue: every sentence starts on a new line. "…" only ends a sentence after a sentence-final syllable
+# ("그래요… 하지만"), not in the middle of one ("장미 한 송이와… 이 편지가").
+SENTENCE_END = re.compile(r"(?<=[.!?』])\s+|(?<=[다요까지야어아네군죠걸데래니나고][…])\s+")
 MENU_W = 196          # max option width
 DESC_LINES = 4        # court record description lines
 HEADER_W = 224        # court record header (present question)
@@ -181,6 +183,22 @@ def wrap(font, text, width):
     return [ln.replace("{}", "") for ln in res]
 
 
+def wrap_balanced(font, text, width):
+    """Like wrap(), but with the line count of a greedy wrap and lines as even as possible
+    (no lone word left dangling on the last line)."""
+    lines = wrap(font, text, width)
+    if len(lines) < 2:
+        return lines
+    lo, hi = width // len(lines), width
+    while lo < hi:  # narrowest width that still needs no more lines
+        mid = (lo + hi) // 2
+        if len(wrap(font, text, mid)) <= len(lines):
+            hi = mid
+        else:
+            lo = mid + 1
+    return wrap(font, text, lo)
+
+
 # ---------------------------------------------------------------- compiler
 
 class Compiler:
@@ -296,10 +314,22 @@ class Compiler:
             text = rest.strip()
             if not text:
                 return
-        text = "\n".join(SENTENCE_END.sub("\n", para) for para in text.split("\n"))
-        lines = wrap(self.font, text, TEXT_W)
-        for i in range(0, len(lines), TEXT_LINES):
-            self.emit(OPS["SAY"], spk, self.text("\n".join(lines[i:i + TEXT_LINES])), portrait)
+        sentences = [s for para in text.split("\n") for s in SENTENCE_END.split(para)]
+        # each sentence wrapped with balanced line lengths; pages break between sentences when possible
+        pages, cur = [], []
+        for sent in sentences:
+            block = wrap_balanced(self.font, sent, TEXT_W)
+            if cur and len(cur) + len(block) > TEXT_LINES:
+                pages.append(cur)
+                cur = []
+            while len(block) > TEXT_LINES:
+                pages.append(block[:TEXT_LINES])
+                block = block[TEXT_LINES:]
+            cur += block
+        if cur:
+            pages.append(cur)
+        for page in pages:
+            self.emit(OPS["SAY"], spk, self.text("\n".join(page)), portrait)
 
     def compile(self, src):
         lines = src.split("\n")
