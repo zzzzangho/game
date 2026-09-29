@@ -25,7 +25,7 @@ LIST_W = 150          # court record list width
 OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PRESENT=9,
            ACCUSE=10, GOTO=11, ENDING=12, LIVES=13, GAMEOVER=14, MEET=15, WAIT=16, SHOUT=17,
            PROFILE=18, MENU=19, SET=20, IF=21, PENALTY=22, BANNER=23, VIDEO=24, TIMER=25, MASH=26,
-           TESTIMONY=27, PRESENT_CHOICE=28)
+           TESTIMONY=27, PRESENT_CHOICE=28, PLACE=29)
 BLOCKS = ("investigate", "ask", "accuse", "choice", "menu", "video", "testimony")
 MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
@@ -259,6 +259,16 @@ class Compiler:
     # -- statements
     def say(self, spk, text, portrait=NONE):
         text = text.replace("\\n", "\n")  # "-장소-\n본문" style line breaks in dialogue lines
+        first, _, rest = text.partition("\n")
+        if re.fullmatch(r"-[^-]+-", first.strip()):
+            # location caption: shown on its own band in the middle of the screen, not in the text box
+            place = first.strip()[1:-1].strip()
+            if self.font.width(place) > TEXT_W:
+                self.err(f"location caption too long: {place}")
+            self.emit(OPS["PLACE"], self.text(place))
+            text = rest.strip()
+            if not text:
+                return
         text = "\n".join(SENTENCE_END.sub("\n", para) for para in text.split("\n"))
         lines = wrap(self.font, text, TEXT_W)
         for i in range(0, len(lines), TEXT_LINES):

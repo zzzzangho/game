@@ -513,6 +513,28 @@ static int lose_life(void)
     return lives == 0;
 }
 
+/* Location caption ("-장소-" in the script): a band across the middle of the screen, typed out in gold. */
+static void place_caption(int t)
+{
+    save_screen();
+    int w = line_width(txt(t), 1), x = (SCREEN_W - w) / 2, y = 58;
+    shade(0, y - 8, SCREEN_W, 28, 0);
+    shade(0, y - 8, SCREEN_W, 28, 0);
+    fill(0, y - 9, SCREEN_W, 1, C_BORDER);
+    fill(0, y + 20, SCREEN_W, 1, C_BORDER);
+    fill(x - 34, y + 6, 24, 1, C_BORDER);
+    fill(x + w + 10, y + 6, 24, 1, C_BORDER);
+    plat_sfx(SFX_GET);
+    type_text(x, y, t, C_GOLD);
+    plat_debug_event("place", 0);
+    for (int i = 0; i < 100; i++) {
+        frame();
+        if (i > 12 && (keys_new & (KEY_A | KEY_START))) break;
+    }
+    restore_screen();
+    frame();
+}
+
 static void chapter_card(int t, int card)
 {
     fade_out();
@@ -647,7 +669,16 @@ static void draw_tab(int x, int label, int active)
 {
     int w = text_width(label, 1) + 14;
     fill(x, 3, w, 15, active ? C_BORDER : RGB(6, 6, 10));
-    draw_text(x + 7, 4, label, active ? C_SHADOW : C_GREY);
+    if (active) {
+        /* black on the gold tab, without the drop shadow (a black shadow would smear it) */
+        int cx = x + 7;
+        for (const u16 *g = txt(label); *g != TXT_END && *g != TXT_NL; g++) {
+            draw_glyph(cx, 4, *g, C_SHADOW, 1);
+            cx += glyph_adv[*g];
+        }
+    } else {
+        draw_text(x + 7, 4, label, C_GREY);
+    }
 }
 
 /* present = 1: pick evidence to present (returns evidence id). Otherwise browse; returns -1.
@@ -1108,6 +1139,9 @@ static int run(u16 pc)
             do_shout(spk, t, por);
             break;
         }
+        case OP_PLACE:
+            place_caption(S[pc++]);
+            break;
         case OP_CHAPTER:
             save_game(op_pc);
             chapter_card(S[pc], S[pc + 1]);

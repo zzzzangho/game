@@ -123,6 +123,7 @@ assets/fonts/           갈무리11 Condensed (BDF)
 김전일: 대사              ← @char로 선언한 이름이면 이름표+초상화와 함께 대사
 김전일[surprised]: 대사   ← 표정 차분 (assets/portraits/kin_surprised.png)
 그냥 문장                 ← 나레이션
+-장소-\n본문             ← 첫 줄이 -장소- 이면 화면 가운데 띠에 장소 표시, 본문은 대사창에
 *라벨                     ← 점프 목적지
 
 @char 이름 초상화키 #색     인물 선언 (초상화키는 위 표 참고, 없으면 -)
