@@ -17,9 +17,9 @@
 #define C_BORDER RGB(24, 19, 8)
 
 #define LINE_H 13
-#define BOX_Y 104
+#define BOX_Y 96  /* dialogue box: 4 lines of text */
 #define TEXT_X 8
-#define TEXT_Y 109
+#define TEXT_Y 100
 #define PORTRAIT_X ((SCREEN_W - PORTRAIT_W) / 2)
 #define PORTRAIT_Y 0 /* bust hangs from the top; the translucent text box covers only the chest */
 
@@ -189,6 +189,15 @@ static int line_width(const u16 *s, int scale)
     return w;
 }
 
+/* A line written as "-장소-" is a location caption: centred and gold. */
+static int is_caption(const u16 *line)
+{
+    if (line[0] != GLYPH_DASH) return 0;
+    const u16 *e = line;
+    while (e[1] != TXT_END && e[1] != TXT_NL) e++;
+    return e != line && *e == GLYPH_DASH;
+}
+
 static int text_width(int id, int scale)
 {
     const u16 *s = txt(id);
@@ -206,14 +215,16 @@ static int text_width(int id, int scale)
 static void draw_text_ex(int x, int y, int id, u16 c, int scale, int centred)
 {
     const u16 *s = txt(id);
-    int cx = centred ? x - line_width(s, scale) / 2 : x;
+    int caption = !centred && is_caption(s);
+    int cx = centred ? x - line_width(s, scale) / 2 : caption ? (SCREEN_W - line_width(s, scale)) / 2 : x;
     for (; *s != TXT_END; s++) {
         if (*s == TXT_NL) {
             y += LINE_H * scale;
-            cx = centred ? x - line_width(s + 1, scale) / 2 : x;
+            caption = !centred && is_caption(s + 1);
+            cx = centred ? x - line_width(s + 1, scale) / 2 : caption ? (SCREEN_W - line_width(s + 1, scale)) / 2 : x;
             continue;
         }
-        glyph_shadowed(cx, y, *s, c, scale);
+        glyph_shadowed(cx, y, *s, caption ? C_GOLD : c, scale);
         cx += glyph_adv[*s] * scale;
     }
 }
@@ -224,14 +235,16 @@ static void draw_text(int x, int y, int id, u16 c) { draw_text_ex(x, y, id, c, 1
 static void type_text(int x, int y, int id, u16 c)
 {
     const u16 *s = txt(id);
-    int cx = x, instant = 0, n = 0;
+    int caption = is_caption(s);
+    int cx = caption ? (SCREEN_W - line_width(s, 1)) / 2 : x, instant = 0, n = 0;
     for (; *s != TXT_END; s++) {
         if (*s == TXT_NL) {
             y += LINE_H;
-            cx = x;
+            caption = is_caption(s + 1);
+            cx = caption ? (SCREEN_W - line_width(s + 1, 1)) / 2 : x;
             continue;
         }
-        glyph_shadowed(cx, y, *s, c, 1);
+        glyph_shadowed(cx, y, *s, caption ? C_GOLD : c, 1);
         cx += glyph_adv[*s];
         if (!instant && (++n & 1) == 0) {
             if ((n & 3) == 0) plat_sfx(SFX_BLIP);
@@ -339,8 +352,8 @@ static void wait_advance(void)
 {
     plat_debug_event("page", 0);
     for (;;) {
-        restore_rect(224, 150, 8, 5);
-        if ((frame_count >> 4) & 1) draw_arrow(225, 150, C_WHITE);
+        restore_rect(224, 154, 8, 5);
+        if ((frame_count >> 4) & 1) draw_arrow(225, 154, C_WHITE);
         frame();
         if (keys_new & KEY_A) return;
         if (keys_new & KEY_START) record(0, NONE);

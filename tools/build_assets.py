@@ -15,7 +15,8 @@ import art  # noqa: E402
 
 # ---- layout constants (must match src/main.c) ----
 TEXT_W = 224          # dialogue box text width in pixels
-TEXT_LINES = 3        # lines per dialogue page
+TEXT_LINES = 4        # lines per dialogue page
+SENTENCE_END = re.compile(r"(?<=[.!?…』])\s+")  # dialogue: every sentence starts on a new line
 MENU_W = 196          # max option width
 DESC_LINES = 4        # court record description lines
 HEADER_W = 224        # court record header (present question)
@@ -254,6 +255,7 @@ class Compiler:
     # -- statements
     def say(self, spk, text, portrait=NONE):
         text = text.replace("\\n", "\n")  # "-장소-\n본문" style line breaks in dialogue lines
+        text = "\n".join(SENTENCE_END.sub("\n", para) for para in text.split("\n"))
         lines = wrap(self.font, text, TEXT_W)
         for i in range(0, len(lines), TEXT_LINES):
             self.emit(OPS["SAY"], spk, self.text("\n".join(lines[i:i + TEXT_LINES])), portrait)
@@ -591,6 +593,7 @@ def build(story_path, font_path, out_dir):
          '#include "platform.h"',
          f"#define GLYPH_H {gh}", f"#define GLYPH_COUNT {len(chars)}",
          f"#define CHAR_COUNT {len(comp.chars)}", f"#define EVIDENCE_COUNT {len(comp.evidence)}",
+         f"#define GLYPH_DASH {gmap.get('-', 0xFFFF)}",  # "-장소-" lines are centred
          f"#define SCENE_COUNT {len(scene_keys)}", f"#define PORTRAIT_COUNT {len(portrait_keys)}",
          f"#define ICON_COUNT {len(art.ICONS)}",
          f"#define PORTRAIT_W {art.PORTRAIT_W}", f"#define PORTRAIT_H {art.PORTRAIT_H}",
