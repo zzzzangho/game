@@ -1280,7 +1280,10 @@ def _procedural_portrait(key):
     return outline(img)
 
 
-def ace_sprite(img, w, h, crop=1.0):
+KEEP_SIDES = {"sakuraba_stage"}  # wide art shown whole (the arms reach the picture's edges)
+
+
+def ace_sprite(img, w, h, crop=1.0, trim=True):
     """Cut-out drawing -> Ace-Attorney-style bust: cropped head to waist, scaled with
     premultiplied supersampling so the edges follow the drawing's own line art (no extra
     outline or shadow); partly covered edge pixels are pulled toward the line colour."""
@@ -1288,7 +1291,7 @@ def ace_sprite(img, w, h, crop=1.0):
     img = img.crop(bb) if bb else img
     img = img.crop((0, 0, img.width, max(1, int(img.height * crop))))
     max_w = int(img.height * w / h * 1.1)  # wide art (capes, props): trim the sides to keep the bust big
-    if img.width > max_w:
+    if trim and img.width > max_w:
         x0 = (img.width - max_w) // 2
         img = img.crop((x0, 0, x0 + max_w, img.height))
     sc = min(w * 0.86 / img.width, h * 0.84 / img.height)  # leave some of the scene visible around the bust
@@ -1362,7 +1365,7 @@ def portrait_image(key):
             canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
             canvas.paste(framed(img.resize((CAPTURE_W, CAPTURE_H), Image.LANCZOS)), ((PORTRAIT_W - CAPTURE_W) // 2, 0))
             return canvas
-        return ace_sprite(img, PORTRAIT_W, PORTRAIT_H)
+        return ace_sprite(img, PORTRAIT_W, PORTRAIT_H, trim=key not in KEEP_SIDES)
     small = _procedural_portrait(key).resize((96, 120), Image.NEAREST)
     canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
     canvas.paste(small, ((PORTRAIT_W - 96) // 2, 0))  # keep the face above the text box
