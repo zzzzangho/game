@@ -11,7 +11,10 @@ import shlex
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from PIL import Image  # noqa: E402
+
 import art  # noqa: E402
+import display_font  # noqa: E402
 
 # ---- layout constants (must match src/main.c) ----
 TEXT_W = 224          # dialogue box text width in pixels
@@ -41,7 +44,7 @@ UI_STRINGS = [
     ("UI_TITLE_FAN", "비공식 팬 게임"),
     ("UI_NEW", "처음부터"),
     ("UI_CONTINUE", "이어하기"),
-    ("UI_DISCLAIMER", "이 게임은 「소년탐정 김전일」의 팬이 만든\n비공식 2차 창작 게임입니다.\n원작의 모든 권리는 원작자와 출판사에 있습니다.\n\n폰트: 갈무리11 Condensed (SIL OFL 1.1)"),
+    ("UI_DISCLAIMER", "이 게임은 「소년탐정 김전일」의\n팬이 만든 비공식 2차 창작\n게임입니다. 원작의 모든 권리는\n원작자와 출판사에 있습니다.\n\n폰트: 갈무리, Black Han Sans\n(SIL OFL 1.1)"),
     ("UI_TAB_EVIDENCE", "증거물"),
     ("UI_TAB_PROFILE", "인물"),
     ("UI_RECORD_HINT", "L/R: 전환  B: 닫기"),
@@ -59,7 +62,7 @@ UI_STRINGS = [
     ("UI_TESTI_HINT", "◀▶ 넘기기  A 추궁  R 증거 제시"),
     ("UI_PRESS_SHOUT", "잠깐!"),
     ("UI_OBJECTION", "그건 모순이야!"),
-    ("UI_TIMEOUT", "시간이 없어…! 머뭇거리는 사이에 기회를 놓쳤다."),
+    ("UI_TIMEOUT", "시간이 없어…!\n머뭇거리는 사이에 기회를 놓쳤다."),
     ("UI_TIMEOUT_BRANCH", "시간이 없어…! 아무것도 내밀지 못했다."),
     ("UI_DANGER", "더 이상 실수할 수 없다…!"),
     ("UI_MASH_HINT", "A 버튼을 연타해!"),
@@ -197,7 +200,15 @@ class Compiler:
         self.lineno = 0
         self.missing_expr = set()
         self.flag_names = {}       # @set / if= names -> flag index (from 0 up)
+        self.display = {}          # text id -> display_font style (titles, banners, shouts)
         self.next_mark = MAX_FLAGS - 1  # "option already chosen" marks (from the top down)  # 이름[표정] used in the script without an image file
+
+    def disp(self, tid, style):
+        """Draw this text with the display font instead of Galmuri."""
+        if self.display.get(tid, style) != style:
+            self.err(f"text {self.texts[tid]!r} used with two display styles")
+        self.display[tid] = style
+        return tid
 
     def ui(self, key):
         return self.text(dict(UI_STRINGS)[key])
@@ -281,7 +292,7 @@ class Compiler:
             place = first.strip()[1:-1].strip()
             if self.font.width(place) > TEXT_W:
                 self.err(f"location caption too long: {place}")
-            self.emit(OPS["PLACE"], self.text(place))
+            self.emit(OPS["PLACE"], self.disp(self.text(place), "place"))
             text = rest.strip()
             if not text:
                 return
@@ -405,7 +416,7 @@ class Compiler:
             self.emit(OPS["FX"], FX[a[0]])
         elif cmd == "chapter":
             self.need_args(a, 1, "@chapter \"title\" [CARD_SCENE]")
-            self.emit(OPS["CHAPTER"], self.wrapped(a[0], TEXT_W, 3, "chapter title"),
+            self.emit(OPS["CHAPTER"], self.disp(self.text(a[0]), "chapter"),
                       self.scene(a[1]) if len(a) > 1 else NONE)
         elif cmd == "lives":
             self.emit(OPS["LIVES"], int(a[0]))
@@ -421,16 +432,14 @@ class Compiler:
             self.emit(OPS["WAIT"], int(a[0]))
         elif cmd == "shout":
             self.need_args(a, 2, "@shout SPEAKER \"text\"")
-            if self.font.width(a[1]) * 2 > 232:
-                self.err("shout text too wide (drawn at 2x)")
             spk, por = self.speaker_portrait(a[0])
-            self.emit(OPS["SHOUT"], spk, self.text(a[1]), por)
+            self.emit(OPS["SHOUT"], spk, self.disp(self.text(a[1]), "shout"), por)
         elif cmd == "ending":
             self.need_args(a, 2, "@ending bad|true|good|best|normal \"title\"")
             kinds = dict(bad=0, true=1, good=2, best=3, normal=4)
             if a[0] not in kinds:
                 self.err(f"unknown ending kind {a[0]!r}")
-            self.emit(OPS["ENDING"], kinds[a[0]], self.wrapped(a[1], TEXT_W, 2, "ending title"))
+            self.emit(OPS["ENDING"], kinds[a[0]], self.disp(self.text(a[1]), "end_title"))
         elif cmd == "present":
             self.need_args(a, 4, "@present SPEAKER \"question\" EVIDENCE WRONG_LABEL")
             if self.font.width(a[1]) > HEADER_W:
@@ -604,12 +613,34 @@ def c_array(name, ctype, values, per_line=16, fmt="{}"):
     return "\n".join(out)
 
 
+def render_bdf(font, text, colour=(255, 255, 255), shadow=(8, 8, 16)):
+    """Small pixel-font label (name tags): white glyphs with a 1px drop shadow, transparent elsewhere."""
+    w = font.width(text) + 1
+    rows = [r for c in text for _, r in font.pixels(c)]
+    top, bottom = min(rows), max(rows)
+    img = Image.new("RGBA", (w, bottom - top + 2), (0, 0, 0, 0))
+    for layer, (dx, dy, col) in enumerate(((1, 1, shadow), (0, 0, colour))):
+        x = 0
+        for c in text:
+            for px_, r in font.pixels(c):
+                img.putpixel((x + px_ + dx, r - top + dy), col + (255,))
+            x += font.adv(c)
+    return img
+
+
 def build(story_path, font_path, out_dir):
     font = Font(font_path)
     comp = Compiler(font)
     with open(story_path, encoding="utf-8") as f:
         comp.compile(f.read())
     ui_ids = [(k, comp.text(v)) for k, v in UI_STRINGS]
+    ui_style = dict(UI_TITLE_MAIN="logo", UI_TITLE_SERIES="logo_sub", UI_BANNER_INVEST="banner",
+                    UI_BANNER_DEDUCE="banner", UI_PRESS_SHOUT="shout", UI_OBJECTION="shout", UI_BAD_END="bad_label",
+                    UI_TRUE_END="end_label", UI_GOOD_END="end_label", UI_BEST_END="end_label",
+                    UI_NORMAL_END="end_label", UI_WRONG="banner")
+    for k, tid in ui_ids:
+        if k in ui_style:
+            comp.disp(tid, ui_style[k])
     for key in art.ALWAYS_SCENES:
         comp.scene(key)
 
@@ -666,6 +697,8 @@ def build(story_path, font_path, out_dir):
           "extern const u16 icon_img[];",
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
           "extern const u16 char_profile[];",
+          "extern const u16 disp_of_text[];", "extern const u16 disp_data[];", "extern const u32 disp_ofs[];",
+          "extern const u16 disp_w[];", "extern const u16 disp_h[];",
           "extern const u16 ev_name[];", "extern const u16 ev_desc[];", "extern const u16 ev_icon[];",
           "#endif"]
 
@@ -675,6 +708,23 @@ def build(story_path, font_path, out_dir):
     c.append(c_array("text_ofs", "u32", text_ofs))
     c.append(c_array("glyph_bits", "u16", glyph_bits, fmt="0x{:04X}"))
     c.append(c_array("glyph_adv", "u8", glyph_adv))
+    # display-font images (titles, banners, shouts)
+    disp_of, disp_data, disp_ofs, disp_w, disp_h = [NONE] * len(comp.texts), [], [], [], []
+    name_font = Font(os.path.join(os.path.dirname(font_path), "Galmuri9.bdf"))
+    for n in comp.char_order:  # name tags use the small Galmuri9
+        comp.disp(comp.text_index[n], "name")
+    for tid, style in sorted(comp.display.items()):
+        im = render_bdf(name_font, comp.texts[tid]) if style == "name" else display_font.render(comp.texts[tid], style)
+        disp_of[tid] = len(disp_ofs)
+        disp_ofs.append(len(disp_data))
+        disp_w.append(im.width)
+        disp_h.append(im.height)
+        disp_data.extend(art.to15(im, dither=False))
+    c.append(c_array("disp_of_text", "u16", disp_of))
+    c.append(c_array("disp_data", "u16", disp_data or [0], fmt="0x{:04X}"))
+    c.append(c_array("disp_ofs", "u32", disp_ofs or [0]))
+    c.append(c_array("disp_w", "u16", disp_w or [0]))
+    c.append(c_array("disp_h", "u16", disp_h or [0]))
     for k in scene_keys:
         c.append(c_array(f"scene_{k}", "u16", art.render_scene(k), fmt="0x{:04X}"))
     c.append("const u16 *const scene_img[] = {" + ",".join(f"scene_{k}" for k in scene_keys) + "};")

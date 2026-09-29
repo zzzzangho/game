@@ -11,7 +11,8 @@ PYTHON  ?= python3
 
 TARGET  := kindaichi_magic_train
 BUILD   := build
-FONT    := assets/fonts/Galmuri11-Condensed.bdf
+FONT    := assets/fonts/Galmuri11.bdf
+NAMEFONT := assets/fonts/Galmuri9.bdf
 STORY   := story/story.txt
 
 ARCH    := -mthumb -mthumb-interwork -mcpu=arm7tdmi -mtune=arm7tdmi
@@ -26,11 +27,12 @@ OBJS := $(BUILD)/crt0.o $(BUILD)/main.o $(BUILD)/plat_gba.o $(BUILD)/gen_data.o
 
 all: $(TARGET).gba
 
-ASSETS  := $(wildcard assets/portraits/* assets/scenes/* assets/icons/*)
+ASSETS  := $(wildcard assets/portraits/* assets/scenes/* assets/icons/* assets/cuts/*)
+TOOLS   := tools/build_assets.py tools/art.py tools/art_hd.py tools/display_font.py assets/fonts/BlackHanSans-Regular.ttf
 KMT_PIXEL ?= off
 export KMT_PIXEL
 
-$(BUILD)/gen_data.c $(BUILD)/gen_data.h: $(STORY) $(FONT) tools/build_assets.py tools/art.py $(ASSETS) assets/portraits assets/scenes assets/icons
+$(BUILD)/gen_data.c $(BUILD)/gen_data.h: $(STORY) $(FONT) $(NAMEFONT) $(TOOLS) $(ASSETS) assets/portraits assets/scenes assets/icons assets/cuts
 	@mkdir -p $(BUILD)
 	$(PYTHON) tools/build_assets.py --story $(STORY) --font $(FONT) --out $(BUILD)
 

@@ -13,7 +13,7 @@
 | 버튼 | 기능 |
 |---|---|
 | A | 대사 넘기기 / 선택 / 증거 제시 |
-| B | 수첩 닫기, 대사 빨리 표시 |
+| B | 메뉴에서 **돌아간다**, 수첩 닫기, 대사 빨리 표시 |
 | START | **수첩**(역전재판식 법정기록) 열기 — 대화 중이나 선택지에서 언제든 |
 | L / R (또는 ←/→) | 수첩에서 `증거물` ↔ `인물` 탭 전환 |
 | ↑ / ↓ | 커서 이동 |
@@ -109,7 +109,7 @@ src/main.c              게임 엔진 (텍스트, 수첩, 선택지, 추리, 저
 src/plat_gba.c          GBA 하드웨어 계층 (Mode 3 화면, 입력, 효과음, SRAM)
 src/crt0.s, src/gba.ld  시작 코드 / 링커 스크립트
 test/                   PC용 테스트 하네스와 자동 플레이 테스트
-assets/fonts/           갈무리11 Condensed (BDF)
+assets/fonts/           갈무리11·9 (BDF, 대사·이름표), Black Han Sans (제목·배너)
 ```
 
 ## 스토리 스크립트 문법 (`story/story.txt`)
@@ -177,6 +177,7 @@ assets/fonts/           갈무리11 Condensed (BDF)
 
 ## 크레딧 / 라이선스
 
-- 폰트: [갈무리(Galmuri)](https://github.com/quiple/galmuri) 11 Condensed — © Lee Minseo, SIL Open Font License 1.1 (`assets/fonts/`)
+- 폰트: [갈무리(Galmuri)](https://github.com/quiple/galmuri) 11(대사) / 9(이름표) — © Lee Minseo, SIL Open Font License 1.1 (`assets/fonts/`)
+- 제목·배너 폰트: Black Han Sans — © The Black Han Sans Project Authors, SIL Open Font License 1.1 (`assets/fonts/`)
 - `tools/gbafix.c`: devkitPro GBA ROM fixer (LGPL)
 - 원작: 「소년탐정 김전일」 — 이 게임은 비영리 팬 창작물입니다.

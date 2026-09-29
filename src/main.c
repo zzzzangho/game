@@ -151,6 +151,32 @@ static void blit_keyed(int x, int y, int w, int h, const u16 *src)
     mark(y, y + h);
 }
 
+static void draw_text_ex(int x, int y, int id, u16 c, int scale, int centred);
+
+/* Display-font image of a title/banner text (tools/display_font.py), centred on (cx, cy).
+ * vis limits how many columns are shown (for a wipe-in); -1 = all. */
+static void draw_disp_part(int t, int cx, int cy, int vis)
+{
+    int d = disp_of_text[t];
+    if (d == NONE) {
+        draw_text_ex(cx, cy - 6, t, C_GOLD, 1, 1);
+        return;
+    }
+    int w = disp_w[d], h = disp_h[d], x = cx - w / 2, y = cy - h / 2;
+    const u16 *src = disp_data + disp_ofs[d];
+    if (vis < 0 || vis > w) vis = w;
+    for (int j = 0; j < h; j++)
+        for (int i = 0; i < vis; i++) {
+            u16 c = src[j * w + i];
+            if (c != TRANSPARENT) px(x + i, y + j, c);
+        }
+    mark(y, y + h);
+}
+
+static void draw_disp(int t, int cx, int cy) { draw_disp_part(t, cx, cy, -1); }
+static int disp_width(int t) { return disp_of_text[t] == NONE ? 0 : disp_w[disp_of_text[t]]; }
+static int disp_height(int t) { return disp_of_text[t] == NONE ? LINE_H : disp_h[disp_of_text[t]]; }
+
 static void save_screen(void) { plat_copy32(snapshot, fb, SCREEN_W * SCREEN_H / 2); }
 
 static void restore_screen(void)
@@ -307,10 +333,10 @@ static void draw_box(int spk)
     shade(0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, C_BOX);
     fill(0, BOX_Y, SCREEN_W, 1, C_BORDER);
     if (spk != NONE) {
-        int w = text_width(char_name[spk], 1) + 12;
-        fill(4, BOX_Y - 14, w, 14, char_color[spk]);
-        frame_rect(4, BOX_Y - 14, w, 14, C_BORDER);
-        draw_text(10, BOX_Y - 14, char_name[spk], C_WHITE);
+        int w = disp_width(char_name[spk]) + 12;
+        fill(4, BOX_Y - 13, w, 13, char_color[spk]);
+        frame_rect(4, BOX_Y - 13, w, 13, C_BORDER);
+        draw_disp(char_name[spk], 4 + w / 2, BOX_Y - 6);
     }
 }
 
@@ -485,7 +511,7 @@ static void do_shout(int spk, int t, int portrait)
         fill(i, 44, 6, 4, C_WHITE);
         fill(i + 6, 92, 6, 4, C_WHITE);
     }
-    draw_text_ex(SCREEN_W / 2, 56, t, C_RED, 2, 1);
+    draw_disp(t, SCREEN_W / 2, 70);
     shake(20, 5);
     plat_debug_event("shout", 0);
     for (int i = 0; i < 90; i++) {
@@ -500,7 +526,7 @@ static int lose_life(void)
     if (lives > 0) lives--;
     save_screen();
     for (int i = 0; i < 3; i++) shade(0, 0, SCREEN_W, SCREEN_H, RGB(20, 0, 0));
-    draw_text_ex(SCREEN_W / 2, 60, UI_WRONG, C_WHITE, 2, 1);
+    draw_disp(UI_WRONG, SCREEN_W / 2, 72);
     for (int i = 0; i < 24; i++) {
         /* blink the heart that was lost */
         draw_heart(SCREEN_W - 4 - (max_lives - lives) * 10, 3, (i & 4) ? C_RED : RGB(8, 6, 8));
@@ -527,15 +553,20 @@ static int lose_life(void)
 static void place_caption(int t)
 {
     save_screen();
-    int w = line_width(txt(t), 1), x = (SCREEN_W - w) / 2, y = 58;
-    shade(0, y - 8, SCREEN_W, 28, 0);
-    shade(0, y - 8, SCREEN_W, 28, 0);
-    fill(0, y - 9, SCREEN_W, 1, C_BORDER);
-    fill(0, y + 20, SCREEN_W, 1, C_BORDER);
-    fill(x - 34, y + 6, 24, 1, C_BORDER);
-    fill(x + w + 10, y + 6, 24, 1, C_BORDER);
+    int w = disp_width(t), x = (SCREEN_W - w) / 2, cy = 66;
+    shade(0, cy - 14, SCREEN_W, 28, 0);
+    shade(0, cy - 14, SCREEN_W, 28, 0);
+    fill(0, cy - 15, SCREEN_W, 1, C_BORDER);
+    fill(0, cy + 14, SCREEN_W, 1, C_BORDER);
+    fill(x - 34, cy, 24, 1, C_BORDER);
+    fill(x + w + 10, cy, 24, 1, C_BORDER);
     plat_sfx(SFX_GET);
-    type_text(x, y, t, C_GOLD);
+    for (int v = 0; v < w + 6; v += 6) {   /* wipe the name in from the left */
+        draw_disp_part(t, SCREEN_W / 2, cy, v);
+        frame();
+        if (keys_new & (KEY_A | KEY_B)) break;
+    }
+    draw_disp(t, SCREEN_W / 2, cy);
     plat_debug_event("place", 0);
     for (int i = 0; i < 100; i++) {
         frame();
@@ -548,14 +579,10 @@ static void place_caption(int t)
 static void chapter_card(int t, int card)
 {
     fade_out();
-    int h = LINE_H;
-    for (const u16 *s = txt(t); *s != TXT_END; s++)
-        if (*s == TXT_NL) h += LINE_H;
-    int ty = 76 - h / 2;
+    int h = disp_height(t);
     if (card != NONE) {
         /* illustrated card: the picture stays visible, the title sits on a dark band near the bottom */
         int y0 = 138 - h - 8, y1 = 140;
-        ty = y0 + 6;
         plat_copy32(fb, scene_img[card], SCREEN_W * SCREEN_H / 2);
         mark(0, SCREEN_H);
         shade(0, y0, SCREEN_W, SCREEN_H - y0, 0);
@@ -563,12 +590,13 @@ static void chapter_card(int t, int card)
         fill(0, y0 - 3, SCREEN_W, 1, C_RED);
         fill(0, y0 - 1, SCREEN_W, 1, C_BORDER);
         fill(0, y1, SCREEN_W, 1, C_BORDER);
+        draw_disp(t, SCREEN_W / 2, y0 + 4 + h / 2);
     } else {
         fill(0, 0, SCREEN_W, SCREEN_H, 0);
         fill(40, 76 - h / 2 - 8, 160, 1, C_BORDER);
         fill(40, 76 + h / 2 + 8, 160, 1, C_BORDER);
+        draw_disp(t, SCREEN_W / 2, 76);
     }
-    draw_text_ex(SCREEN_W / 2, ty, t, C_GOLD, 1, 1);
     draw_text_ex(SCREEN_W / 2, 145, UI_SAVED, C_GREY, 1, 1);
     fade_in();
     plat_debug_event("chapter", 0);
@@ -646,6 +674,9 @@ static int choose(int spk, int q, const u16 *texts, int n, u32 greyed, int extra
         } else if (keys_new & KEY_A) {
             plat_sfx(SFX_OK);
             return sel;
+        } else if ((keys_new & KEY_B) && extra == UI_BACK) {
+            plat_sfx(SFX_MOVE);   /* B = "돌아간다" in sub-menus */
+            return n;
         } else if (keys_new & KEY_START) {
             record(0, NONE);
         }
@@ -906,7 +937,7 @@ static void banner(int kind)
             fill(gx + 10, gy, 6, 20, C_WHITE);
             fill(gx + 10, gy + 24, 6, 6, C_WHITE);
         }
-        draw_text_ex(off + SCREEN_W / 2 + 12, 66, t, C_WHITE, 2, 1);
+        draw_disp(t, off + SCREEN_W / 2 + 14, 80);
         if (f == 12) {
             plat_debug_event("banner", kind);
             shake(6, 2);
@@ -1084,13 +1115,13 @@ static void ending(int kind, int t)
         static const u16 labels[5] = {0, UI_TRUE_END, UI_GOOD_END, UI_BEST_END, UI_NORMAL_END};
         u16 c = kind == 3 ? RGB(31, 31, 20) : C_GOLD;
         for (int i = 0; i < 60 + kind * 30; i++) px((i * 97) % SCREEN_W, (i * 53) % 90, c);
-        draw_text_ex(SCREEN_W / 2, 30, labels[kind <= 4 ? kind : 1], c, 2, 1);
-        draw_text_ex(SCREEN_W / 2, 74, t, C_WHITE, 1, 1);
+        draw_disp(labels[kind <= 4 ? kind : 1], SCREEN_W / 2, 44);
+        draw_disp(t, SCREEN_W / 2, 84);
         draw_text_ex(SCREEN_W / 2, 112, UI_THANKS, C_GOLD, 1, 1);
     } else {
         fill(0, 26, SCREEN_W, 34, RGB(10, 0, 2));
-        draw_text_ex(SCREEN_W / 2, 30, UI_BAD_END, C_RED, 2, 1);
-        draw_text_ex(SCREEN_W / 2, 74, t, C_WHITE, 1, 1);
+        draw_disp(UI_BAD_END, SCREEN_W / 2, 43);
+        draw_disp(t, SCREEN_W / 2, 84);
     }
     draw_text_ex(SCREEN_W / 2, 140, UI_PRESS_A, C_GREY, 1, 1);
     fade_in();
@@ -1336,8 +1367,8 @@ static int title_screen(int has_save)
     cur_portrait = NONE;
     draw_scene();
     shade(0, 22, SCREEN_W, 58, 0);
-    draw_text_ex(SCREEN_W / 2, 26, UI_TITLE_SERIES, C_WHITE, 1, 1);
-    draw_text_ex(SCREEN_W / 2, 41, UI_TITLE_MAIN, C_GOLD, 2, 1);
+    draw_disp(UI_TITLE_SERIES, SCREEN_W / 2, 33);
+    draw_disp(UI_TITLE_MAIN, SCREEN_W / 2, 58);
     shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
     shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
     frame_rect(SCREEN_W / 2 - 56, 86, 112, 34, C_BORDER);
