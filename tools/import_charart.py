@@ -180,6 +180,9 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     for fn in sorted(os.listdir(src)):
         stem, ext = os.path.splitext(fn)
+        base_name, _, expr = stem.rpartition("_")
+        if stem not in NAMES and base_name in NAMES and expr.isascii() and expr.isalpha():
+            NAMES[stem] = NAMES[base_name] + "_" + expr   # 김전일_serious -> kin_serious
         if ext.lower() not in (".png", ".jpg", ".jpeg", ".webp") or stem not in NAMES:
             if ext.lower() in (".png", ".jpg", ".jpeg", ".webp"):
                 print(f"skip {fn} (unknown name)")
