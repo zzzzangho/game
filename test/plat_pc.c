@@ -184,7 +184,8 @@ void plat_debug_event(const char *what, int value)
         printf("EVENT timeout\n");
     }
     if (!strcmp(what, "mash") || !strcmp(what, "contradiction")) printf("EVENT %s %d\n", what, value);
-    if (!strcmp(what, "true_end") || !strcmp(what, "bad_end") || !strcmp(what, "chapter") ||
+    if (!strcmp(what, "true_end") || !strcmp(what, "bad_end") || !strcmp(what, "good_end") ||
+        !strcmp(what, "best_end") || !strcmp(what, "chapter") ||
         !strcmp(what, "invest"))
         printf("EVENT %s %d\n", what, value);
     /* menus/records report every frame; only snapshot when something changed */

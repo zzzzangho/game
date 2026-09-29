@@ -26,7 +26,7 @@ OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PR
            ACCUSE=10, GOTO=11, ENDING=12, LIVES=13, GAMEOVER=14, MEET=15, WAIT=16, SHOUT=17,
            PROFILE=18, MENU=19, SET=20, IF=21, PENALTY=22, BANNER=23, VIDEO=24, TIMER=25, MASH=26,
            TESTIMONY=27)
-BLOCKS = ("investigate", "ask", "accuse", "menu", "video", "testimony")
+BLOCKS = ("investigate", "ask", "accuse", "choice", "menu", "video", "testimony")
 MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
 FX = dict(flash=0, shock=1, shake=2, red=3)
@@ -65,6 +65,8 @@ UI_STRINGS = [
     ("UI_WRONG", "틀렸다...!"),
     ("UI_BAD_END", "BAD END"),
     ("UI_TRUE_END", "TRUE END"),
+    ("UI_GOOD_END", "GOOD END"),
+    ("UI_BEST_END", "BEST END"),
     ("UI_PRESS_A", "A 버튼을 누르세요"),
     ("UI_THANKS", "플레이해 주셔서 감사합니다!"),
     ("UI_SAVED", "저장했습니다"),
@@ -388,8 +390,11 @@ class Compiler:
             spk, por = self.speaker_portrait(a[0])
             self.emit(OPS["SHOUT"], spk, self.text(a[1]), por)
         elif cmd == "ending":
-            self.need_args(a, 2, "@ending bad|true \"title\"")
-            self.emit(OPS["ENDING"], 1 if a[0] == "true" else 0, self.wrapped(a[1], TEXT_W, 2, "ending title"))
+            self.need_args(a, 2, "@ending bad|true|good|best \"title\"")
+            kinds = dict(bad=0, true=1, good=2, best=3)
+            if a[0] not in kinds:
+                self.err(f"unknown ending kind {a[0]!r}")
+            self.emit(OPS["ENDING"], kinds[a[0]], self.wrapped(a[1], TEXT_W, 2, "ending title"))
         elif cmd == "present":
             self.need_args(a, 4, "@present SPEAKER \"question\" EVIDENCE WRONG_LABEL")
             if self.font.width(a[1]) > HEADER_W:

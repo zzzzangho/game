@@ -1019,9 +1019,11 @@ static void ending(int kind, int t)
 {
     fade_out();
     fill(0, 0, SCREEN_W, SCREEN_H, 0);
-    if (kind) {
-        for (int i = 0; i < 60; i++) px((i * 97) % SCREEN_W, (i * 53) % 90, C_GOLD);
-        draw_text_ex(SCREEN_W / 2, 30, UI_TRUE_END, C_GOLD, 2, 1);
+    if (kind) { /* 1 = TRUE END, 2 = GOOD END, 3 = BEST END */
+        static const u16 labels[4] = {0, UI_TRUE_END, UI_GOOD_END, UI_BEST_END};
+        u16 c = kind == 3 ? RGB(31, 31, 20) : C_GOLD;
+        for (int i = 0; i < 60 + kind * 30; i++) px((i * 97) % SCREEN_W, (i * 53) % 90, c);
+        draw_text_ex(SCREEN_W / 2, 30, labels[kind & 3], c, 2, 1);
         draw_text_ex(SCREEN_W / 2, 74, t, C_WHITE, 1, 1);
         draw_text_ex(SCREEN_W / 2, 112, UI_THANKS, C_GOLD, 1, 1);
     } else {
@@ -1031,7 +1033,8 @@ static void ending(int kind, int t)
     }
     draw_text_ex(SCREEN_W / 2, 140, UI_PRESS_A, C_GREY, 1, 1);
     fade_in();
-    plat_debug_event(kind ? "true_end" : "bad_end", t);
+    static const char *const events[4] = {"bad_end", "true_end", "good_end", "best_end"};
+    plat_debug_event(events[kind & 3], t);
     wait_a(40);
     fade_out();
 }
