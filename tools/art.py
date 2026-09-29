@@ -1288,11 +1288,11 @@ def ace_sprite(img, w, h, crop=1.0):
     for y in range(th):
         for x in range(tw):
             c = cp[x, y]
-            if c < 128:
+            if c < 56:
                 continue
             f = 255 / c
             col = [min(255, int(v * f)) for v in pp[x, y]]
-            op[x, y] = tuple(col) + (255,)
+            op[x, y] = tuple(col) + (255 if c >= 200 else 128,)  # 128 = soft edge, blended 50% in game
     canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     canvas.paste(out, ((w - tw) // 2, h - th))
     return canvas
@@ -1380,7 +1380,24 @@ def thumb_image(key):
 
 
 def render_portrait(key):
-    return to15(portrait_image(key), dither=False)
+    """Portrait pixels: 0xFFFF transparent, bit 15 set = soft edge pixel drawn at 50% over the
+    scene (anti-aliased outline on hardware with only on/off transparency), else opaque."""
+    img = portrait_image(key)
+    px = img.load()
+    out = []
+    for y in range(img.height):
+        for x in range(img.width):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                out.append(0xFFFF)
+                continue
+            c = (b >> 3) << 10 | (g >> 3) << 5 | (r >> 3)
+            if a < 255:
+                c |= 0x8000
+                if c == 0xFFFF:
+                    c = 0xFFFE
+            out.append(c)
+    return out
 
 
 def render_thumb(key):

@@ -358,8 +358,10 @@ FAST static void anim_apply(int t, int *y0, int *y1)
         for (int i = 0; i < len; i++) {
             int pxi = x + i - px0;
             u16 c = d[i];
-            if (prow && (unsigned)pxi < PORTRAIT_W && prow[pxi] != TRANSPARENT && !(portrait_dither && ((x + i) ^ y) & 1))
-                c = prow[pxi];
+            if (prow && (unsigned)pxi < PORTRAIT_W && prow[pxi] != TRANSPARENT && !(portrait_dither && ((x + i) ^ y) & 1)) {
+                u16 p = prow[pxi];
+                c = (p & 0x8000) ? (u16)(((c >> 1) & 0x3DEF) + ((p >> 1) & 0x3DEF)) : p; /* soft edge: 50% */
+            }
             dst[i] = c;
         }
         d += len;
@@ -377,7 +379,9 @@ FAST static void blit_portrait_rows(int y0, int y1)
         u16 *dst = fb + j * SCREEN_W;
         for (int i = 0; i < PORTRAIT_W; i++) {
             int x = x0 + i;
-            if (row[i] != TRANSPARENT && (unsigned)x < SCREEN_W && !(portrait_dither && ((x ^ j) & 1))) dst[x] = row[i];
+            u16 p = row[i];
+            if (p == TRANSPARENT || (unsigned)x >= SCREEN_W || (portrait_dither && ((x ^ j) & 1))) continue;
+            dst[x] = (p & 0x8000) ? (u16)(((dst[x] >> 1) & 0x3DEF) + ((p >> 1) & 0x3DEF)) : p; /* soft edge: 50% */
         }
     }
     mark(y0, y1);
