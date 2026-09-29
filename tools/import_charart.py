@@ -23,6 +23,8 @@ NAMES = {
     "야마가미": "yamagami", "유미": "yumi", "사콘지": "sakonji", "유라마": "yurama",
     "사쿠라바": "sakuraba", "사쿠라바_무대분장": "sakuraba_stage", "타카토": "takato",
     "사토미": "satomi", "나가사키": "nagasaki", "트네 마리오": "mario",
+    "젠틀 야마가미": "yamagami", "지배인 코지로": "nagasaki", "치카미야 레이코": "reiko", "트네": "mario",
+    "켄모치_놀람": "kenmochi_surprised", "타카토_걱정": "takato_worried",
 }
 
 
@@ -64,7 +66,12 @@ def main():
             if ext.lower() in (".png", ".jpg", ".jpeg", ".webp"):
                 print(f"skip {fn} (unknown name)")
             continue
-        img = cut_out(Image.open(os.path.join(src, fn)))
+        img = Image.open(os.path.join(src, fn))
+        if img.mode in ("RGBA", "LA") and img.getextrema()[-1][0] < 255:  # already transparent
+            img = img.convert("RGBA")
+            img = img.crop(img.getchannel("A").getbbox())
+        else:
+            img = cut_out(img)
         # keep it reasonably small; art.py fits it into the 128x144 bust area
         img.thumbnail((512, 640), Image.LANCZOS)
         img.save(os.path.join(OUT, NAMES[stem] + ".png"))

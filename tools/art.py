@@ -1233,6 +1233,10 @@ def ace_sprite(img, w, h, crop=0.72):
     bb = img.getchannel("A").getbbox()
     img = img.crop(bb) if bb else img
     img = img.crop((0, 0, img.width, max(1, int(img.height * crop))))
+    max_w = int(img.height * w / h * 1.1)  # wide art (capes, props): trim the sides to keep the bust big
+    if img.width > max_w:
+        x0 = (img.width - max_w) // 2
+        img = img.crop((x0, 0, x0 + max_w, img.height))
     sc = min(w / img.width, h / img.height)
     tw, th = max(1, round(img.width * sc)), max(1, round(img.height * sc))
     K = 4

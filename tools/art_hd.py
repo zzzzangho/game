@@ -1497,9 +1497,56 @@ def scene_swamp():
     return c.finish()
 
 
+def scene_darkroom():
+    """Prologue: a dark room, a spotlight on an old trunk, a twisted marionette hanging from
+    the control bar held by a gloved hand, and a single red rose."""
+    rng = random.Random(77)
+    c = Canvas(240, 160)
+    c.vgrad(0, 0, 240, 160, [(0, (6, 4, 10)), (1, (2, 2, 4))])
+    # spotlight cone
+    lay, d = c.layer()
+    d.polygon(c.pts([(104, 0), (136, 0), (196, 132), (44, 132)]), fill=(255, 236, 190, 38))
+    c.put(lay, blur=6)
+    c.glow(120, 128, 70, (90, 60, 30), 0.6)
+    # floor and trunk
+    c.rect(0, 128, 240, 160, (14, 10, 10))
+    c.ell(40, 122, 200, 142, (40, 28, 22))
+    c.rect(70, 104, 170, 134, (74, 44, 26), (20, 12, 8))
+    c.rect(70, 104, 170, 110, (96, 60, 34), (20, 12, 8))
+    for x in (78, 160):
+        c.rect(x, 104, x + 3, 134, (170, 130, 60))
+    c.rect(116, 112, 124, 120, (190, 150, 70), (40, 28, 12))
+    # control bar and gloved hand
+    c.rect(96, 18, 146, 22, (120, 80, 46), (30, 18, 10))
+    c.rect(119, 10, 123, 30, (120, 80, 46), (30, 18, 10))
+    c.ell(112, 4, 132, 20, (236, 236, 240), (40, 40, 50))
+    for i in range(4):
+        c.ell(113 + i * 4.5, 14, 118 + i * 4.5, 24, (236, 236, 240), (40, 40, 50), 0.6)
+    c.poly([(116, 0), (128, 0), (130, 8), (114, 8)], (20, 16, 26))
+    # strings down to the twisted puppet
+    for sx, ex, ey in ((96, 104, 66), (146, 136, 64), (100, 110, 90), (142, 132, 92), (121, 120, 48)):
+        c.line([(sx, 21), (ex, ey)], (200, 200, 210), 0.35)
+    marionette(c, 120, 46, k=1.35, twisted=True)
+    # a red wash over the puppet and deep shadow around it
+    lay, d = c.layer()
+    d.rectangle(c.pts([(0, 0), (240, 160)])[0] + c.pts([(240, 160)])[0], fill=(120, 0, 10, 46))
+    c.put(lay)
+    # the rose on the trunk lid
+    c.line([(140, 103), (152, 99)], (40, 90, 30), 0.8)
+    c.ell(136, 99, 144, 106, (200, 16, 30), (80, 0, 10), 0.5)
+    c.ell(138, 100, 142, 104, (240, 60, 70))
+    # dust in the light
+    for _ in range(40):
+        x, y = rng.uniform(70, 170), rng.uniform(10, 128)
+        c.rect(x, y, x + 0.5, y + 0.5, (255, 240, 200))
+    c.glow(140, 102, 10, (200, 20, 30), 0.5)
+    c.vignette(0.85)
+    return c.finish()
+
+
 LOCATIONS = {
     "title": title_bg, "platform": scene_platform, "corridor": scene_corridor, "stage": scene_stage,
     "dining": scene_dining, "snowfield": scene_snowfield, "cabin_roses": scene_cabin_roses,
     "cabin_empty": scene_cabin_empty, "hotel": scene_hotel, "theater": scene_theater, "swamp": scene_swamp,
-    "police": scene_police, "hotel_room": scene_hotel_room,
+    "police": scene_police, "hotel_room": scene_hotel_room, "darkroom": scene_darkroom,
 }
