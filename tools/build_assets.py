@@ -71,8 +71,11 @@ UI_STRINGS = [
     ("UI_INVEST_Q", "어디를 조사할까?"),
     ("UI_INVEST_DONE", "조사를 마친다"),
     ("UI_BACK", "돌아간다"),
-    ("UI_BANNER_INVEST", "조사 개시!"),
-    ("UI_BANNER_DEDUCE", "추리 개시!"),
+    ("UI_SLAM_INVEST", "조사"),
+    ("UI_SLAM_DEDUCE", "추리"),
+    ("UI_SLAM_CROSS", "추궁"),
+    ("UI_SLAM_START", "개시!"),
+    ("UI_SLAM_DONE", "성공!"),
     ("UI_VIDEO_HINT", "←→ 넘기기  A 여기다!  B 그만"),
     ("UI_TESTI_HINT", "◀▶ 넘기기  A 추궁  R 증거 제시"),
     ("UI_PRESS_SHOUT", "잠깐!"),
@@ -547,9 +550,10 @@ class Compiler:
             self.emit(OPS["MASH"], self.wrapped(a[0], TEXT_W, TEXT_LINES, "mash prompt"), int(a[1]))
             self.label_ref(a[2])
         elif cmd == "banner":
-            if not a or a[0] not in ("invest", "deduce"):
-                self.err("@banner invest|deduce")
-            self.emit(OPS["BANNER"], 0 if a[0] == "invest" else 1)
+            kinds = ("invest", "deduce", "cross", "cross_done")
+            if not a or a[0] not in kinds:
+                self.err("@banner invest|deduce|cross|cross_done")
+            self.emit(OPS["BANNER"], kinds.index(a[0]))
         elif cmd in BLOCKS:
             pass  # handled as a block
         else:
@@ -709,8 +713,8 @@ def build(story_path, font_path, out_dir):
     with open(story_path, encoding="utf-8") as f:
         comp.compile(f.read())
     ui_ids = [(k, comp.text(v)) for k, v in UI_STRINGS]
-    ui_style = dict(UI_TITLE_MAIN="logo_img", UI_TITLE_SERIES="logo_sub", UI_BANNER_INVEST="banner",
-                    UI_BANNER_DEDUCE="banner", UI_PRESS_SHOUT="shout", UI_OBJECTION="shout", UI_BAD_END="bad_label",
+    ui_style = dict(UI_TITLE_MAIN="logo_img", UI_TITLE_SERIES="logo_sub", UI_SLAM_INVEST="slam",
+                    UI_SLAM_DEDUCE="slam", UI_SLAM_CROSS="slam", UI_SLAM_START="slam", UI_SLAM_DONE="slam", UI_PRESS_SHOUT="shout", UI_OBJECTION="shout", UI_BAD_END="bad_label",
                     UI_TRUE_END="end_label", UI_GOOD_END="end_label", UI_BEST_END="end_label",
                     UI_NORMAL_END="end_label", UI_WRONG="banner",
                     # small key hints in Galmuri9
@@ -804,8 +808,6 @@ def build(story_path, font_path, out_dir):
             im = render_bdf(name_font, comp.texts[tid])
         elif style == "logo_img":
             im = logo.render()
-        elif style == "banner":
-            im = display_font.render_banner("deduce" if "추리" in comp.texts[tid] else "invest")
         elif style == "hint":
             im = render_bdf(name_font, comp.texts[tid], colour=(176, 176, 196))
         else:

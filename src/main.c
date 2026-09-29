@@ -1465,36 +1465,29 @@ static int option_menu(int id, int spk, int q, int exit_text, u64 need, int n, c
     }
 }
 
+/* "조사 개시!" / "추리 개시!" / "추궁 개시!" / "추궁 성공!": the screen darkens and the two words
+ * slam in one after the other, each with a boom and a jolt. */
 static void banner(int kind)
 {
-    int t = kind ? UI_BANNER_DEDUCE : UI_BANNER_INVEST;
+    static const u16 first[4] = {UI_SLAM_INVEST, UI_SLAM_DEDUCE, UI_SLAM_CROSS, UI_SLAM_CROSS};
+    int a = first[kind], b = kind == 3 ? UI_SLAM_DONE : UI_SLAM_START;
+    int wa = disp_width(a), wb = disp_width(b), gap = 6, x = SCREEN_W / 2 - (wa + gap + wb) / 2, cy = 72;
     save_screen();
-    plat_sfx(kind ? SFX_OBJECTION : SFX_GET);
-    /* darken the screen once and keep the dark band the card slides through; a step then
-     * only copies that band back and draws the card, so it fits in a frame (no stutter or
-     * tearing on hardware), and nothing is redrawn while the card stands still */
-    int h = disp_height(t), y0 = 80 - h / 2 - 2, y1 = 80 + h / 2 + 2;
-    if (y0 > 48) y0 = 48;
-    if (y1 < 112) y1 = 112;
     shade(0, 0, SCREEN_W, SCREEN_H, 0);
-    int n = (y1 - y0) * SCREEN_W / 2;
-    plat_copy32(scratch, fb + y0 * SCREEN_W, n);
-    for (int f = 0, last = -1; f < 90; f++) {
-        int off = f < 10 ? (10 - f) * 24 : f > 80 ? -(f - 80) * 24 : 0;
-        int state = (f >= 10 && f < 12) ? 1000 : off; /* what is on screen this frame */
-        if (state != last) {
-            plat_copy32(fb + y0 * SCREEN_W, scratch, n);
-            if (state == 1000) fill(0, 48, SCREEN_W, 64, C_WHITE); /* impact flash */
-            else draw_disp(t, off + SCREEN_W / 2, 80);
-            mark(y0, y1);
-            last = state;
-        }
-        if (f == 12) {
-            plat_debug_event("banner", kind);
-            shake(6, 2);
-        }
+    shade(0, 0, SCREEN_W, SCREEN_H, 0);
+    frame();
+    wait_frames(4);
+    plat_sfx(SFX_SHOCK);
+    draw_disp(a, x + wa / 2, cy);
+    shake(10, 5);
+    wait_frames(6);
+    plat_sfx(kind == 3 ? SFX_OBJECTION : SFX_SHOCK);
+    draw_disp(b, x + wa + gap + wb / 2, cy);
+    plat_debug_event("banner", kind);
+    shake(14, 6);
+    for (int f = 0; f < 50; f++) {
         frame();
-        if (f > 20 && f < 80 && (keys_new & KEY_A)) f = 80;
+        if (f > 8 && (keys_new & KEY_A)) break;
     }
     restore_screen();
     frame();

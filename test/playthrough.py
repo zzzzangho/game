@@ -17,7 +17,7 @@ GEN_H = os.path.join(HERE, "..", "build", "gen_data.h")
 # route tokens: int = menu index, "id" = evidence to present, ("T", s, "id") = present on testimony
 # statement s, ("P", s) = press statement s, "TIMEOUT" = let the timer run out
 CH1_DEDUCE = [1, "rosesalad"]        # the bomber is on the train (rose salad)
-CROSS1 = [("P", 1), ("T", 1, "satomitalk")]
+CROSS1 = [2, ("P", 2), ("T", 2, "satomitalk")]  # press Sakonji, then his statement 2
 CH1 = CH1_DEDUCE + CROSS1
 # @choice entries: lobby (0 = eavesdrop, 1 = walk past) then spot (0 = by the pillar, 1 = behind the sofa),
 # swamp (0 = chase alone, 1 = wake Kenmochi), Yumi (0 = guard, 1 = press, 2 = let go),
@@ -27,7 +27,7 @@ CH2 = [0, 1] + CH2_DEDUCE + ["rope", 0]  # overhear from the sofa, clear Nagasak
 CH3_DEDUCE = [2, "video", 0, "toilet", 1, "bombnote"]
 CH3 = CH3_DEDUCE + [2, "rope"]         # let Yumi go, calm Sakuraba with the rope trick
 CH3_B = CH3_DEDUCE + [0, "secret", "rope"]  # guard Yumi (Kenmochi convinced by the overheard talk)
-CROSS_F = [("P", 1), ("T", 3, "jadebelow")]
+CROSS_F = [("P", 2), ("T", 4, "jadebelow")]
 FIN_HEAD = [4, "jadebelow", 2] + CROSS_F
 FIN_TAIL = ["receipt", "mailvideo", "bagcheck", 1, "smoke"]  # ... motive, then stop the smoke escape
 FINAL_TRUE = FIN_HEAD + ["weights"] + FIN_TAIL + ["nails", 0]  # no proof against Sakonji, leave the notebook
@@ -110,10 +110,16 @@ def main():
                          and "true_end" not in out, out[-500:] + err))
 
     # cross-examination: a wrong presentation costs a heart, then the contradiction clears it
-    route = CH1_DEDUCE + [("T", 0, "joker"), ("T", 1, "satomitalk")] + CH2 + CH3 + FINAL_TRUE
+    route = CH1_DEDUCE + [2, ("T", 0, "joker"), ("T", 2, "satomitalk")] + CH2 + CH3 + FINAL_TRUE
     code, out, err = run(args.exe, route, ids)
     results.append(check("cross-examination: wrong evidence then contradiction",
                          code == 0 and "EVENT true_end" in out and out.count("EVENT contradiction") == 2,
+                         out[-500:] + err))
+
+    # picking the wrong witness to press costs a heart and asks again
+    route = CH1_DEDUCE + [0, 1, 3] + CROSS1 + CH2 + CH3 + FINAL_TRUE
+    code, out, err = run(args.exe, route, ids)
+    results.append(check("wrong witnesses before pressing Sakonji", code == 0 and "EVENT true_end" in out,
                          out[-500:] + err))
 
     # letting the timers run out in the finale costs hearts but the case can still be won
