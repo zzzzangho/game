@@ -32,7 +32,7 @@ LIST_W = 150          # court record list width
 OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PRESENT=9,
            ACCUSE=10, GOTO=11, ENDING=12, LIVES=13, GAMEOVER=14, MEET=15, WAIT=16, SHOUT=17,
            PROFILE=18, MENU=19, SET=20, IF=21, PENALTY=22, BANNER=23, VIDEO=24, TIMER=25, MASH=26,
-           TESTIMONY=27, PRESENT_CHOICE=28, PLACE=29)
+           TESTIMONY=27, PRESENT_CHOICE=28, PLACE=29, INTRO=30)
 BLOCKS = ("investigate", "ask", "accuse", "choice", "menu", "video", "testimony")
 MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
@@ -506,6 +506,10 @@ class Compiler:
                       self.ev(a[2]))
             self.label_ref(a[3])
             self.label_ref(a[4])
+        elif cmd == "intro":  # character introduction card: epithet over a big name, like the anime captions
+            self.need_args(a, 3, "@intro SPEAKER \"epithet\" \"name\"")
+            spk, por = self.speaker_portrait(a[0])
+            self.emit(OPS["INTRO"], spk, por, self.disp(self.text(a[1]), "intro_epi"), self.disp(self.text(a[2]), "intro_name"))
         elif cmd == "set":
             self.need_args(a, 1, "@set FLAG")
             self.emit(OPS["SET"], self.flag(a[0]))

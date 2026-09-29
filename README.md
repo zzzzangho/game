@@ -136,6 +136,7 @@ assets/fonts/           갈무리11·9 (BDF, 대사·이름표), Black Han Sans 
 @get ID                     증거물 입수 (팝업)
 
 @chapter "제목\n부제" [카드배경]   챕터 카드(일러스트 위에 제목 띠) + 자동 저장
+@intro 이름 "수식어" "이름 표기"   인물 소개 캡션(애니메이션식 등장 자막) + 인물 파일 등록
 @scene 배경키               배경 전환 (위 표의 배경 이름, 또는 black)
 @cut cut_키                  명장면 컷 (assets/cuts의 애니 캡처, 번쩍 효과, 초상화 없이 표시)
 @fx flash|shock|shake|red   화면 효과

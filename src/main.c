@@ -584,6 +584,35 @@ static void place_caption(int t)
     frame();
 }
 
+/* Character introduction card (the anime's name captions): the character's portrait, then a band
+ * slides in with the epithet above the name. */
+static void intro_card(int spk, int portrait, int epi, int name)
+{
+    cur_portrait = portrait;
+    draw_scene();
+    save_screen();
+    plat_sfx(SFX_GET);
+    for (int f = 0; f <= 14; f++) {
+        int off = (14 - f) * 18;
+        restore_screen();
+        shade(0, 104, SCREEN_W, 50, 0);
+        shade(0, 104, SCREEN_W, 50, 0);
+        fill(0, 103, SCREEN_W, 1, C_BORDER);
+        fill(0, 154, SCREEN_W, 1, C_BORDER);
+        draw_disp(epi, SCREEN_W / 2 + off, 115);
+        draw_disp(name, SCREEN_W / 2 - off, 138);
+        frame();
+    }
+    plat_debug_event("intro", spk);
+    for (int i = 0; i < 150; i++) {
+        frame();
+        if (i > 16 && (keys_new & (KEY_A | KEY_START))) break;
+    }
+    if (spk != NONE && !(prof_flags & (1u << spk))) meet(spk, UI_MEET);
+    draw_scene();
+    frame();
+}
+
 /* Chapter-change eyecatch: Kindaichi's glowing silhouette spins, then lands with "du-dun!".
  * The spin is done by the display hardware (BG2 affine horizontal scale), so it is smooth at 60fps. */
 static void eyecatch(void)
@@ -1365,6 +1394,10 @@ static int run_inner(u16 pc)
             do_shout(spk, t, por);
             break;
         }
+        case OP_INTRO:
+            intro_card(S[pc], S[pc + 1], S[pc + 2], S[pc + 3]);
+            pc += 4;
+            break;
         case OP_PLACE:
             cur_place = S[pc];
             place_caption(S[pc++]);
