@@ -584,40 +584,29 @@ static void place_caption(int t)
     frame();
 }
 
-/* Chapter-change eyecatch: Kindaichi's glowing silhouette spins once, then lands with "du-dun!". */
+/* Chapter-change eyecatch: Kindaichi's glowing silhouette spins, then lands with "du-dun!".
+ * The spin is done by the display hardware (BG2 affine horizontal scale), so it is smooth at 60fps. */
 static void eyecatch(void)
 {
 #if HAVE_EYECATCH
-    /* cos(2*pi*i/64) * 256 */
-    static const s16 cos64[64] = {
-        256, 255, 251, 245, 237, 226, 213, 198, 181, 162, 142, 121, 98, 74, 50, 25,
-        0, -25, -50, -74, -98, -121, -142, -162, -181, -198, -213, -226, -237, -245, -251, -255,
-        -256, -255, -251, -245, -237, -226, -213, -198, -181, -162, -142, -121, -98, -74, -50, -25,
-        0, 25, 50, 74, 98, 121, 142, 162, 181, 198, 213, 226, 237, 245, 251, 255};
+    static const s16 cosq[65] = {256, 256, 256, 255, 255, 254, 253, 252, 251, 250, 248, 247, 245, 243, 241, 239, 237, 234, 231, 229, 226, 223, 220, 216, 213, 209, 206, 202, 198, 194, 190, 185, 181, 177, 172, 167, 162, 157, 152, 147, 142, 137, 132, 126, 121, 115, 109, 104, 98, 92, 86, 80, 74, 68, 62, 56, 50, 44, 38, 31, 25, 19, 13, 6, 0}; /* cos over a quarter turn, 1/256 turn steps, x256 */
     fade_out();
-    fill(0, 0, SCREEN_W, SCREEN_H, 0);
+    plat_copy32(fb, eyecatch_img, SCREEN_W * SCREEN_H / 2);
+    mark(0, SCREEN_H);
+    plat_hscale(32767);   /* edge-on: nothing visible yet */
     frame();
     plat_fade(0);
     plat_debug_event("eyecatch", 0);
-    for (int step = 16; step <= 64; step += 4) {  /* from edge-on, one full turn (mirrored on the back) */
-        int c = cos64[step & 63];
-        for (int x = 0; x < SCREEN_W; x++) {
-            int sx = -1;
-            if (c > 6 || c < -6) sx = SCREEN_W / 2 + (x - SCREEN_W / 2) * 256 / c;
-            u16 *dst = fb + x;
-            if ((unsigned)sx >= SCREEN_W) {
-                for (int y = 0; y < SCREEN_H; y++, dst += SCREEN_W) *dst = 0;
-            } else {
-                const u16 *src = eyecatch_img + sx;
-                for (int y = 0; y < SCREEN_H; y++, dst += SCREEN_W, src += SCREEN_W) *dst = *src;
-            }
-        }
-        mark(0, SCREEN_H);
+    for (int a = 64; a <= 256; a += 12) {  /* 1/4 turn (edge-on) .. full turn, 17 frames */
+        int q = a & 255, c;
+        if (q <= 64) c = cosq[q];
+        else if (q <= 128) c = -cosq[128 - q];
+        else if (q <= 192) c = -cosq[q - 128];
+        else c = cosq[256 - q];
+        plat_hscale(c > 1 || c < -1 ? 65536 / c : 32767);
         frame();
-        if (keys_new & (KEY_A | KEY_START)) break;
     }
-    plat_copy32(fb, eyecatch_img, SCREEN_W * SCREEN_H / 2);
-    mark(0, SCREEN_H);
+    plat_hscale(256);
     plat_sfx(SFX_DUN);          /* du- */
     wait_frames(7);
     plat_sfx(SFX_DUN);          /* -dun! */

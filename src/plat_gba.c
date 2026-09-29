@@ -97,6 +97,16 @@ void plat_fade(int level)
     }
 }
 
+void plat_hscale(int pa)
+{
+    /* texture x = BG2X + PA * screen x; keep screen column 120 on texture column 120 */
+    if (pa > 32767) pa = 32767;
+    if (pa < -32767) pa = -32767;
+    REG_BG2PA = (u16)pa;
+    REG_BG2X = (u32)(120 * 256 - 120 * pa);
+    REG_BG2Y = 0;
+}
+
 void plat_offset(int dx, int dy)
 {
     REG_BG2X = (u32)(dx << 8);
