@@ -127,7 +127,7 @@ def scene_berth():
                    tuple(int(v * shade) for v in (60, 70, 130)))
             # curtain edge
             cx = x_in + (6 if side < 0 else -6)
-            curtain(c, min(cx, x_in), top, max(cx, x_in) + 0.1, bot - 12, (150, 40, 50), folds=2)
+            curtain(c, min(cx, x_in), top, max(cx, x_in) + 0.1, bot - 12, (214, 176, 80), folds=2)
         # ladder
     for y in range(80, 136, 10):
         c.rect(172, y, 186, y + 1.5, (170, 150, 110))
@@ -655,7 +655,7 @@ def scene_magic_hall():
     rng = random.Random(217)
     c = Canvas(240, 160)
     c.vgrad(0, 0, 240, 160, [(0, (20, 8, 14)), (1, (50, 16, 20))])
-    curtain(c, 0, 0, 240, 112, (140, 20, 30), folds=14)
+    curtain(c, 0, 0, 240, 112, (150, 70, 170), folds=14)
     c.rect(0, 0, 240, 14, (170, 130, 50))
     for x in range(0, 240, 12):
         c.poly([(x, 14), (x + 12, 14), (x + 6, 22)], (170, 130, 50))

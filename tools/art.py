@@ -513,7 +513,11 @@ for _k, _f in list(art_hd.LOCATIONS.items()):
     if _k != "title":
         BUILTIN_SCENES[_k] = (lambda f=_f, k=_k: art_scenes2.polish(f(), seed=sum(map(ord, k))))
 BUILTIN_SCENES.update(art_scenes2.SCENES2)
-BUILTIN_SCENES["lobby_night"] = lambda: art_scenes2.scene_lobby_night(art_hd.scene_hotel)
+BUILTIN_SCENES["lobby_night"] = lambda: art_scenes2.scene_lobby_night(lambda: scene_image("hotel"))
+# locations normally taken from anime frames (tools/import_bg.py); drawn stand-ins otherwise
+BUILTIN_SCENES["hotel_hall"] = lambda: scene_image("lobby_night")
+BUILTIN_SCENES["bridge_up"] = lambda: scene_image("drawbridge")
+BUILTIN_SCENES["yumi_tree"] = lambda: scene_image("yumi_room")
 
 # Anime captures shown with @cut at key moments (assets/cuts/cut_*.png, made by tools/import_screenshots.py).
 # Without the capture, a drawn stand-in is used so the story still builds.

@@ -18,6 +18,7 @@ def lerp(a, b, t):
 
 
 ANIM = None  # (t, frames) while rendering animation frames, else None
+TRAIN_DAY = True  # train interiors look out on a sunny day (as in the anime)
 
 class Canvas:
     """Draw in final-pixel coordinates; the canvas is S times larger underneath."""
@@ -997,7 +998,27 @@ def floor_lines(c, back, colour, n=9):
         c.line([(fx, 160), (bx, y1)], colour, 0.5)
 
 
+def day_view(c, rng, x0, y0, x1, y1):
+    """Daytime view from the train (as in the anime): blue sky, clouds, green hills and fields."""
+    v = Canvas(max(1, int(x1 - x0)), max(1, int(y1 - y0)))
+    v.vgrad(0, 0, v.w, v.h, [(0, (90, 150, 220)), (0.6, (170, 206, 236)), (1, (200, 226, 240))])
+    for _ in range(max(1, v.w // 12)):
+        cx, cy = rng.uniform(0, v.w), rng.uniform(v.h * 0.05, v.h * 0.4)
+        for k in range(4):
+            v.ell(cx + k * 3 - 6, cy - 2 + (k % 2), cx + k * 3, cy + 3, (250, 252, 255))
+    mountains(v, rng, v.h * 0.62, v.h * 0.22, (110, 140, 170), (150, 180, 200), rng.uniform(0, 3))
+    mountains(v, rng, v.h * 0.78, v.h * 0.16, (70, 130, 70), (90, 150, 80), rng.uniform(0, 3))
+    v.rect(0, v.h * 0.8, v.w, v.h, (120, 170, 80))
+    for _ in range(v.w // 3):
+        x = rng.uniform(0, v.w)
+        v.line([(x, v.h), (x + rng.uniform(-1, 1), v.h * 0.84)], (90, 140, 60), 0.4)
+    c.img.paste(v.img, (c.p(x0), c.p(y0)))
+    c.d = ImageDraw.Draw(c.img)
+
+
 def night_view(c, rng, x0, y0, x1, y1, moonpos=None):
+    if TRAIN_DAY and getattr(c, "train", False):
+        return day_view(c, rng, x0, y0, x1, y1)
     v = Canvas(max(1, int(x1 - x0)), max(1, int(y1 - y0)))
     v.vgrad(0, 0, v.w, v.h, [(0, (10, 14, 40)), (1, (50, 58, 104))])
     stars(v, rng, v.w * v.h // 60, v.h * 0.6)
@@ -1093,6 +1114,7 @@ def scene_corridor():
     """Sleeper car corridor: night windows on the left, compartment doors on the right."""
     rng = random.Random(111)
     c = Canvas(240, 160)
+    c.train = True
     back = (150, 44, 186, 96)
     room(c, back, (200, 184, 160), (120, 36, 40), (226, 220, 206), left=(180, 164, 140), right=(196, 176, 150))
     c.rect(*back, (170, 150, 120))
@@ -1201,6 +1223,7 @@ def scene_dining():
     """Grand Chariot style dining car: white tablecloths, warm lamps, the night outside."""
     rng = random.Random(131)
     c = Canvas(240, 160)
+    c.train = True
     back = (100, 40, 152, 90)
     room(c, back, (150, 104, 70), (110, 30, 30), (200, 180, 140), left=(140, 94, 60), right=(140, 94, 60))
     c.rect(*back, (130, 86, 56))
@@ -1295,6 +1318,7 @@ def scene_snowfield():
 
 
 def compartment(c, rng):
+    c.train = True
     back = (70, 30, 170, 92)
     room(c, back, (190, 170, 140), (100, 40, 40), (216, 206, 186), left=(170, 150, 120), right=(180, 160, 130))
     # small window (only opens 10cm) on the back wall
