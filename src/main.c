@@ -343,7 +343,7 @@ static void draw_hearts(void)
 /* ---- looping background animation (snow, the view past the train windows) ----
  * anim_data holds per scene ANIM_FRAMES diffs; entry t turns frame t-1 into frame t. */
 static int anim_scene = NONE, anim_on, portrait_dx, portrait_dither;
-#define BREATH_SPLIT (BOX_Y - 14) /* rows above this (clear of the name tag and box) breathe */
+#define BREATH_SPLIT BOX_Y /* everything above the box breathes; the step hides under its border */
 static int breath_t;
 
 /* Writes diff t into the back buffer. Where the portrait covers a changed pixel, the
@@ -436,6 +436,9 @@ static void draw_scene(void)
 }
 
 /* Idle breathing: a 96-frame cycle, 0 -> 1 -> 2 -> 1 px, redrawing only the rows above the box. */
+static int box_spk = NONE;
+static void draw_name_tag(int spk);
+
 static void breathe_tick(void)
 {
     if (cur_portrait == NONE || cut_mode || !portrait_breathe[cur_portrait] || portrait_dx) return;
@@ -446,6 +449,7 @@ static void breathe_tick(void)
     plat_copy32(fb, scene_img[cur_scene], BREATH_SPLIT * SCREEN_W / 2);
     blit_portrait_rows(0, BREATH_SPLIT);
     draw_hearts();
+    draw_name_tag(box_spk);
     mark(0, BREATH_SPLIT);
 }
 
@@ -482,16 +486,22 @@ static void set_speaker_portrait(int spk)
     cur_portrait = (spk != NONE) ? char_portrait[spk] : NONE;
 }
 
-static void draw_box(int spk)
+static void draw_name_tag(int spk)
 {
-    shade(0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, C_BOX);
-    fill(0, BOX_Y, SCREEN_W, 1, C_BORDER);
     if (spk != NONE) {
         int w = disp_width(char_name[spk]) + 12;
         fill(4, BOX_Y - 13, w, 13, char_color[spk]);
         frame_rect(4, BOX_Y - 13, w, 13, C_BORDER);
         draw_disp(char_name[spk], 4 + w / 2, BOX_Y - 6);
     }
+}
+
+static void draw_box(int spk)
+{
+    shade(0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, C_BOX);
+    fill(0, BOX_Y, SCREEN_W, 1, C_BORDER);
+    box_spk = spk;
+    draw_name_tag(spk);
 }
 
 static void draw_arrow(int x, int y, u16 c)
