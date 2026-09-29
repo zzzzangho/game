@@ -787,7 +787,7 @@ def build(story_path, font_path, out_dir):
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
           "extern const u16 char_profile[];",
           "extern const u16 disp_of_text[];", "extern const u16 disp_data[];", "extern const u32 disp_ofs[];",
-          "extern const u16 disp_w[];", "extern const u16 disp_h[];", "extern const u16 eyecatch_img[];",
+          "extern const u16 disp_w[];", "extern const u16 disp_h[];", "extern const u8 disp_cuts[];", "extern const u16 eyecatch_img[];",
           f"#define HAVE_EYECATCH {1 if eyecatch.available() else 0}",
           "extern const u16 ev_name[];", "extern const u16 ev_desc[];", "extern const u16 ev_icon[];",
           "#endif"]
@@ -799,7 +799,7 @@ def build(story_path, font_path, out_dir):
     c.append(c_array("glyph_bits", "u16", glyph_bits, fmt="0x{:04X}"))
     c.append(c_array("glyph_adv", "u8", glyph_adv))
     # display-font images (titles, banners, shouts)
-    disp_of, disp_data, disp_ofs, disp_w, disp_h = [NONE] * len(comp.texts), [], [], [], []
+    disp_of, disp_data, disp_ofs, disp_w, disp_h, disp_cuts = [NONE] * len(comp.texts), [], [], [], [], []
     name_font = Font(os.path.join(os.path.dirname(font_path), "Galmuri9.bdf"))
     for n in comp.char_order:  # name tags use the small Galmuri9
         comp.disp(comp.text_index[n], "name")
@@ -817,6 +817,13 @@ def build(story_path, font_path, out_dir):
         disp_w.append(im.width)
         disp_h.append(im.height)
         disp_data.extend(art.to15(im, dither=False))
+        # shouts slam in word by word: the column where each word (but the last) ends
+        cuts = []
+        if style == "shout":
+            words, size = comp.texts[tid].split(" "), display_font.last_size
+            for k in range(1, len(words)):
+                cuts.append(min(im.width, display_font.render(" ".join(words[:k]), style, size).width))
+        disp_cuts.extend((cuts + [0, 0, 0])[:3])
     c.append(c_array("disp_of_text", "u16", disp_of))
     # chapter-change eyecatch (Kindaichi's glowing silhouette), if the source picture is present
     if eyecatch.available():
@@ -827,6 +834,7 @@ def build(story_path, font_path, out_dir):
     c.append(c_array("disp_ofs", "u32", disp_ofs or [0]))
     c.append(c_array("disp_w", "u16", disp_w or [0]))
     c.append(c_array("disp_h", "u16", disp_h or [0]))
+    c.append(c_array("disp_cuts", "u8", disp_cuts or [0]))
     for k in scene_keys:
         c.append(c_array(f"scene_{k}", "u16", art.render_scene(k), fmt="0x{:04X}"))
     c.append("const u16 *const scene_img[] = {" + ",".join(f"scene_{k}" for k in scene_keys) + "};")

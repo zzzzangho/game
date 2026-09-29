@@ -17,7 +17,7 @@ STYLES = {
     "logo_sub":  (13, 232, (255, 255, 255), (210, 214, 230), (10, 10, 24), 1, 0),
     "banner":    (28, 190, (255, 255, 255), (200, 214, 255), (10, 12, 30), 2, 0),
     "slam":      (40, 150, (255, 246, 176), (244, 120, 24), (44, 8, 4), 3, 0),
-    "shout":     (26, 232, (255, 70, 60), (190, 10, 24), (40, 0, 4), 2, 0),
+    "shout":     (34, 232, (255, 92, 70), (200, 10, 24), (44, 0, 4), 3, 0),
     "chapter":   (18, 228, (255, 236, 160), (236, 170, 60), (20, 10, 6), 1, 2),
     "place":     (14, 200, (255, 230, 150), (236, 180, 80), (16, 10, 6), 1, 0),
     "end_label": (32, 232, (255, 240, 160), (236, 160, 40), (40, 16, 8), 2, 0),
@@ -32,9 +32,16 @@ def _font(size):
     return ImageFont.truetype(FONT, size * SS)
 
 
-def render(text, style):
-    """RGBA image of the text: vertical colour gradient, dark outline, soft drop shadow, 1-bit alpha."""
-    size, max_w, top, bot, ol, olw, gap = STYLES[style]
+last_size = None  # font size the last render() ended up using (long texts shrink to fit)
+
+
+def render(text, style, size=None):
+    """RGBA image of the text: vertical colour gradient, dark outline, soft drop shadow, 1-bit alpha.
+    size forces a font size (no shrinking), e.g. to measure part of a text rendered before."""
+    global last_size
+    base, max_w, top, bot, ol, olw, gap = STYLES[style]
+    forced = size is not None
+    size = size or base
     lines = text.split("\n")
     sizes = [size] * len(lines)
     if style in ("chapter", "end_title") and len(lines) > 1:
@@ -42,9 +49,10 @@ def render(text, style):
     while True:
         fonts = [_font(s) for s in sizes]
         widths = [f.getlength(l) for f, l in zip(fonts, lines)]
-        if max(widths) <= (max_w - 2 * olw - 2) * SS or min(sizes) <= 9:
+        if forced or max(widths) <= (max_w - 2 * olw - 2) * SS or min(sizes) <= 9:
             break
         sizes = [s - 1 for s in sizes]
+    last_size = sizes[-1]
     pad = (olw + 2) * SS
     heights = [f.getbbox(l or " ")[3] for f, l in zip(fonts, lines)]
     W = int(max(widths)) + 2 * pad

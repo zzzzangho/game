@@ -795,25 +795,31 @@ static void do_fx(int kind)
     }
 }
 
+/* "잠깐!", "그건 모순이야!", "수수께끼는 모두 풀렸어!": the scene dims and the words slam in
+ * one after another (disp_cuts: where each word ends), each with a boom and a jolt. */
 static void do_shout(int spk, int t, int portrait)
 {
+    (void)spk;
     cur_portrait = portrait;
     draw_scene();
-    plat_sfx(SFX_OBJECTION);
-    flash(C_WHITE, 2);
-    fill(0, 48, SCREEN_W, 44, C_WHITE);
-    fill(0, 50, SCREEN_W, 2, C_RED);
-    fill(0, 88, SCREEN_W, 2, C_RED);
-    for (int i = 0; i < SCREEN_W; i += 12) {
-        fill(i, 44, 6, 4, C_WHITE);
-        fill(i + 6, 92, 6, 4, C_WHITE);
+    shade(0, 0, SCREEN_W, SCREEN_H, 0);
+    shade(0, 0, SCREEN_W, SCREEN_H, 0);
+    frame();
+    int d = disp_of_text[t], n = 0;
+    const u8 *cut = d == NONE ? 0 : disp_cuts + d * 3;
+    while (cut && n < 3 && cut[n]) n++;
+    for (int k = 0; k <= n; k++) {
+        int last = k == n;
+        plat_sfx(last ? SFX_OBJECTION : SFX_SHOCK);
+        if (last && k == 0) flash(C_WHITE, 2);
+        draw_disp_part(t, SCREEN_W / 2, 70, last ? -1 : cut[k]);
+        shake(last ? 18 : 8, last ? 6 : 4);
+        if (!last) wait_frames(4);
     }
-    draw_disp(t, SCREEN_W / 2, 70);
-    shake(20, 5);
     plat_debug_event("shout", 0);
-    for (int i = 0; i < 90; i++) {
+    for (int i = 0; i < 70; i++) {
         frame();
-        if (i > 15 && (keys_new & KEY_A)) break;
+        if (i > 12 && (keys_new & KEY_A)) break;
     }
 }
 
