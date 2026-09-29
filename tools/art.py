@@ -518,6 +518,8 @@ BUILTIN_SCENES["lobby_night"] = lambda: art_scenes2.scene_lobby_night(lambda: sc
 BUILTIN_SCENES["hotel_hall"] = lambda: scene_image("lobby_night")
 BUILTIN_SCENES["bridge_up"] = lambda: scene_image("drawbridge")
 BUILTIN_SCENES["yumi_tree"] = lambda: scene_image("yumi_room")
+BUILTIN_SCENES["cabin_door"] = lambda: scene_image("corridor")
+BUILTIN_SCENES["cabin_reenact"] = lambda: art_scenes2.polish(art_hd.scene_cabin_roses(), seed=5)
 
 # Anime captures shown with @cut at key moments (assets/cuts/cut_*.png, made by tools/import_screenshots.py).
 # Without the capture, a drawn stand-in is used so the story still builds.

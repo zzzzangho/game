@@ -128,6 +128,8 @@ def scene_berth():
             # curtain edge
             cx = x_in + (6 if side < 0 else -6)
             curtain(c, min(cx, x_in), top, max(cx, x_in) + 0.1, bot - 12, (214, 176, 80), folds=2)
+            for yy in range(int(top) + 4, int(bot - 12), 9):   # green stripes, as in the anime
+                c.rect(min(cx, x_in), yy, max(cx, x_in) + 0.1, yy + 2, (70, 120, 70))
         # ladder
     for y in range(80, 136, 10):
         c.rect(172, y, 186, y + 1.5, (170, 150, 110))

@@ -20,6 +20,12 @@ OUT = os.path.join(HERE, "..", "assets", "scenes")
 C32 = (0, 27, 640, 454)  # centred 3:2 crop of a 4:3 frame
 
 FRAMES = {
+    "platform": ("p1/004", C32),          # Ueno at night, the train at the platform
+    "corridor": ("p1/018", (60, 0, 580, 346)),  # sleeper corridor (above the subtitle band)
+    "cabin_door": ("p1/346", C32),        # the A-5 compartment door
+    "cabin_roses": ("p1/332", C32),       # compartment 5: roses, balloons, the body
+    "cabin_empty": ("p1/348", C32),       # the rose carpet after the body vanished
+    "train_toilet": ("p3/159", C32),      # the washroom window, rope mark on the frame
     "dining": ("p1/095", C32),            # dining car window: lamp, green hills
     "freight_yard": ("p1/230", C32),      # the train stopped among green fields
     "country_station": ("p1/355", C32),   # Shikotsugahara station, arched roof
@@ -30,6 +36,7 @@ FRAMES = {
     "drawbridge": ("p2/116", C32),        # bridge to the theater
     "bridge_up": ("p2/219", C32),         # the drawbridge raised
     "theater": ("p2/226", C32),           # stage and seats
+    "catwalk": ("p2/243", C32),           # looking down on the stage from the rigging
     "hotel_room": ("p3/311", C32),        # blue room, purple curtains
     "yumi_room": ("p3/312", C32),         # Yumi's room
     "room_below": ("p3/326", C32),        # the room below
@@ -37,6 +44,8 @@ FRAMES = {
     "sickroom": ("p3/329", C32),          # room with the mirror (morning)
     "yumi_tree": ("p3/319", C32),         # the branch with the rope
     "airport": ("p3/239", C32),           # airport lobby
+    "london_park": ("p4/218", C32),       # the London park in the evening sun
+    "magic_hall": ("p4/328", C32),        # Tokyo hall: crossed spotlights on the stage
     "prison": ("p4/322", C32),            # the cell, light from the window
 }
 
