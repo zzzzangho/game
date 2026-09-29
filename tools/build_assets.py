@@ -27,6 +27,7 @@ ANIM_MAX_Y = 100      # background animation stays above the name tag / text box
 SENTENCE_END = re.compile(r"(?<=[.!?』])\s+|(?<=[다요까지야어아네군죠걸데래니나고][…])\s+")
 MENU_W = 196          # max option width
 DESC_LINES = 4        # court record description lines
+GOT_NAME_W = 134      # evidence / character name width in the "입수!" popup
 HEADER_W = 224        # court record header (present question)
 LIST_W = 150          # court record list width
 
@@ -451,7 +452,7 @@ class Compiler:
                 self.err(f"unknown icon {a[1]!r}; known: {', '.join(art.ICONS)}")
             if len(self.evidence) >= 64:
                 self.err("too many evidence items (max 64)")
-            if self.font.width(a[2]) > LIST_W - 12:
+            if self.font.width(a[2]) > min(LIST_W - 12, GOT_NAME_W):
                 self.err(f"evidence name too wide: {a[2]}")
             self.evidence[a[0]] = dict(idx=len(self.evidence), icon=list(art.ICONS).index(a[1]),
                                        name=self.text(a[2]),

@@ -32,6 +32,7 @@ enum { RET_RETURN, RET_TITLE };
 
 static u16 *fb;
 static u16 snapshot[SCREEN_W * SCREEN_H] EWRAM_BSS;
+static u16 scratch[SCREEN_W * SCREEN_H] EWRAM_BSS; /* the court record's saved screen; banners borrow it */
 static int dirty0 = SCREEN_H, dirty1 = 0;
 static u16 keys_held, keys_new;
 static u32 frame_count;
@@ -162,6 +163,21 @@ static void draw_text_ex(int x, int y, int id, u16 c, int scale, int centred);
 
 /* Display-font image of a title/banner text (tools/display_font.py), centred on (cx, cy).
  * vis limits how many columns are shown (for a wipe-in); -1 = all. */
+/* clipped keyed copy of an image's columns i0..i1 (fast: banners slide in every frame) */
+FAST static void blit_keyed_rows(int x, int y, int w, int h, int i0, int i1, const u16 *src)
+{
+    for (int j = 0; j < h; j++) {
+        int yy = y + j;
+        if ((unsigned)yy >= SCREEN_H) continue;
+        const u16 *row = src + j * w;
+        u16 *dst = fb + yy * SCREEN_W + x;
+        for (int i = i0; i < i1; i++) {
+            u16 c = row[i];
+            if (c != TRANSPARENT) dst[i] = c;
+        }
+    }
+}
+
 static void draw_disp_part(int t, int cx, int cy, int vis)
 {
     int d = disp_of_text[t];
@@ -170,14 +186,10 @@ static void draw_disp_part(int t, int cx, int cy, int vis)
         return;
     }
     int w = disp_w[d], h = disp_h[d], x = cx - w / 2, y = cy - h / 2;
-    const u16 *src = disp_data + disp_ofs[d];
     if (vis < 0 || vis > w) vis = w;
-    for (int j = 0; j < h; j++)
-        for (int i = 0; i < vis; i++) {
-            u16 c = src[j * w + i];
-            if (c != TRANSPARENT) px(x + i, y + j, c);
-        }
-    mark(y, y + h);
+    int i0 = x < 0 ? -x : 0, i1 = x + vis > SCREEN_W ? SCREEN_W - x : vis;
+    if (i1 > i0) blit_keyed_rows(x, y, w, h, i0, i1, disp_data + disp_ofs[d]);
+    mark(y < 0 ? 0 : y, y + h > SCREEN_H ? SCREEN_H : y + h);
 }
 
 static void draw_disp(int t, int cx, int cy) { draw_disp_part(t, cx, cy, -1); }
@@ -718,12 +730,12 @@ static void got_item(int title, int name, const u16 *img, int w, int h)
 {
     save_screen();
     plat_sfx(SFX_GET);
-    int wy = 16, wh = h + 16;
-    popup_window(24, wy, 192, wh);
-    fill(32, wy + 8, w, h, RGB(1, 1, 3));
-    blit_keyed(32, wy + 8, w, h, img);
-    draw_text(108, wy + 14, title, C_GOLD);
-    draw_text(108, wy + 34, name, C_WHITE);
+    int wy = 16, wh = h + 16; /* names up to GOT_NAME_W px fit (checked by build_assets.py) */
+    popup_window(10, wy, 220, wh);
+    fill(18, wy + 8, w, h, RGB(1, 1, 3));
+    blit_keyed(18, wy + 8, w, h, img);
+    draw_text(92, wy + 14, title, C_GOLD);
+    draw_text(92, wy + 34, name, C_WHITE);
     plat_debug_event("get", 0);
     wait_a(10);
     plat_sfx(SFX_OK);
@@ -1078,7 +1090,7 @@ static void draw_tab(int x, int label, int active)
  * The caller's screen is saved and restored here. */
 static int record(int present, int question)
 {
-    static u16 saved_screen[SCREEN_W * SCREEN_H] EWRAM_BSS;
+    u16 *saved_screen = scratch;
     static int tab, sel[2];
     u8 list[64];
     int top = 0, result = -1;
@@ -1458,12 +1470,25 @@ static void banner(int kind)
     int t = kind ? UI_BANNER_DEDUCE : UI_BANNER_INVEST;
     save_screen();
     plat_sfx(kind ? SFX_OBJECTION : SFX_GET);
-    for (int f = 0; f < 90; f++) {
+    /* darken the screen once and keep the dark band the card slides through; a step then
+     * only copies that band back and draws the card, so it fits in a frame (no stutter or
+     * tearing on hardware), and nothing is redrawn while the card stands still */
+    int h = disp_height(t), y0 = 80 - h / 2 - 2, y1 = 80 + h / 2 + 2;
+    if (y0 > 48) y0 = 48;
+    if (y1 < 112) y1 = 112;
+    shade(0, 0, SCREEN_W, SCREEN_H, 0);
+    int n = (y1 - y0) * SCREEN_W / 2;
+    plat_copy32(scratch, fb + y0 * SCREEN_W, n);
+    for (int f = 0, last = -1; f < 90; f++) {
         int off = f < 10 ? (10 - f) * 24 : f > 80 ? -(f - 80) * 24 : 0;
-        restore_screen();
-        shade(0, 0, SCREEN_W, SCREEN_H, 0);
-        if (f >= 10 && f < 12) fill(0, 48, SCREEN_W, 64, C_WHITE); /* impact flash */
-        else draw_disp(t, off + SCREEN_W / 2, 80);
+        int state = (f >= 10 && f < 12) ? 1000 : off; /* what is on screen this frame */
+        if (state != last) {
+            plat_copy32(fb + y0 * SCREEN_W, scratch, n);
+            if (state == 1000) fill(0, 48, SCREEN_W, 64, C_WHITE); /* impact flash */
+            else draw_disp(t, off + SCREEN_W / 2, 80);
+            mark(y0, y1);
+            last = state;
+        }
         if (f == 12) {
             plat_debug_event("banner", kind);
             shake(6, 2);
