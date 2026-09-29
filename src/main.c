@@ -709,7 +709,8 @@ static int record(int present, int question)
         if (present) {
             int d = plat_debug_choice(DBG_PRESENT, EVIDENCE_COUNT);
             if (d >= 0) {
-                result = d;
+                /* only evidence in the record can be presented; anything else stands for "the wrong item" */
+                result = d < EVIDENCE_COUNT && (ev_flags & EV_BIT(d)) ? d : NONE;
                 break;
             }
         }

@@ -17,12 +17,13 @@ GEN_H = os.path.join(HERE, "..", "build", "gen_data.h")
 # route tokens: int = menu index, "id" = evidence to present, ("T", s, "id") = present on testimony
 # statement s, ("P", s) = press statement s, "TIMEOUT" = let the timer run out
 CROSS1 = [("P", 1), ("T", 1, "satomitalk")]
-CH1 = CROSS1 + [2, "video", 0, "toilet", 0, "bombnote"]
+CH1_DEDUCE = [2, "video", 0, "toilet", 0, "bombnote"]
+CH1 = CROSS1 + CH1_DEDUCE + [0, 1]     # night: eavesdrop from behind the counter
 # @choice entries: swamp (0 = chase alone, 1 = wake Kenmochi), Yumi (0 = guard, 1 = press, 2 = let go),
 # notebook (0 = leave it, 1 = check it). Branching presentations take evidence ids like any @present.
-CH2 = [1, "yurama", 1, "rope", 1, "register", 0]
+CH2 = [1, "yurama", 1, "rope", 1, "register", "rope", 0]  # clear Nagasaki, chase alone at the swamp
 CH3 = [2, "rope"]                      # let Yumi go, calm Sakuraba with the rope trick
-CH3_B = [0, "nails", "rope"]           # guard Yumi (Kenmochi convinced by the nails)
+CH3_B = [0, "secret", "rope"]          # guard Yumi (Kenmochi convinced by the overheard talk)
 CROSS_F = [("P", 1), ("T", 3, "jadebelow")]
 FIN_HEAD = [4, 2] + CROSS_F
 FIN_TAIL = ["bagcheck", 1, "smoke"]    # ... motive, then stop the smoke escape
@@ -89,14 +90,14 @@ def main():
     results.append(check("game over after 5 mistakes", code == 0 and "EVENT bad_end" in out, out[-500:] + err))
 
     # four mistakes spread over the game still reach the true ending
-    route = CROSS1 + [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 0, 1, "yurama", 1, "rope", 1,
-                      "register", 0] + CH3 + FIN_HEAD + ["weights", "bagcheck", 0, 1, "smoke", "nails", 0]
+    route = CROSS1 + [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 1, 0, 1, "yurama", 1, "rope", 1,
+                      "register", "rope", 0] + CH3 + FIN_HEAD + ["weights", "bagcheck", 0, 1, "smoke", "nails", 0]
     code, out, err = run(args.exe, route, ids)
     results.append(check("true ending with 4 mistakes", code == 0 and "EVENT true_end" in out, out[-500:] + err))
 
     # a fifth mistake in the final deduction -> game over
-    route = CROSS1 + [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 0, 1, "yurama", 1, "rope", 1,
-                      "register", 0] + CH3 + [4, 0, 0]
+    route = CROSS1 + [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 1, 0, 1, "yurama", 1, "rope", 1,
+                      "register", "rope", 0] + CH3 + [4, 0, 0]
     code, out, err = run(args.exe, route, ids)
     results.append(check("game over in final deduction", code == 0 and "EVENT bad_end" in out
                          and "true_end" not in out, out[-500:] + err))
@@ -140,7 +141,7 @@ def main():
            lambda o: "EVENT mash 1" in o)
     branch("Kenmochi not convinced -> Yumi dies -> TRUE END", CH1 + CH2 + [0, "joker", "rope"] + FINAL_TRUE,
            "true_end")
-    branch("Yumi guarded, grip lost -> TRUE END", CH1 + CH2[:-1] + [1, 0, "nails", "rope"] + FINAL_WAKE,
+    branch("Yumi guarded, grip lost -> TRUE END", CH1 + CH2[:-1] + [1] + CH3_B + FINAL_WAKE,
            "true_end", mash="fail", absent=("best_end",))
     branch("swamp: wake Kenmochi -> no button-mash, silhouette presented", CH1 + CH2[:-1] + [1] + CH3 + FINAL_WAKE,
            "true_end", lambda o: "EVENT mash" not in o)
@@ -154,6 +155,12 @@ def main():
            CH1 + CH2 + CH3 + FIN_HEAD + ["weights", "bagcheck", 1, "joker"], "normal_end")
     branch("smoke escape timer runs out -> NORMAL END",
            CH1 + CH2 + CH3 + FIN_HEAD + ["weights", "bagcheck", 1, "TIMEOUT"], "normal_end")
+    branch("Nagasaki taken away -> Yumi rescued but no doctor -> TRUE END",
+           CH1 + CH2[:-2] + ["joker", 0] + CH3_B + FINAL_TRUE, "true_end", absent=("best_end",))
+    branch("eavesdropping caught at the door -> Kenmochi not convinced -> TRUE END",
+           CROSS1 + CH1_DEDUCE + [0, 0] + CH2 + [0, "secret", "rope"] + FINAL_TRUE, "true_end")
+    branch("went to bed on the train -> no overheard talk -> TRUE END",
+           CROSS1 + CH1_DEDUCE + [1] + CH2 + [0, "nails", "rope"] + FINAL_TRUE, "true_end")
     branch("Sakuraba runs into the blizzard -> still solvable", CH1 + CH2 + [2, "joker"] + FINAL_TRUE, "true_end")
     branch("Sakuraba lost, then accused -> BAD END", CH1 + CH2 + [2, "joker", 1], "bad_end")
 
