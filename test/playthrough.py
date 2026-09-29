@@ -19,12 +19,16 @@ GEN_H = os.path.join(HERE, "..", "build", "gen_data.h")
 CROSS1 = [("P", 1), ("T", 1, "satomitalk")]
 CH1 = CROSS1 + [2, "video", 0, "toilet", 0, "bombnote"]
 # @choice entries: swamp (0 = chase alone, 1 = wake Kenmochi), Yumi (0 = guard, 1 = press, 2 = let go),
-# notebook (0 = leave it, 1 = check it; then 0/1/2 = the flaw, 1 = phosphorus)
+# notebook (0 = leave it, 1 = check it). Branching presentations take evidence ids like any @present.
 CH2 = [1, "yurama", 1, "rope", 1, "register", 0]
-CH3 = [2]
+CH3 = [2, "rope"]                      # let Yumi go, calm Sakuraba with the rope trick
+CH3_B = [0, "nails", "rope"]           # guard Yumi (Kenmochi convinced by the nails)
 CROSS_F = [("P", 1), ("T", 3, "jadebelow")]
-FINAL_B = [4, 2] + CROSS_F + ["weights", "bagcheck", 1]  # Yumi alive: no notebook choice
-FINAL_TRUE = FINAL_B + [0]
+FIN_HEAD = [4, 2] + CROSS_F
+FIN_TAIL = ["bagcheck", 1, "smoke"]    # ... motive, then stop the smoke escape
+FINAL_TRUE = FIN_HEAD + ["weights"] + FIN_TAIL + ["nails", 0]  # no proof against Sakonji, leave the notebook
+FINAL_B = FIN_HEAD + ["yumiwitness", "weights"] + FIN_TAIL     # Yumi alive
+FINAL_WAKE = FIN_HEAD + ["weights", "silhouette"] + FIN_TAIL + ["nails", 0]
 ACCUSE_BAD = [(0, "sakonji"), (1, "sakuraba"), (2, "satomi"), (3, "nagasaki"), (5, "akechi")]
 
 
@@ -86,13 +90,13 @@ def main():
 
     # four mistakes spread over the game still reach the true ending
     route = CROSS1 + [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 0, 1, "yurama", 1, "rope", 1,
-                      "register", 0, 2, 4, 2] + CROSS_F + ["weights", "bagcheck", 0, 1, 0]
+                      "register", 0] + CH3 + FIN_HEAD + ["weights", "bagcheck", 0, 1, "smoke", "nails", 0]
     code, out, err = run(args.exe, route, ids)
     results.append(check("true ending with 4 mistakes", code == 0 and "EVENT true_end" in out, out[-500:] + err))
 
     # a fifth mistake in the final deduction -> game over
     route = CROSS1 + [0, 2, "roses", "video", 0, "toilet", 0, "bombnote", 0, 1, "yurama", 1, "rope", 1,
-                      "register", 0, 2, 4, 0, 0]
+                      "register", 0] + CH3 + [4, 0, 0]
     code, out, err = run(args.exe, route, ids)
     results.append(check("game over in final deduction", code == 0 and "EVENT bad_end" in out
                          and "true_end" not in out, out[-500:] + err))
@@ -105,7 +109,7 @@ def main():
                          out[-500:] + err))
 
     # letting the timers run out in the finale costs hearts but the case can still be won
-    route = CH1 + CH2 + CH3 + [4, 2] + CROSS_F + ["TIMEOUT", "weights", "TIMEOUT", "bagcheck", 1, 0]
+    route = CH1 + CH2 + CH3 + FIN_HEAD + ["TIMEOUT", "weights", "TIMEOUT", "bagcheck", 1, "smoke", "nails", 0]
     code, out, err = run(args.exe, route, ids)
     results.append(check("timeouts in the finale", code == 0 and "EVENT true_end" in out
                          and out.count("EVENT timeout") == 2, out[-500:] + err))
@@ -126,32 +130,32 @@ def main():
                          and "true_end" not in out, out[-500:] + err))
 
     # branches -------------------------------------------------------------
-    # guarding Yumi and holding on to her -> she survives and testifies -> BEST END
-    code, out, err = run(args.exe, CH1 + CH2 + [0] + FINAL_B, ids)
-    results.append(check("route B: Yumi saved -> best ending", code == 0 and "EVENT best_end" in out
-                         and "EVENT mash 1" in out, out[-800:] + err))
+    def branch(name, route, event, extra=True, mash="win", absent=()):
+        code, out, err = run(args.exe, route, ids, mash=mash)
+        ok = code == 0 and f"EVENT {event}" in out and extra(out) if callable(extra) else code == 0 and f"EVENT {event}" in out
+        ok = ok and not any(f"EVENT {a}" in out for a in absent)
+        results.append(check(name, ok, out[-800:] + err))
 
-    # guarding Yumi but losing the grip -> canon murder, the true ending still reachable
-    route = CH1 + CH2[:-1] + [1, 0] + FINAL_TRUE
-    code, out, err = run(args.exe, route, ids, mash="fail")
-    results.append(check("route B: grip lost -> true ending", code == 0 and "EVENT true_end" in out
-                         and "best_end" not in out, out[-800:] + err))
-
-    # waking Kenmochi at the swamp skips the drowning crisis entirely
-    route = CH1 + CH2[:-1] + [1] + CH3 + FINAL_TRUE
-    code, out, err = run(args.exe, route, ids)
-    results.append(check("swamp: wake Kenmochi -> no button-mash", code == 0 and "EVENT true_end" in out
-                         and "EVENT mash" not in out, out[-800:] + err))
-
-    # checking the notebook and spotting the phosphorus -> GOOD END (needs Sakonji's plan from chapter 3)
-    code, out, err = run(args.exe, CH1 + CH2 + CH3 + FINAL_TRUE[:-1] + [1, 1], ids)
-    results.append(check("notebook checked, flaw found -> good ending", code == 0 and "EVENT good_end" in out,
-                         out[-800:] + err))
-
-    # checking the notebook but naming the wrong flaw -> canon true ending
-    code, out, err = run(args.exe, CH1 + CH2 + CH3 + FINAL_TRUE[:-1] + [1, 0], ids)
-    results.append(check("notebook checked, wrong flaw -> true ending", code == 0 and "EVENT true_end" in out,
-                         out[-800:] + err))
+    branch("Yumi guarded and saved -> BEST END", CH1 + CH2 + CH3_B + FINAL_B, "best_end",
+           lambda o: "EVENT mash 1" in o)
+    branch("Kenmochi not convinced -> Yumi dies -> TRUE END", CH1 + CH2 + [0, "joker", "rope"] + FINAL_TRUE,
+           "true_end")
+    branch("Yumi guarded, grip lost -> TRUE END", CH1 + CH2[:-1] + [1, 0, "nails", "rope"] + FINAL_WAKE,
+           "true_end", mash="fail", absent=("best_end",))
+    branch("swamp: wake Kenmochi -> no button-mash, silhouette presented", CH1 + CH2[:-1] + [1] + CH3 + FINAL_WAKE,
+           "true_end", lambda o: "EVENT mash" not in o)
+    branch("Sakuraba's testimony -> GOOD END (witness)",
+           CH1 + CH2 + CH3 + FIN_HEAD + ["weights"] + FIN_TAIL + ["sakurabawit"], "good_end")
+    branch("notebook checked with Sakonji's plan -> GOOD END (fire)",
+           CH1 + CH2 + CH3 + FINAL_TRUE[:-1] + [1, "rockplan"], "good_end")
+    branch("notebook checked, wrong evidence -> TRUE END", CH1 + CH2 + CH3 + FINAL_TRUE[:-1] + [1, "joker"],
+           "true_end")
+    branch("smoke escape not stopped -> NORMAL END",
+           CH1 + CH2 + CH3 + FIN_HEAD + ["weights", "bagcheck", 1, "joker"], "normal_end")
+    branch("smoke escape timer runs out -> NORMAL END",
+           CH1 + CH2 + CH3 + FIN_HEAD + ["weights", "bagcheck", 1, "TIMEOUT"], "normal_end")
+    branch("Sakuraba runs into the blizzard -> still solvable", CH1 + CH2 + [2, "joker"] + FINAL_TRUE, "true_end")
+    branch("Sakuraba lost, then accused -> BAD END", CH1 + CH2 + [2, "joker", 1], "bad_end")
 
     # chapter save: stop inside chapter 2, then continue from the title screen
     with tempfile.TemporaryDirectory() as tmp:

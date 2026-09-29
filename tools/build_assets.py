@@ -25,7 +25,7 @@ LIST_W = 150          # court record list width
 OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PRESENT=9,
            ACCUSE=10, GOTO=11, ENDING=12, LIVES=13, GAMEOVER=14, MEET=15, WAIT=16, SHOUT=17,
            PROFILE=18, MENU=19, SET=20, IF=21, PENALTY=22, BANNER=23, VIDEO=24, TIMER=25, MASH=26,
-           TESTIMONY=27)
+           TESTIMONY=27, PRESENT_CHOICE=28)
 BLOCKS = ("investigate", "ask", "accuse", "choice", "menu", "video", "testimony")
 MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
@@ -59,6 +59,7 @@ UI_STRINGS = [
     ("UI_PRESS_SHOUT", "잠깐!"),
     ("UI_OBJECTION", "그건 모순이야!"),
     ("UI_TIMEOUT", "시간이 없어…! 머뭇거리는 사이에 기회를 놓쳤다."),
+    ("UI_TIMEOUT_BRANCH", "시간이 없어…! 아무것도 내밀지 못했다."),
     ("UI_DANGER", "더 이상 실수할 수 없다…!"),
     ("UI_MASH_HINT", "A 버튼을 연타해!"),
     ("UI_INVEST_NOTYET", "아직 알아내지 못한 게 있어.\n좀 더 조사해 보자."),
@@ -67,6 +68,7 @@ UI_STRINGS = [
     ("UI_TRUE_END", "TRUE END"),
     ("UI_GOOD_END", "GOOD END"),
     ("UI_BEST_END", "BEST END"),
+    ("UI_NORMAL_END", "NORMAL END"),
     ("UI_PRESS_A", "A 버튼을 누르세요"),
     ("UI_THANKS", "플레이해 주셔서 감사합니다!"),
     ("UI_SAVED", "저장했습니다"),
@@ -348,8 +350,8 @@ class Compiler:
             self.need_args(a, 4, "@evidence ID ICON \"name\" \"description\"")
             if a[1] not in art.ICONS:
                 self.err(f"unknown icon {a[1]!r}; known: {', '.join(art.ICONS)}")
-            if len(self.evidence) >= 32:
-                self.err("too many evidence items (max 32)")
+            if len(self.evidence) >= 64:
+                self.err("too many evidence items (max 64)")
             if self.font.width(a[2]) > LIST_W - 12:
                 self.err(f"evidence name too wide: {a[2]}")
             self.evidence[a[0]] = dict(idx=len(self.evidence), icon=list(art.ICONS).index(a[1]),
@@ -390,8 +392,8 @@ class Compiler:
             spk, por = self.speaker_portrait(a[0])
             self.emit(OPS["SHOUT"], spk, self.text(a[1]), por)
         elif cmd == "ending":
-            self.need_args(a, 2, "@ending bad|true|good|best \"title\"")
-            kinds = dict(bad=0, true=1, good=2, best=3)
+            self.need_args(a, 2, "@ending bad|true|good|best|normal \"title\"")
+            kinds = dict(bad=0, true=1, good=2, best=3, normal=4)
             if a[0] not in kinds:
                 self.err(f"unknown ending kind {a[0]!r}")
             self.emit(OPS["ENDING"], kinds[a[0]], self.wrapped(a[1], TEXT_W, 2, "ending title"))
@@ -402,6 +404,14 @@ class Compiler:
             self.emit(OPS["PRESENT"], self.speaker(a[0]), self.wrapped(a[1], TEXT_W, TEXT_LINES, "question"),
                       self.ev(a[2]))
             self.label_ref(a[3])
+        elif cmd == "present_choice":
+            self.need_args(a, 5, "@present_choice SPEAKER \"question\" EVIDENCE OK_LABEL MISS_LABEL")
+            if self.font.width(a[1]) > HEADER_W:
+                self.err("present question must fit on one line in the court record header")
+            self.emit(OPS["PRESENT_CHOICE"], self.speaker(a[0]), self.wrapped(a[1], TEXT_W, TEXT_LINES, "question"),
+                      self.ev(a[2]))
+            self.label_ref(a[3])
+            self.label_ref(a[4])
         elif cmd == "set":
             self.need_args(a, 1, "@set FLAG")
             self.emit(OPS["SET"], self.flag(a[0]))
@@ -519,7 +529,7 @@ class Compiler:
                 mask = 0
                 for e in need:
                     mask |= 1 << e
-                self.emit(OPS["INVEST"], len(items), mask & 0xFFFF, mask >> 16)
+                self.emit(OPS["INVEST"], len(items), *((mask >> (16 * w)) & 0xFFFF for w in range(4)))
             else:
                 self.need_args(head, 2, "@menu SPEAKER \"prompt\"")
                 self.emit(OPS["MENU"], self.speaker(head[0]),
