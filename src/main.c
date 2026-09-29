@@ -711,8 +711,8 @@ static void intro_card(int spk, int portrait, int epi, int name)
         shade(0, 112, SCREEN_W, 48, 0);
         fill(0, 111, SCREEN_W, 1, C_BORDER);
         fill(0, 159, SCREEN_W, 1, C_BORDER);
-        draw_disp(epi, SCREEN_W / 2 + off, 122);
-        draw_disp(name, SCREEN_W / 2 - off, 144);
+        draw_disp(epi, SCREEN_W / 2 + off, 123);
+        draw_disp(name, SCREEN_W / 2 - off, 143);
         frame();
     }
     plat_debug_event("intro", spk);
