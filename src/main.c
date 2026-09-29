@@ -36,6 +36,7 @@ static u16 keys_held, keys_new;
 static u32 frame_count;
 
 static int cur_scene, cur_portrait = NONE;
+static int cut_mode; /* an anime capture is on screen: no portraits over it */
 static int lives, max_lives, in_game;
 static u64 ev_flags; /* evidence owned (up to 64 items) */
 static u32 prof_flags;
@@ -282,7 +283,7 @@ static void draw_scene(void)
 {
     plat_copy32(fb, scene_img[cur_scene], SCREEN_W * SCREEN_H / 2);
     mark(0, SCREEN_H);
-    if (cur_portrait != NONE) blit_keyed(PORTRAIT_X, PORTRAIT_Y, PORTRAIT_W, PORTRAIT_H, portrait_img[cur_portrait]);
+    if (cur_portrait != NONE && !cut_mode) blit_keyed(PORTRAIT_X, PORTRAIT_Y, PORTRAIT_W, PORTRAIT_H, portrait_img[cur_portrait]);
     draw_hearts();
 }
 
@@ -545,6 +546,7 @@ static void chapter_card(int t, int card)
     }
     fade_out();
     cur_scene = SCENE_BLACK;
+    cut_mode = 0;
     cur_portrait = NONE;
     draw_scene();
     frame();
@@ -1072,7 +1074,8 @@ static int run(u16 pc)
         }
         case OP_SCENE:
             fade_out();
-            cur_scene = S[pc++];
+            cut_mode = S[pc] >> 15;
+            cur_scene = S[pc++] & 0x7FFF;
             cur_portrait = NONE;
             draw_scene();
             fade_in();
@@ -1343,6 +1346,7 @@ int main(void)
         ev_flags = prof_flags = 0;
         gameover_pc = 0;
         cur_scene = SCENE_BLACK;
+        cut_mode = 0;
         for (int i = 0; i < 32; i++) prof_text[i] = i < CHAR_COUNT ? char_profile[i] : NONE;
         for (int i = 0; i < 32; i++) flags[i] = 0;
         if (choice == 1 && has_save) {

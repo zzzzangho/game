@@ -81,19 +81,23 @@ def S(y0):  # full-width 3:2 scene box starting at y0
     return (0, y0, 640, y0 + 427)
 
 
-SCENES = {
-    "title": ("p1/004", S(20)),
-    "platform": ("p1/008", S(0)),
-    "corridor": ("p1/321", S(20)),
-    "stage": ("p1/127", S(20)),
-    "dining": ("p1/096", S(20)),
-    "snowfield": ("p1/230", S(20)),
-    "cabin_roses": ("p1/335", S(20)),
-    "cabin_roses_hand": ("p1/332", S(20)),
-    "cabin_empty": ("p1/348", S(20)),
-    "hotel": ("p1/370", S(0)),
-    "theater": ("p2/082", S(0)),
-    "swamp": ("p1/392", S(20)),
+# Captures shown with @cut at key moments of the story (the regular backgrounds are drawn art).
+CUTS = {
+    "cut_parcel": ("p1/076", S(20)),      # the parcel opened at police HQ
+    "cut_roses": ("p1/335", S(20)),       # Yamagami among the roses
+    "cut_balloons": ("p1/332", S(20)),    # Saki's video: the hand held up by balloons
+    "cut_mario": ("p2/027", S(20)),       # the masked guest checking out
+    "cut_body": ("p2/109", S(20)),        # the body in the luggage
+    "cut_marionette": ("p2/188", S(20)),  # the living marionette dancing
+    "cut_yurama": ("p3/062", S(20)),      # Yurama on the marionette chair
+    "cut_fog": ("p1/392", S(20)),         # a figure walking in the fog
+    "cut_sinking": ("p2/366", S(20)),     # Kindaichi sinking in the swamp
+    "cut_jade": ("p4/013", S(20)),        # the heavy jade stone
+    "cut_bag": ("p4/118", S(20)),         # the small bag with the false bottom
+    "cut_takato": ("p4/166", S(0)),       # Takato adjusts his glasses
+    "cut_reiko": ("p4/217", S(0)),        # Reiko in the London park
+    "cut_rock": ("p4/331", S(20)),        # Sakonji's floating rock
+    "cut_fire": ("p4/349", S(20)),        # the rock in flames
 }
 
 ICONS = {
@@ -112,12 +116,12 @@ def main():
     args = ap.parse_args()
     if not args.no_download:
         download()
-    for sub, table in (("portraits", PORTRAITS), ("scenes", SCENES), ("icons", ICONS)):
+    for sub, table in (("portraits", PORTRAITS), ("cuts", CUTS), ("icons", ICONS)):
         d = os.path.join(ROOT, "assets", sub)
         os.makedirs(d, exist_ok=True)
         for key, (src, box) in table.items():
             im = crop(src, box)
-            if sub != "scenes":
+            if sub != "cuts":
                 im = im.convert("RGBA")  # opaque RGBA: the build pixelizes it and frames it
             im.save(os.path.join(d, key + ".png"))
         print(sub, len(table))

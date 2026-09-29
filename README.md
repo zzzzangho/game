@@ -134,6 +134,7 @@ assets/fonts/           갈무리11 Condensed (BDF)
 
 @chapter "제목\n부제" [카드배경]   챕터 카드(일러스트 위에 제목 띠) + 자동 저장
 @scene 배경키               배경 전환 (위 표의 배경 이름, 또는 black)
+@cut cut_키                  명장면 컷 (assets/cuts의 애니 캡처, 번쩍 효과, 초상화 없이 표시)
 @fx flash|shock|shake|red   화면 효과
 @shout 이름[표정] "대사"    큰 글씨 외침 연출 (예: 수수께끼는 모두 풀렸어!)
 @lives 5                    목숨 설정

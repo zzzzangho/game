@@ -361,6 +361,12 @@ class Compiler:
         elif cmd == "scene":
             self.need_args(a, 1, "@scene KEY")
             self.emit(OPS["SCENE"], self.scene(a[0]))
+        elif cmd == "cut":  # anime capture at a key moment: white flash, no portraits over it
+            self.need_args(a, 1, "@cut CUT_KEY")
+            if not a[0].startswith("cut_"):
+                self.err("@cut takes a cut_* image (assets/cuts)")
+            self.emit(OPS["FX"], FX["flash"])
+            self.emit(OPS["SCENE"], self.scene(a[0]) | 0x8000)
         elif cmd == "get":
             self.emit(OPS["GET"], self.ev(a[0]))
         elif cmd == "meet":

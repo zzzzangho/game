@@ -7,6 +7,7 @@ __pycache__/
 assets/portraits/*
 assets/scenes/*
 assets/icons/*
+assets/cuts/*
 !assets/*/.gitkeep
 
 # 이미지가 들어간 롬도 로컬에만

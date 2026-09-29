@@ -502,9 +502,31 @@ BUILTIN_SCENES = {
     "theater": scene_theater,
     "swamp": scene_swamp,
     "cabin_roses_hand": scene_cabin_roses_hand,
-    "cabin_smoke": lambda: art_hd.smoke_over(scene_image("cabin_roses")),
+    "cabin_smoke": lambda: art_hd.smoke_over(scene_image("cut_roses")),
     **art_hd.CARDS,
+    **art_hd.LOCATIONS,
 }
+
+# Anime captures shown with @cut at key moments (assets/cuts/cut_*.png, made by tools/import_screenshots.py).
+# Without the capture, a drawn stand-in is used so the story still builds.
+BUILTIN_CUTS = {
+    "cut_parcel": art_hd.scene_police,
+    "cut_roses": art_hd.scene_cabin_roses,
+    "cut_balloons": scene_cabin_roses_hand,
+    "cut_mario": art_hd.scene_hotel,
+    "cut_body": art_hd.card_prologue,
+    "cut_marionette": art_hd.scene_theater,
+    "cut_yurama": art_hd.scene_theater,
+    "cut_fog": art_hd.scene_swamp,
+    "cut_sinking": art_hd.scene_swamp,
+    "cut_jade": art_hd.scene_hotel_room,
+    "cut_bag": art_hd.scene_hotel,
+    "cut_takato": art_hd.scene_hotel,
+    "cut_reiko": art_hd.card_final,
+    "cut_rock": art_hd.card_final,
+    "cut_fire": art_hd.card_final,
+}
+BUILTIN_SCENES.update(BUILTIN_CUTS)
 
 
 # ---------------------------------------------------------------- portraits (drawn at 32x40, scaled 2x)
@@ -1026,6 +1048,7 @@ def user_files(sub):
 
 
 USER_SCENES = user_files("scenes")
+USER_SCENES.update({k: v for k, v in user_files("cuts").items() if k.startswith("cut_")})
 USER_PORTRAITS = user_files("portraits")
 USER_ICONS = user_files("icons")
 

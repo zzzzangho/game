@@ -36,6 +36,10 @@ class Canvas:
         return [(self.p(x), self.p(y)) for x, y in pts]
 
     def rect(self, x0, y0, x1, y1, fill, outline=None, width=1):
+        x0, x1 = sorted((x0, x1))
+        y0, y1 = sorted((y0, y1))
+        if self.p(x1) <= self.p(x0) or self.p(y1) <= self.p(y0):
+            return
         self.d.rectangle([self.p(x0), self.p(y0), self.p(x1) - 1, self.p(y1) - 1], fill=fill,
                          outline=outline, width=int(width * S))
 
@@ -169,6 +173,20 @@ def mountains(c, rng, base, amp, col, snow_col, seed_phase, step=None):
     a[..., :3] = np.where(inside[..., None], colour, a[..., :3])
     c.img = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), c.img.mode)
     c.d = ImageDraw.Draw(c.img)
+
+
+def jade_stone(c, x, y, w, h):
+    """A big rough jade boulder (one per hotel room)."""
+    ol = (16, 60, 40)
+    c.poly([(x, y + h * 0.55), (x + w * 0.12, y + h * 0.2), (x + w * 0.45, y), (x + w * 0.82, y + h * 0.08),
+            (x + w, y + h * 0.5), (x + w * 0.88, y + h * 0.9), (x + w * 0.5, y + h), (x + w * 0.1, y + h * 0.92)],
+           (30, 130, 84), ol)
+    c.poly([(x + w * 0.12, y + h * 0.2), (x + w * 0.45, y), (x + w * 0.82, y + h * 0.08), (x + w * 0.55, y + h * 0.45),
+            (x + w * 0.2, y + h * 0.5)], (70, 180, 120))
+    c.poly([(x + w * 0.55, y + h * 0.45), (x + w * 0.82, y + h * 0.08), (x + w, y + h * 0.5), (x + w * 0.88, y + h * 0.9)],
+           (24, 104, 66))
+    c.poly([(x + w * 0.25, y + h * 0.18), (x + w * 0.45, y + h * 0.06), (x + w * 0.5, y + h * 0.2)], (190, 250, 210))
+    c.line([(x + w * 0.3, y + h * 0.6), (x + w * 0.5, y + h * 0.75)], (20, 90, 56), max(0.4, w / 60))
 
 
 def marionette(c, x, y, k=1.0, twisted=True):
@@ -439,9 +457,7 @@ def card_ch3():
             if lit:
                 c.glow(wx + 14, wy + 20, 44, (130, 90, 30), 0.8)
     # jade stones glinting on the lit sill
-    for i, jx in enumerate((144, 150, 156)):
-        c.ell(jx, 48, jx + 5, 52, (40, 170, 110), (20, 80, 50), 0.4)
-        c.ell(jx + 1, 48.6, jx + 2.4, 49.8, (200, 255, 220))
+    jade_stone(c, 146, 43, 14, 9)
     # the tree
     c.line([(40, 160), (46, 90), (60, 40)], (26, 22, 26), 7)
     bare_tree(c, rng, 58, 50, 70, (26, 22, 26), 3.2, depth=4, angle=-70)
@@ -645,9 +661,7 @@ def scene_hotel_room():
     lay, d = c.layer()
     d.line(c.pts([(20, 72), (34, 54)]), fill=(255, 255, 255, 120), width=S)
     c.put(lay)
-    for jx in (14, 27, 40):
-        c.ell(jx, 69, jx + 9, 76.5, (46, 170, 110), (20, 90, 56), 0.5)
-        c.ell(jx + 2, 70, jx + 4.2, 71.8, (210, 255, 230))
+    jade_stone(c, 22, 62, 20, 14)
     c.vignette(0.4)
     return c.finish()
 
@@ -888,12 +902,7 @@ def i_nail():
 
 def i_jade():
     c = icon_canvas()
-    for (x, y, s) in ((6, 30, 1.0), (30, 36, 0.8), (22, 12, 0.9)):
-        w, h = 26 * s, 20 * s
-        c.poly([(x, y + h * 0.4), (x + w * 0.3, y), (x + w * 0.8, y + h * 0.05), (x + w, y + h * 0.5),
-                (x + w * 0.7, y + h), (x + w * 0.2, y + h * 0.9)], (40, 160, 100, 255))
-        c.poly([(x + w * 0.3, y), (x + w * 0.8, y + h * 0.05), (x + w * 0.55, y + h * 0.45)], (110, 220, 160, 255))
-        shine(c, x + w * 0.35, y + h * 0.3, 2.2)
+    jade_stone(c, 4, 12, 56, 42)
     return icon_done(c)
 
 
@@ -936,4 +945,561 @@ ICONS_HD = {
 CARDS = {
     "card_prologue": card_prologue, "card_ch1": card_ch1, "card_ch2": card_ch2, "card_ch3": card_ch3,
     "card_final": card_final,
+}
+
+
+# =========================================================== location backgrounds
+# (the anime captures in assets/cuts are shown as cut-ins at key moments instead)
+
+def room(c, back, wall, floor, ceil, left=None, right=None):
+    """One-point perspective box: back wall rectangle, floor, ceiling and side walls."""
+    x0, y0, x1, y1 = back
+    c.poly([(0, 0), (240, 0), (x1, y0), (x0, y0)], ceil)
+    c.poly([(0, 160), (240, 160), (x1, y1), (x0, y1)], floor)
+    c.poly([(0, 0), (x0, y0), (x0, y1), (0, 160)], left or wall)
+    c.poly([(240, 0), (x1, y0), (x1, y1), (240, 160)], right or wall)
+    c.rect(x0, y0, x1, y1, wall)
+
+
+def persp(back, side, t, u):
+    """Point on a side wall: t = depth 0 (front) .. 1 (back), u = height 0 (top) .. 1 (bottom)."""
+    x0, y0, x1, y1 = back
+    fx = 0 if side == "l" else 240
+    bx = x0 if side == "l" else x1
+    x = fx + (bx - fx) * t
+    top = 0 + (y0 - 0) * t
+    bot = 160 + (y1 - 160) * t
+    return x, top + (bot - top) * u
+
+
+def side_quad(back, side, t0, t1, u0, u1):
+    return [persp(back, side, t0, u0), persp(back, side, t1, u0), persp(back, side, t1, u1), persp(back, side, t0, u1)]
+
+
+def floor_lines(c, back, colour, n=9):
+    x0, y0, x1, y1 = back
+    for i in range(n + 1):
+        fx = -120 + i * (480 / n)
+        bx = x0 + (x1 - x0) * i / n
+        c.line([(fx, 160), (bx, y1)], colour, 0.5)
+
+
+def night_view(c, rng, x0, y0, x1, y1, moonpos=None):
+    v = Canvas(max(1, int(x1 - x0)), max(1, int(y1 - y0)))
+    v.vgrad(0, 0, v.w, v.h, [(0, (10, 14, 40)), (1, (50, 58, 104))])
+    stars(v, rng, v.w * v.h // 60, v.h * 0.6)
+    if moonpos:
+        moon(v, moonpos[0], moonpos[1], 4)
+    mountains(v, rng, v.h * 0.85, v.h * 0.3, (60, 66, 108), (190, 198, 230), rng.uniform(0, 3))
+    v.snow(rng, v.w * v.h // 14, big=0.2)
+    c.img.paste(v.img, (c.p(x0), c.p(y0)))
+    c.d = ImageDraw.Draw(c.img)
+
+
+def title_bg():
+    """Title screen: the night train low in the frame, space above for the logo."""
+    rng = random.Random(32)
+    c = Canvas(240, 160)
+    c.vgrad(0, 0, 240, 160, [(0, (4, 6, 20)), (0.6, (30, 30, 80)), (1, (80, 60, 110))])
+    stars(c, rng, 160, 110)
+    moon(c, 206, 20, 9)
+    mountains(c, rng, 116, 40, (60, 66, 110), (196, 202, 236), 0.4)
+    mountains(c, rng, 128, 22, (34, 40, 74), (140, 150, 196), 1.9)
+    viaduct_train(c, rng, 140)
+    c.snow(rng, 380, big=0.25)
+    c.vignette(0.5)
+    return c.finish()
+
+
+def scene_platform():
+    """Ueno station at night: the Silver Star waiting under the platform roof, snow beyond."""
+    rng = random.Random(101)
+    c = Canvas(240, 160)
+    c.vgrad(0, 0, 240, 160, [(0, (14, 16, 30)), (1, (30, 30, 44))])
+    # far end: night sky and snow beyond the roof
+    night_view(c, rng, 96, 40, 150, 78)
+    back = (96, 40, 150, 78)
+    # roof canopy
+    c.poly([(0, 0), (240, 0), (150, 40), (96, 40)], (40, 42, 56))
+    for i in range(8):
+        t = i / 8
+        a, b = persp(back, "l", t, 0), persp(back, "r", t, 0)
+        c.line([a, b], (70, 72, 90), 0.8)
+    # platform floor (right half) with the yellow line
+    c.poly([(110, 160), (240, 160), (150, 78), (126, 78)], (96, 94, 100))
+    c.line([(118, 160), (128, 78)], (230, 200, 60), 1.4)
+    # track bed (left)
+    c.poly([(0, 160), (110, 160), (126, 78), (96, 78)], (30, 28, 32))
+    # the train along the left, receding
+    for i in range(6):
+        t0, t1 = i / 6, (i + 0.92) / 6
+        q = side_quad(back, "l", t0, t1, 0.34, 0.8)
+        c.poly(q, (60, 80, 140))
+        q2 = side_quad(back, "l", t0, t1, 0.34, 0.4)
+        c.poly(q2, (190, 200, 220))
+        q3 = side_quad(back, "l", t0, t1, 0.7, 0.72)
+        c.poly(q3, (230, 200, 90))
+        for j in range(4):
+            u0 = t0 + (t1 - t0) * (0.12 + j * 0.22)
+            u1 = u0 + (t1 - t0) * 0.14
+            w = side_quad(back, "l", u0, u1, 0.46, 0.62)
+            c.poly(w, (255, 224, 150))
+            cx = sum(p[0] for p in w) / 4
+            cy = sum(p[1] for p in w) / 4
+            c.glow(cx, cy, 10 * (1 - t0 * 0.7), (110, 80, 30), 0.35)
+    # pillars and hanging signs on the platform side
+    for t in (0.05, 0.35, 0.6, 0.8):
+        x, ytop = persp(back, "r", t, 0)
+        xb, ybot = persp(back, "r", t, 1)
+        px = 130 + (x - 130) * 0.55
+        w = 7 * (1 - t * 0.8)
+        c.rect(px, ytop, px + w, 78 + (160 - 78) * (1 - t) * 0.95, (130, 128, 136))
+        c.rect(px + w * 0.7, ytop, px + w, 78 + (160 - 78) * (1 - t) * 0.95, (100, 98, 106))
+    c.rect(140, 12, 196, 22, (240, 240, 244))
+    c.rect(140, 12, 196, 22, None, (60, 90, 60), 0.8)
+    c.rect(142, 14, 150, 20, (40, 120, 60))
+    c.line([(152, 17), (192, 17)], (40, 40, 60), 1.2)
+    c.line([(150, 0), (150, 12)], (80, 80, 90), 0.6)
+    c.line([(186, 0), (186, 12)], (80, 80, 90), 0.6)
+    # lamps
+    for t in (0.1, 0.4, 0.7):
+        x, y = persp(back, "r", t, 0.06)
+        x = 120 + (x - 120) * 0.6
+        c.glow(x, y + 4, 26 * (1 - t * 0.6), (150, 130, 90), 0.7)
+        c.rect(x - 4 * (1 - t * 0.6), y, x + 4 * (1 - t * 0.6), y + 2, (255, 246, 220))
+    # passengers' silhouettes
+    for x, h in ((200, 44), (214, 50), (176, 30), (160, 20)):
+        c.ell(x - h * 0.12, 150 - h, x + h * 0.12, 150 - h * 0.78, (20, 18, 26))
+        c.rrect(x - h * 0.2, 150 - h * 0.8, x + h * 0.2, 150, h * 0.08, (26, 22, 34))
+    c.vignette(0.45)
+    return c.finish()
+
+
+def scene_corridor():
+    """Sleeper car corridor: night windows on the left, compartment doors on the right."""
+    rng = random.Random(111)
+    c = Canvas(240, 160)
+    back = (150, 44, 186, 96)
+    room(c, back, (200, 184, 160), (120, 36, 40), (226, 220, 206), left=(180, 164, 140), right=(196, 176, 150))
+    c.rect(*back, (170, 150, 120))
+    c.rect(160, 50, 176, 92, (140, 110, 80))  # end door
+    c.rect(163, 54, 173, 66, (200, 220, 240))
+    floor_lines(c, back, (100, 28, 32), 5)
+    c.poly([(40, 160), (200, 160), (174, 96), (162, 96)], (150, 44, 50))  # carpet runner
+    c.poly([(40, 160), (46, 160), (163, 96), (162, 96)], (200, 170, 80))
+    c.poly([(194, 160), (200, 160), (174, 96), (173, 96)], (200, 170, 80))
+    # windows on the left wall
+    for i in range(3):
+        t0 = 0.08 + i * 0.3
+        t1 = t0 + 0.18
+        q = side_quad(back, "l", t0, t1, 0.24, 0.56)
+        xs = [p[0] for p in q]
+        ys = [p[1] for p in q]
+        night_view(c, rng, min(xs), min(ys), max(xs), max(ys))
+        # mask the perspective triangles back to wall colour
+        c.poly([q[0], q[1], (q[1][0], min(ys)), (q[0][0], min(ys))], (180, 164, 140))
+        c.poly([q[3], q[2], (q[2][0], max(ys)), (q[3][0], max(ys))], (180, 164, 140))
+        c.poly(q, None, (110, 86, 60))
+        c.line([q[0], q[1]], (110, 86, 60), 1.4)
+        c.line([q[3], q[2]], (110, 86, 60), 1.4)
+    # handrail
+    c.line([persp(back, "l", 0, 0.62), persp(back, "l", 1, 0.62)], (210, 180, 90), 1.4)
+    # doors on the right wall
+    for i in range(4):
+        t0 = 0.05 + i * 0.24
+        t1 = t0 + 0.14
+        c.poly(side_quad(back, "r", t0, t1, 0.18, 1), (140, 100, 70))
+        c.poly(side_quad(back, "r", t0 + 0.02, t1 - 0.02, 0.24, 0.42), (220, 214, 190))
+        x, y = persp(back, "r", t0 + 0.02, 0.6)
+        c.ell(x - 1, y - 1, x + 1, y + 1, (230, 200, 90))
+        x, y = persp(back, "r", t0 + 0.07, 0.12)
+        c.rect(x - 3 * (1 - t0), y, x + 3 * (1 - t0), y + 3 * (1 - t0 * 0.8), (240, 236, 220))
+    # ceiling lights
+    for t in (0.1, 0.4, 0.7):
+        a = persp(back, "l", t, 0)
+        b = persp(back, "r", t, 0)
+        cx, cy = (a[0] + b[0]) / 2, (a[1] + 4)
+        w = 16 * (1 - t * 0.8)
+        c.rrect(cx - w, cy, cx + w, cy + 2.4 * (1 - t * 0.6), 1, (255, 250, 230))
+        c.glow(cx, cy + 6, 40 * (1 - t * 0.6), (90, 80, 50), 0.6)
+    c.vignette(0.35)
+    return c.finish()
+
+
+def scene_stage():
+    """The event car of the Silver Star: a little stage with curtains, rows of seats."""
+    rng = random.Random(121)
+    c = Canvas(240, 160)
+    back = (56, 30, 184, 104)
+    room(c, back, (60, 30, 40), (90, 40, 40), (70, 50, 50), left=(90, 60, 50), right=(90, 60, 50))
+    # windows along both sides of the car
+    for side in ("l", "r"):
+        for i in range(3):
+            t0 = 0.1 + i * 0.3
+            q = side_quad(back, side, t0, t0 + 0.16, 0.2, 0.46)
+            c.poly(q, (30, 40, 90))
+            for _ in range(8):
+                x = rng.uniform(min(p[0] for p in q), max(p[0] for p in q))
+                y = rng.uniform(min(p[1] for p in q), max(p[1] for p in q))
+                c.ell(x, y, x + 0.8, y + 0.8, (230, 236, 255))
+            c.poly(q, None, (170, 130, 70))
+    # the stage and its curtains
+    c.rect(60, 70, 180, 104, (100, 60, 40))
+    c.rect(60, 70, 180, 73, (200, 160, 80))
+    c.rect(66, 30, 174, 70, (30, 16, 26))
+    for side in (0, 1):
+        for i in range(5):
+            x = 66 + i * 6 if side == 0 else 174 - (i + 1) * 6
+            c.rect(x, 30, x + 6, 70, lerp((170, 20, 40), (110, 10, 26), i % 2))
+    c.rect(56, 28, 184, 36, (170, 20, 40))
+    for x in range(56, 184, 8):
+        c.ell(x, 32, x + 8, 40, (170, 20, 40))
+    c.rect(56, 26, 184, 28, (230, 190, 90))
+    # magic props: a box with stars and a top hat on a table
+    c.rect(106, 44, 134, 70, (40, 30, 90))
+    for x, y in ((112, 50), (124, 58), (116, 64)):
+        c.poly([(x, y - 2), (x + 0.8, y), (x + 2.6, y), (x + 1.2, y + 1.2), (x + 1.8, y + 3), (x, y + 2),
+                (x - 1.8, y + 3), (x - 1.2, y + 1.2), (x - 2.6, y), (x - 0.8, y)], (240, 210, 90))
+    c.rect(142, 58, 158, 60, (60, 40, 30))
+    c.rect(149, 60, 151, 70, (60, 40, 30))
+    c.rect(145, 50, 155, 58, (20, 20, 24))
+    c.rect(143, 56, 157, 58, (20, 20, 24))
+    c.rect(145, 54, 155, 55, (190, 20, 40))
+    # spotlights
+    lay, d = c.layer()
+    for sx, ex in ((90, 120), (150, 120)):
+        d.polygon(c.pts([(sx - 3, 26), (sx + 3, 26), (ex + 26, 72), (ex - 26, 72)]), fill=(255, 240, 200, 60))
+    c.put(lay, blur=3)
+    # audience chairs
+    for row in range(3):
+        y = 112 + row * 16
+        n = 6 + row * 2
+        w = 240 / n
+        for i in range(n):
+            x = i * w + w * 0.15
+            c.rrect(x, y, x + w * 0.7, y + 12, 2, (120 - row * 10, 30, 40))
+            c.rect(x, y, x + w * 0.7, y + 2, (170, 60, 70))
+    c.vignette(0.45)
+    return c.finish()
+
+
+def scene_dining():
+    """Grand Chariot style dining car: white tablecloths, warm lamps, the night outside."""
+    rng = random.Random(131)
+    c = Canvas(240, 160)
+    back = (100, 40, 152, 90)
+    room(c, back, (150, 104, 70), (110, 30, 30), (200, 180, 140), left=(140, 94, 60), right=(140, 94, 60))
+    c.rect(*back, (130, 86, 56))
+    c.rect(116, 46, 136, 88, (90, 56, 36))
+    c.rect(119, 50, 133, 62, (200, 220, 240))
+    floor_lines(c, back, (90, 24, 26), 6)
+    # arched ceiling ribs
+    for i in range(6):
+        t = i / 6
+        a, b = persp(back, "l", t, 0), persp(back, "r", t, 0)
+        c.line([a, ((a[0] + b[0]) / 2, a[1] + 2 * (1 - t)), b], (220, 190, 120), 0.8)
+    # windows both sides with the night
+    for side in ("l", "r"):
+        for i in range(3):
+            t0 = 0.06 + i * 0.3
+            q = side_quad(back, side, t0, t0 + 0.2, 0.18, 0.5)
+            xs = [p[0] for p in q]
+            ys = [p[1] for p in q]
+            night_view(c, rng, min(xs), min(ys), max(xs), max(ys))
+            wall = (140, 94, 60)
+            c.poly([q[0], q[1], (q[1][0], min(ys)), (q[0][0], min(ys))], wall)
+            c.poly([q[3], q[2], (q[2][0], max(ys)), (q[3][0], max(ys))], wall)
+            c.line([q[0], q[1]], (220, 190, 120), 1.2)
+            c.line([q[3], q[2]], (220, 190, 120), 1.2)
+    # tables with cloths and lamps
+    for side in ("l", "r"):
+        for i in range(3):
+            t = 0.12 + i * 0.3
+            x, y = persp(back, side, t, 0.64)
+            k = 1 - t * 0.75
+            x = x + (26 if side == "l" else -26) * k
+            c.poly([(x - 20 * k, y), (x + 20 * k, y), (x + 23 * k, y + 16 * k), (x - 23 * k, y + 16 * k)],
+                   (246, 244, 236))
+            c.rect(x - 23 * k, y + 16 * k, x + 23 * k, y + 22 * k, (220, 216, 206))
+            c.rect(x - 1 * k, y - 10 * k, x + 1 * k, y, (200, 170, 80))
+            c.poly([(x - 5 * k, y - 10 * k), (x + 5 * k, y - 10 * k), (x + 3 * k, y - 16 * k), (x - 3 * k, y - 16 * k)],
+                   (250, 200, 130))
+            c.glow(x, y - 12 * k, 20 * k, (140, 90, 30), 0.7)
+            c.ell(x - 8 * k, y + 4 * k, x - 2 * k, y + 7 * k, (255, 255, 255))
+            c.ell(x + 3 * k, y + 5 * k, x + 9 * k, y + 8 * k, (255, 255, 255))
+            c.line([(x + 12 * k, y + 2 * k), (x + 12 * k, y - 6 * k)], (200, 40, 60), 1.2 * k)
+    c.vignette(0.4)
+    return c.finish()
+
+
+def scene_snowfield():
+    """The Silver Star stopped in the snow at night, a freight train alongside, torches in the snow."""
+    rng = random.Random(141)
+    c = Canvas(240, 160)
+    c.vgrad(0, 0, 240, 160, [(0, (10, 12, 30)), (0.5, (40, 44, 80)), (1, (90, 96, 130))])
+    stars(c, rng, 60, 40)
+    mountains(c, rng, 66, 24, (60, 66, 106), (190, 196, 230), 1.1)
+    for i in range(24):
+        pine(c, rng.uniform(0, 240), 70 + rng.uniform(-2, 3), rng.uniform(6, 10), (20, 30, 44), (170, 180, 210))
+    c.vgrad(0, 70, 240, 160, [(0, (170, 178, 210)), (1, (220, 226, 244))])
+    # freight train (far track)
+    for i in range(7):
+        x = -6 + i * 36
+        c.rect(x, 62, x + 33, 76, (90, 50, 40))
+        c.rect(x, 62, x + 33, 64, (120, 70, 56))
+        for j in range(3):
+            c.line([(x + 3 + j * 10, 64), (x + 3 + j * 10, 76)], (70, 36, 30), 0.6)
+        c.ell(x + 4, 74, x + 9, 79, (30, 30, 34))
+        c.ell(x + 24, 74, x + 29, 79, (30, 30, 34))
+    c.rect(0, 78, 240, 79.5, (90, 90, 110))
+    # the Silver Star (near track), dark, doors open
+    c.rect(0, 96, 240, 98, (70, 70, 90))
+    for i in range(5):
+        x = -10 + i * 52
+        c.rrect(x, 70, x + 49, 96, 2, (60, 80, 140))
+        c.rect(x, 70, x + 49, 73, (190, 200, 220))
+        c.rect(x, 90, x + 49, 91.4, (230, 200, 90))
+        for j in range(5):
+            c.rect(x + 3 + j * 9, 77, x + 8 + j * 9, 84, (255, 224, 150) if (i + j) % 3 else (50, 60, 100))
+        c.rect(x + 42, 76, x + 47, 95, (255, 230, 170))
+        c.glow(x + 44, 90, 14, (120, 90, 40), 0.5)
+        c.ell(x + 6, 93, x + 12, 99, (26, 26, 30))
+        c.ell(x + 37, 93, x + 43, 99, (26, 26, 30))
+    # evacuated passengers with torches
+    for _ in range(12):
+        x, y = rng.uniform(10, 230), rng.uniform(108, 150)
+        h = 10 + (y - 100) * 0.25
+        c.ell(x - h * 0.13, y - h, x + h * 0.13, y - h * 0.78, (30, 28, 40))
+        c.rrect(x - h * 0.2, y - h * 0.8, x + h * 0.2, y, h * 0.08, (40, 36, 54))
+        c.ell(x - h * 0.3, y - 1, x + h * 0.3, y + 1.5, (150, 156, 190))
+    for x, y in ((60, 120), (170, 130)):
+        c.glow(x, y, 28, (120, 100, 40), 0.7)
+        c.ell(x - 1.5, y - 1.5, x + 1.5, y + 1.5, (255, 240, 180))
+    c.snow(rng, 360, big=0.25)
+    c.vignette(0.45)
+    return c.finish()
+
+
+def compartment(c, rng):
+    back = (70, 30, 170, 92)
+    room(c, back, (190, 170, 140), (100, 40, 40), (216, 206, 186), left=(170, 150, 120), right=(180, 160, 130))
+    # small window (only opens 10cm) on the back wall
+    night_view(c, rng, 96, 38, 144, 66)
+    c.rect(94, 36, 146, 68, None, (120, 90, 60), 2)
+    c.rect(96, 60, 144, 66, (150, 170, 200))
+    # bed on the right
+    c.poly(side_quad(back, "r", 0.05, 0.9, 0.55, 0.78), (240, 236, 226))
+    c.poly(side_quad(back, "r", 0.05, 0.9, 0.78, 1), (120, 80, 56))
+    # ceiling vent
+    c.rect(112, 8, 128, 14, (150, 150, 150))
+    for x in range(113, 128, 3):
+        c.line([(x, 9), (x, 13)], (90, 90, 90), 0.6)
+    return back
+
+
+def rose_carpet(c, rng, x0, y0, x1, y1, n):
+    for _ in range(n):
+        y = rng.uniform(y0, y1)
+        k = 0.4 + (y - y0) / (y1 - y0) * 0.9
+        x = rng.uniform(x0, x1)
+        r = 2.4 * k
+        c.ell(x - r, y - r * 0.7, x + r, y + r * 0.7, lerp((150, 0, 20), (220, 20, 44), rng.random()))
+        c.arc((x - r * 0.6, y - r * 0.45, x + r * 0.6, y + r * 0.45), 180, 20, (255, 90, 110), 0.35 * k)
+        if rng.random() < 0.3:
+            c.poly([(x + r, y), (x + r * 1.8, y - r * 0.3), (x + r * 1.4, y + r * 0.4)], (40, 100, 40))
+
+
+def scene_cabin_roses():
+    """The compartment carpeted with roses, a man in black lying among them."""
+    rng = random.Random(151)
+    c = Canvas(240, 160)
+    compartment(c, rng)
+    c.poly([(0, 160), (240, 160), (170, 92), (70, 92)], (110, 10, 24))
+    rose_carpet(c, rng, 0, 94, 240, 160, 520)
+    # the body: black cape and suit, face down
+    c.poly([(70, 118), (150, 110), (170, 126), (84, 136)], (20, 18, 24))
+    c.poly([(80, 120), (140, 114), (150, 124), (90, 130)], (36, 32, 44))
+    c.ell(150, 108, 166, 120, (40, 30, 30))
+    c.poly([(70, 118), (56, 126), (62, 132), (84, 128)], (20, 18, 24))
+    c.ell(52, 126, 60, 132, (230, 204, 180))   # a hand
+    rose_carpet(c, rng, 60, 124, 180, 140, 60)
+    c.glow(120, 120, 60, (80, 0, 10), 0.5)
+    c.vignette(0.55)
+    return c.finish()
+
+
+def scene_cabin_empty():
+    """The same compartment after the smoke: only roses, burst rubber and a card."""
+    rng = random.Random(151)
+    c = Canvas(240, 160)
+    compartment(c, rng)
+    c.poly([(0, 160), (240, 160), (170, 92), (70, 92)], (110, 10, 24))
+    rose_carpet(c, rng, 0, 94, 240, 160, 560)
+    for _ in range(14):  # rubber scraps
+        x, y = rng.uniform(40, 200), rng.uniform(104, 150)
+        c.poly([(x, y), (x + 4, y + 1), (x + 1.5, y + 3.4)], (240, 200, 190))
+    c.poly([(110, 118), (126, 114), (129, 124), (113, 128)], (250, 248, 240))   # the clown's card
+    c.line([(114, 120), (124, 117.5)], (180, 20, 40), 0.8)
+    c.ell(117, 120, 121, 124, (40, 30, 60))
+    lay, d = c.layer()   # lingering smoke
+    for _ in range(10):
+        x, y = rng.uniform(0, 240), rng.uniform(0, 60)
+        d.ellipse(c.pts([(x - 40, y - 12), (x + 40, y + 12)]), fill=(220, 220, 230, 50))
+    c.put(lay, blur=6)
+    c.vignette(0.5)
+    return c.finish()
+
+
+def scene_hotel():
+    """Lobby of the old swamp hotel: chandelier, front desk, key board, jade display, staircase."""
+    rng = random.Random(161)
+    c = Canvas(240, 160)
+    back = (60, 24, 200, 100)
+    room(c, back, (140, 100, 70), (90, 40, 34), (110, 76, 52), left=(120, 84, 58), right=(120, 84, 58))
+    # wainscoting and wallpaper stripes on the back wall
+    for x in range(60, 200, 8):
+        c.rect(x, 24, x + 4, 76, (150, 108, 76))
+    c.rect(60, 76, 200, 100, (90, 56, 36))
+    c.rect(60, 76, 200, 78, (190, 150, 80))
+    # tall window with snow (left of back wall)
+    night_view(c, rng, 70, 30, 100, 72, moonpos=(22, 8))
+    c.rect(68, 28, 102, 74, None, (70, 46, 30), 2)
+    c.rect(84, 28, 86, 74, (70, 46, 30))
+    # key board behind the desk
+    c.rect(116, 32, 164, 60, (70, 44, 28), (190, 150, 80), 1)
+    for x in range(120, 162, 6):
+        for y in (38, 46, 54):
+            c.ell(x, y, x + 2, y + 2, (230, 200, 100))
+            c.line([(x + 1, y + 2), (x + 1, y + 5)], (200, 170, 90), 0.5)
+    # staircase on the right
+    for i in range(8):
+        y = 100 - i * 8
+        x = 172 + i * 3
+        c.rect(x, y - 8, 200, y, lerp((120, 70, 50), (90, 50, 36), i / 8))
+        c.rect(x, y - 8, 200, y - 7, (170, 120, 80))
+    c.line([(170, 96), (196, 36)], (190, 150, 80), 1.2)
+    # floor tiles
+    floor_lines(c, back, (70, 30, 26), 10)
+    for i in range(6):
+        y = 100 + (160 - 100) * (i / 6) ** 1.6
+        c.line([(0, y + (1 - (y - 100) / 60) * 0), (240, y)], (70, 30, 26), 0.4)
+    c.poly([(60, 160), (180, 160), (150, 100), (110, 100)], (140, 30, 40))  # carpet
+    # front desk
+    c.rect(96, 70, 176, 104, (80, 50, 30))
+    c.rect(94, 66, 178, 72, (170, 130, 70))
+    c.rect(96, 72, 176, 74, (60, 36, 20))
+    for x in range(100, 176, 12):
+        c.rect(x, 78, x + 9, 100, (96, 62, 38))
+    c.ell(150, 62, 158, 67, (230, 200, 100))  # bell
+    c.rect(118, 62, 134, 66, (240, 236, 220))  # register
+    # jade display case (left)
+    c.rect(20, 70, 50, 120, (70, 44, 28))
+    c.rect(22, 72, 48, 100, (200, 220, 220))
+    jade_stone(c, 25, 82, 20, 14)
+    # chandelier
+    c.line([(130, 0), (130, 12)], (190, 150, 80), 0.8)
+    c.ell(112, 12, 148, 20, (200, 160, 80))
+    for x in range(114, 148, 6):
+        c.ell(x, 14, x + 3, 20, (255, 244, 200))
+    c.glow(130, 16, 70, (140, 100, 40), 0.8)
+    c.vignette(0.45)
+    return c.finish()
+
+
+def scene_theater():
+    """Station Theater: the marionette chair centre stage, ropes and a pulley in the rigging."""
+    rng = random.Random(171)
+    c = Canvas(240, 160)
+    c.rect(0, 0, 240, 160, (16, 8, 12))
+    # proscenium and curtains
+    for side in (0, 1):
+        for i in range(7):
+            x = i * 8 if side == 0 else 240 - (i + 1) * 8
+            col = lerp((140, 14, 34), (80, 4, 18), (i % 2) * 0.7)
+            c.rect(x, 0, x + 8, 112, col)
+    c.rect(0, 0, 240, 14, (150, 16, 40))
+    for x in range(0, 240, 10):
+        c.ell(x, 8, x + 10, 20, (150, 16, 40))
+    c.rect(0, 0, 240, 3, (220, 180, 80))
+    # rigging: batten, pulley, ropes
+    c.rect(70, 18, 170, 21, (60, 50, 50))
+    c.ell(114, 16, 126, 28, (150, 150, 160))
+    c.ell(118, 20, 122, 24, (70, 70, 80))
+    c.line([(116, 22), (116, 60)], (210, 190, 150), 0.7)
+    c.line([(124, 22), (136, 22), (148, 40)], (210, 190, 150), 0.7)
+    c.line([(148, 40), (148, 48)], (210, 190, 150), 0.7)
+    # the 70kg marionette hanging high on the other end of the rope
+    marionette(c, 148, 48, 0.6, twisted=False)
+    # stage floor
+    c.poly([(0, 112), (240, 112), (240, 128), (0, 128)], (90, 56, 36))
+    for x in range(-100, 340, 16):
+        c.line([(120 + (x - 120) * 0.5, 112), (x, 128)], (70, 42, 26), 0.5)
+    c.rect(0, 112, 240, 113, (200, 160, 80))
+    for x in range(20, 230, 14):   # footlights
+        c.ell(x, 110, x + 4, 113, (255, 240, 180))
+        c.glow(x + 2, 110, 10, (90, 70, 30), 0.4)
+    # the empty marionette chair centre stage, in a spotlight
+    lay, d = c.layer()
+    d.polygon(c.pts([(114, 0), (126, 0), (150, 112), (90, 112)]), fill=(255, 245, 220, 60))
+    c.put(lay, blur=3)
+    c.rect(106, 88, 134, 92, (130, 70, 34))
+    c.rect(108, 92, 111, 112, (110, 56, 26))
+    c.rect(129, 92, 132, 112, (110, 56, 26))
+    c.rect(106, 64, 110, 92, (130, 70, 34))
+    c.rect(130, 64, 134, 92, (130, 70, 34))
+    c.rect(106, 64, 134, 70, (130, 70, 34))
+    # audience seats (dark, backs of chairs)
+    for row in range(3):
+        y = 132 + row * 10
+        for i in range(16):
+            x = i * 15 + (row % 2) * 7
+            c.rrect(x, y, x + 12, y + 12, 3, (60 - row * 10, 16, 24))
+    c.vignette(0.5)
+    return c.finish()
+
+
+def scene_swamp():
+    """The swamp behind the hotel at night: fog, dead trees, reeds, the hotel's lights far away."""
+    rng = random.Random(181)
+    c = Canvas(240, 160)
+    c.vgrad(0, 0, 240, 160, [(0, (8, 12, 22)), (0.55, (40, 50, 60)), (1, (16, 22, 24))])
+    stars(c, rng, 40, 40)
+    moon(c, 190, 22, 7)
+    # distant hotel lights
+    c.rect(20, 56, 70, 76, (26, 30, 36))
+    c.poly([(18, 56), (44, 44), (72, 56)], (26, 30, 36))
+    for x in range(24, 68, 6):
+        for y in (60, 68):
+            if rng.random() < 0.5:
+                c.rect(x, y, x + 2.4, y + 3, (255, 210, 130))
+                c.glow(x + 1, y + 1.5, 5, (100, 70, 20), 0.4)
+    c.rect(0, 76, 240, 160, (22, 30, 30))
+    c.vgrad(0, 76, 240, 160, [(0, (30, 40, 42)), (1, (10, 14, 14))])
+    # water reflections
+    lay, d = c.layer()
+    for _ in range(120):
+        x, y = rng.uniform(0, 240), rng.uniform(80, 160)
+        w = rng.uniform(4, 16)
+        colr = (255, 210, 130, rng.randrange(20, 70)) if x < 80 and y < 110 else (160, 180, 200, rng.randrange(15, 60))
+        d.line(c.pts([(x, y), (x + w, y)]), fill=colr, width=S // 2)
+    c.put(lay)
+    for x, h in ((24, 110), (96, 80), (206, 130), (160, 60)):
+        bare_tree(c, rng, x, 100, h, (10, 12, 14), 2.6 if h > 90 else 1.8, depth=5)
+    for _ in range(60):
+        x = rng.uniform(0, 240)
+        c.line([(x, 160), (x + rng.uniform(-4, 4), 128 - rng.uniform(0, 26))], (18, 24, 18), 0.7)
+    lay, d = c.layer()
+    for _ in range(30):
+        x, y = rng.uniform(-30, 240), rng.uniform(56, 130)
+        d.ellipse(c.pts([(x, y), (x + rng.uniform(40, 100), y + rng.uniform(6, 16))]), fill=(180, 190, 200, 55))
+    c.put(lay, blur=4)
+    c.vignette(0.55)
+    return c.finish()
+
+
+LOCATIONS = {
+    "title": title_bg, "platform": scene_platform, "corridor": scene_corridor, "stage": scene_stage,
+    "dining": scene_dining, "snowfield": scene_snowfield, "cabin_roses": scene_cabin_roses,
+    "cabin_empty": scene_cabin_empty, "hotel": scene_hotel, "theater": scene_theater, "swamp": scene_swamp,
+    "police": scene_police, "hotel_room": scene_hotel_room,
 }
