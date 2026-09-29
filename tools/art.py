@@ -15,7 +15,8 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 import art_hd
 
 W, H = 240, 160
-PORTRAIT_W, PORTRAIT_H = 128, 144   # dialogue bust, bottom-centred behind the text box
+PORTRAIT_W, PORTRAIT_H = 128, 160   # dialogue bust: full screen height so cut-outs reach the bottom edge
+CAPTURE_H = 144                     # framed screenshot busts keep their old window size
 THUMB_W, THUMB_H = 64, 80           # face crop for the court record / popups
 ICON_SIZE = 64
 OUTLINE = (28, 20, 32, 255)
@@ -1225,6 +1226,27 @@ def _procedural_portrait(key):
     return outline(img)
 
 
+def stage_look(img):
+    """Cut-out bust -> game look: slight contrast boost, warm rim light on the top-left edge,
+    1px ink outline and a dark drop shadow so the figure sits on the scene."""
+    from PIL import ImageChops, ImageEnhance
+    w, h = img.size
+    a = img.getchannel("A").point(lambda v: 255 if v >= 128 else 0)
+    rgb = ImageEnhance.Color(ImageEnhance.Contrast(img.convert("RGB")).enhance(1.12)).enhance(1.1)
+    shifted = Image.new("L", (w, h), 0)
+    shifted.paste(a, (2, 2))
+    rim = ImageChops.subtract(a, shifted)
+    rgb = Image.composite(Image.blend(rgb, Image.new("RGB", (w, h), (255, 236, 190)), 0.55), rgb, rim)
+    ol = a.filter(ImageFilter.MaxFilter(3))
+    shadow = Image.new("L", (w, h), 0)
+    shadow.paste(ol, (3, 2))
+    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    out.paste(Image.new("RGBA", (w, h), (10, 8, 20, 255)), (0, 0), shadow)
+    out.paste(Image.new("RGBA", (w, h), (18, 12, 20, 255)), (0, 0), ol)
+    out.paste(rgb.convert("RGBA"), (0, 0), a)
+    return out
+
+
 def framed(img):
     """Opaque (screenshot-style) portraits get a thin frame so they read as a cut-in window."""
     if img.getextrema()[3][0] < 255:
@@ -1250,8 +1272,10 @@ def portrait_image(key):
     if key in USER_PORTRAITS:
         img = load_rgba(USER_PORTRAITS[key], PORTRAIT_W, PORTRAIT_H)
         if img.getextrema()[3][0] == 255:  # opaque: fill the whole bust area
-            return framed(img.resize((PORTRAIT_W, PORTRAIT_H), Image.LANCZOS))
-        return fit(img, PORTRAIT_W, PORTRAIT_H)
+            canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
+            canvas.paste(framed(img.resize((PORTRAIT_W, CAPTURE_H), Image.LANCZOS)), (0, 0))
+            return canvas
+        return stage_look(fit(img, PORTRAIT_W, PORTRAIT_H))
     small = _procedural_portrait(key).resize((96, 120), Image.NEAREST)
     canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
     canvas.paste(small, ((PORTRAIT_W - 96) // 2, 0))  # keep the face above the text box
