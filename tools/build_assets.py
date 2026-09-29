@@ -764,7 +764,7 @@ def build(story_path, font_path, out_dir):
     h += ["extern const u16 script[];", "extern const u16 text_data[];", "extern const u32 text_ofs[];",
           "extern const u16 glyph_bits[];", "extern const u8 glyph_adv[];",
           "extern const u16 anim_data[];", "extern const u32 anim_ofs[];", "extern const u8 anim_count[];",
-          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u16 *const portrait_thumb[];",
+          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u8 portrait_breathe[];", "extern const u16 *const portrait_thumb[];",
           "extern const u16 icon_img[];",
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
           "extern const u16 char_profile[];",
@@ -832,6 +832,8 @@ def build(story_path, font_path, out_dir):
     for k in portrait_keys:
         c.append(c_array(f"portrait_{k}", "u16", art.render_portrait(k), fmt="0x{:04X}"))
     c.append("const u16 *const portrait_img[] = {" + ",".join(f"portrait_{k}" for k in portrait_keys) + ("" if portrait_keys else "0") + "};")
+    # idle breathing (test: Kindaichi only)
+    c.append(c_array("portrait_breathe", "u8", [1 if k == "kin" or k.startswith("kin_") else 0 for k in portrait_keys] or [0]))
     for k in portrait_keys:
         c.append(c_array(f"thumb_{k}", "u16", art.render_thumb(k), fmt="0x{:04X}"))
     c.append("const u16 *const portrait_thumb[] = {" + ",".join(f"thumb_{k}" for k in portrait_keys) + ("" if portrait_keys else "0") + "};")

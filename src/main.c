@@ -187,17 +187,20 @@ static int disp_height(int t) { return disp_of_text[t] == NONE ? LINE_H : disp_h
 static void draw_hint_right(int t, int xr, int y) { draw_disp(t, xr - disp_width(t) / 2, y + disp_height(t) / 2); }
 
 static int anim_t, anim_snap_t; /* background animation frame (see ambient_tick) */
+static int breath_lift, breath_snap; /* idle breathing: head and shoulders raised by 0..2 px */
 
 static void save_screen(void)
 {
     plat_copy32(snapshot, fb, SCREEN_W * SCREEN_H / 2);
     anim_snap_t = anim_t;
+    breath_snap = breath_lift;
 }
 
 static void restore_screen(void)
 {
     plat_copy32(fb, snapshot, SCREEN_W * SCREEN_H / 2);
     anim_t = anim_snap_t;
+    breath_lift = breath_snap;
     mark(0, SCREEN_H);
 }
 
@@ -337,6 +340,8 @@ static void draw_hearts(void)
 /* ---- looping background animation (snow, the view past the train windows) ----
  * anim_data holds per scene ANIM_FRAMES diffs; entry t turns frame t-1 into frame t. */
 static int anim_scene = NONE, anim_on, portrait_dx, portrait_dither;
+#define BREATH_SPLIT (BOX_Y - 14) /* rows above this (clear of the name tag and box) breathe */
+static int breath_t;
 
 /* Writes diff t into the back buffer. Where the portrait covers a changed pixel, the
  * portrait pixel wins, so the character never needs a full redraw. */
@@ -354,7 +359,8 @@ FAST static void anim_apply(int t, int *y0, int *y1)
         u16 *dst = fb + ofs;
         d += 2;
         int y = ofs / SCREEN_W, x = ofs - y * SCREEN_W;
-        const u16 *prow = (por && y >= PORTRAIT_Y && y < PORTRAIT_Y + PORTRAIT_H) ? por + (y - PORTRAIT_Y) * PORTRAIT_W : 0;
+        const u16 *prow = (por && y >= PORTRAIT_Y && y < PORTRAIT_Y + PORTRAIT_H)
+            ? por + (y - PORTRAIT_Y + (y < BREATH_SPLIT ? breath_lift : 0)) * PORTRAIT_W : 0;
         for (int i = 0; i < len; i++) {
             int pxi = x + i - px0;
             u16 c = d[i];
@@ -375,7 +381,8 @@ FAST static void blit_portrait_rows(int y0, int y1)
     int x0 = PORTRAIT_X + portrait_dx;
     for (int j = y0; j < y1 && j < PORTRAIT_Y + PORTRAIT_H; j++) {
         if (j < PORTRAIT_Y) continue;
-        const u16 *row = src + (j - PORTRAIT_Y) * PORTRAIT_W;
+        int sj = j - PORTRAIT_Y + (j < BREATH_SPLIT ? breath_lift : 0); /* breathing lifts the upper body */
+        const u16 *row = src + sj * PORTRAIT_W;
         u16 *dst = fb + j * SCREEN_W;
         for (int i = 0; i < PORTRAIT_W; i++) {
             int x = x0 + i;
@@ -401,10 +408,26 @@ static void draw_scene(void)
     draw_hearts();
 }
 
-/* Called every frame while a dialogue page is on screen: steps the background loop. */
+/* Idle breathing: a 96-frame cycle, 0 -> 1 -> 2 -> 1 px, redrawing only the rows above the box. */
+static void breathe_tick(void)
+{
+    if (cur_portrait == NONE || cut_mode || !portrait_breathe[cur_portrait] || portrait_dx) return;
+    breath_t = (breath_t + 1) % 96;
+    int lift = breath_t < 40 ? 0 : breath_t < 48 ? 1 : breath_t < 88 ? 2 : 1;
+    if (lift == breath_lift) return;
+    breath_lift = lift;
+    plat_copy32(fb, scene_img[cur_scene], BREATH_SPLIT * SCREEN_W / 2);
+    blit_portrait_rows(0, BREATH_SPLIT);
+    draw_hearts();
+    mark(0, BREATH_SPLIT);
+}
+
+/* Called every frame while a dialogue page is on screen: breathing and the background loop. */
 static void ambient_tick(void)
 {
-    if (!anim_on || cut_mode || !anim_count[cur_scene] || anim_scene != cur_scene || (frame_count & 3)) return;
+    if (!anim_on) return;
+    breathe_tick();
+    if (cut_mode || !anim_count[cur_scene] || anim_scene != cur_scene || (frame_count & 3)) return;
     int y0, y1;
     anim_t = (anim_t + 1) % ANIM_FRAMES;
     anim_apply(anim_t, &y0, &y1);
@@ -513,6 +536,7 @@ static void say(int spk, int t, int portrait)
     /* a new speaker slides in from the right, fading in (dithered) over the first steps */
     int slide = portrait != NONE && spk != last_spk && !cut_mode;
     last_spk = spk;
+    if (portrait != cur_portrait) breath_lift = breath_t = 0;
     cur_portrait = portrait;
     if (slide) {
         static const signed char steps[] = {36, 20, 10, 4, 1};
