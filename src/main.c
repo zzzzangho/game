@@ -1115,36 +1115,20 @@ static int option_menu(int id, int spk, int q, int exit_text, u64 need, int n, c
 static void banner(int kind)
 {
     int t = kind ? UI_BANNER_DEDUCE : UI_BANNER_INVEST;
-    u16 band = kind ? RGB(20, 2, 4) : RGB(3, 6, 18);
     save_screen();
     plat_sfx(kind ? SFX_OBJECTION : SFX_GET);
     for (int f = 0; f < 90; f++) {
-        int off = f < 12 ? (12 - f) * 20 : f > 78 ? -(f - 78) * 20 : 0;
+        int off = f < 10 ? (10 - f) * 24 : f > 80 ? -(f - 80) * 24 : 0;
         restore_screen();
         shade(0, 0, SCREEN_W, SCREEN_H, 0);
-        fill(off, 54, SCREEN_W, 52, band);
-        fill(off, 54, SCREEN_W, 2, C_GOLD);
-        fill(off, 104, SCREEN_W, 2, C_GOLD);
-        /* magnifying glass (invest) or exclamation (deduce) */
-        int gx = off + 26, gy = 66;
-        if (!kind) {
-            for (int a = 0; a < 64; a++) {
-                static const s16 c[16] = {0, 38, 71, 92, 100, 92, 71, 38, 0, -38, -71, -92, -100, -92, -71, -38};
-                int dx = c[a & 15] * 11 / 100, dy = c[(a + 4) & 15] * 11 / 100;
-                fill(gx + 12 + dx, gy + 12 + dy, 2, 2, C_WHITE);
-            }
-            for (int i = 0; i < 10; i++) fill(gx + 20 + i, gy + 20 + i, 3, 3, C_GOLD);
-        } else {
-            fill(gx + 10, gy, 6, 20, C_WHITE);
-            fill(gx + 10, gy + 24, 6, 6, C_WHITE);
-        }
-        draw_disp(t, off + SCREEN_W / 2 + 14, 80);
+        if (f >= 10 && f < 12) fill(0, 48, SCREEN_W, 64, C_WHITE); /* impact flash */
+        else draw_disp(t, off + SCREEN_W / 2, 80);
         if (f == 12) {
             plat_debug_event("banner", kind);
             shake(6, 2);
         }
         frame();
-        if (f > 20 && f < 78 && (keys_new & KEY_A)) f = 78;
+        if (f > 20 && f < 80 && (keys_new & KEY_A)) f = 80;
     }
     restore_screen();
     frame();

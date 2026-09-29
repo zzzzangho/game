@@ -781,6 +781,8 @@ def build(story_path, font_path, out_dir):
             im = render_bdf(name_font, comp.texts[tid])
         elif style == "logo_img":
             im = logo.render()
+        elif style == "banner":
+            im = display_font.render_banner("deduce" if "추리" in comp.texts[tid] else "invest")
         elif style == "hint":
             im = render_bdf(name_font, comp.texts[tid], colour=(176, 176, 196))
         else:
