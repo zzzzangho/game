@@ -20,7 +20,7 @@ import logo  # noqa: E402
 
 # ---- layout constants (must match src/main.c) ----
 TEXT_W = 224          # dialogue box text width in pixels
-TEXT_LINES = 4        # lines per dialogue page
+TEXT_LINES = 3        # lines per dialogue page
 # dialogue: every sentence starts on a new line. "…" only ends a sentence after a sentence-final syllable
 # ("그래요… 하지만"), not in the middle of one ("장미 한 송이와… 이 편지가").
 SENTENCE_END = re.compile(r"(?<=[.!?』])\s+|(?<=[다요까지야어아네군죠걸데래니나고][…])\s+")

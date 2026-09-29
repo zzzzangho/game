@@ -18,9 +18,9 @@
 #define C_EMPH   RGB(31, 13, 7) /* {강조} words in the script */
 
 #define LINE_H 13
-#define BOX_Y 96  /* dialogue box: 4 lines of text */
+#define BOX_Y 114 /* dialogue box: 3 lines of text */
 #define TEXT_X 8
-#define TEXT_Y 100
+#define TEXT_Y 118
 #define PORTRAIT_X ((SCREEN_W - PORTRAIT_W) / 2)
 #define PORTRAIT_Y 0 /* bust hangs from the top; the translucent text box covers only the chest */
 
@@ -544,8 +544,8 @@ static int lose_life(void)
     plat_offset(0, 0);
     wait_frames(20);
     if (lives == 1) { /* last heart: make it hurt */
-        fill(0, 96, SCREEN_W, 22, RGB(10, 0, 0));
-        draw_text_ex(SCREEN_W / 2, 101, UI_DANGER, C_RED, 1, 1);
+        fill(0, BOX_Y - 24, SCREEN_W, 22, RGB(10, 0, 0));
+        draw_text_ex(SCREEN_W / 2, BOX_Y - 19, UI_DANGER, C_RED, 1, 1);
         for (int i = 0; i < 70; i++) {
             if ((i % 30) == 0 || (i % 30) == 8) plat_sfx(SFX_SHOCK); /* heartbeat */
             frame();
