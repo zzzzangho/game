@@ -15,6 +15,7 @@
 #define C_PANEL  RGB(4, 5, 12)
 #define C_HILITE RGB(9, 12, 24)
 #define C_BORDER RGB(24, 19, 8)
+#define C_EMPH   RGB(31, 13, 7) /* {강조} words in the script */
 
 #define LINE_H 13
 #define BOX_Y 96  /* dialogue box: 4 lines of text */
@@ -188,7 +189,8 @@ static void glyph_shadowed(int x, int y, int g, u16 c, int scale)
 static int line_width(const u16 *s, int scale)
 {
     int w = 0;
-    for (; *s != TXT_END && *s != TXT_NL; s++) w += glyph_adv[*s] * scale;
+    for (; *s != TXT_END && *s != TXT_NL; s++)
+        if (*s < TXT_EMPH_OFF) w += glyph_adv[*s] * scale;
     return w;
 }
 
@@ -219,15 +221,19 @@ static void draw_text_ex(int x, int y, int id, u16 c, int scale, int centred)
 {
     const u16 *s = txt(id);
     int caption = !centred && is_caption(s);
-    int cx = centred ? x - line_width(s, scale) / 2 : caption ? (SCREEN_W - line_width(s, scale)) / 2 : x;
+    int cx = centred ? x - line_width(s, scale) / 2 : caption ? (SCREEN_W - line_width(s, scale)) / 2 : x, emph = 0;
     for (; *s != TXT_END; s++) {
+        if (*s == TXT_EMPH_ON || *s == TXT_EMPH_OFF) {
+            emph = *s == TXT_EMPH_ON;
+            continue;
+        }
         if (*s == TXT_NL) {
             y += LINE_H * scale;
             caption = !centred && is_caption(s + 1);
             cx = centred ? x - line_width(s + 1, scale) / 2 : caption ? (SCREEN_W - line_width(s + 1, scale)) / 2 : x;
             continue;
         }
-        glyph_shadowed(cx, y, *s, caption ? C_GOLD : c, scale);
+        glyph_shadowed(cx, y, *s, caption ? C_GOLD : emph ? C_EMPH : c, scale);
         cx += glyph_adv[*s] * scale;
     }
 }
@@ -239,15 +245,19 @@ static void type_text(int x, int y, int id, u16 c)
 {
     const u16 *s = txt(id);
     int caption = is_caption(s);
-    int cx = caption ? (SCREEN_W - line_width(s, 1)) / 2 : x, instant = 0, n = 0;
+    int cx = caption ? (SCREEN_W - line_width(s, 1)) / 2 : x, instant = 0, n = 0, emph = 0;
     for (; *s != TXT_END; s++) {
+        if (*s == TXT_EMPH_ON || *s == TXT_EMPH_OFF) {
+            emph = *s == TXT_EMPH_ON;
+            continue;
+        }
         if (*s == TXT_NL) {
             y += LINE_H;
             caption = is_caption(s + 1);
             cx = caption ? (SCREEN_W - line_width(s + 1, 1)) / 2 : x;
             continue;
         }
-        glyph_shadowed(cx, y, *s, caption ? C_GOLD : c, 1);
+        glyph_shadowed(cx, y, *s, caption ? C_GOLD : emph ? C_EMPH : c, 1);
         cx += glyph_adv[*s];
         if (!instant && (++n & 1) == 0) {
             if ((n & 3) == 0) plat_sfx(SFX_BLIP);

@@ -31,6 +31,7 @@ MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
 FX = dict(flash=0, shock=1, shake=2, red=3)
 NL = 0xFFFE
+EMPH_ON, EMPH_OFF = 0xFFFD, 0xFFFC  # {강조} markup in the script
 END = 0xFFFF
 NONE = 0xFFFF
 
@@ -140,7 +141,7 @@ class Font:
                     yield xo + c, top + r
 
     def width(self, s):
-        return sum(self.adv(c) for c in s)
+        return sum(self.adv(c) for c in s if c not in "{}")
 
 
 # ---------------------------------------------------------------- text wrapping
@@ -166,7 +167,15 @@ def wrap(font, text, width):
                 word = word[cut:]
             line = word
         out.append(line)
-    return out
+    # {emphasis} may not cross a line: close it at the line end and reopen it on the next line
+    res, open_ = [], False
+    for ln in out:
+        pre = "{" if open_ else ""
+        for ch in ln:
+            if ch in "{}":
+                open_ = ch == "{"
+        res.append(pre + ln + ("}" if open_ else ""))
+    return [ln.replace("{}", "") for ln in res]
 
 
 # ---------------------------------------------------------------- compiler
@@ -201,8 +210,15 @@ class Compiler:
         for ch in s:
             if re.match(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", ch):
                 self.err(f"한자/일본어는 쓰지 않습니다: {ch!r}")
-            if ch != "\n" and not self.font.has(ch):
+            if ch not in "\n{}" and not self.font.has(ch):
                 self.err(f"font has no glyph for {ch!r} (U+{ord(ch):04X})")
+        depth = 0
+        for ch in s:
+            depth += {"{": 1, "}": -1}.get(ch, 0)
+            if depth not in (0, 1):
+                self.err(f"unbalanced {{강조}} braces: {s!r}")
+        if depth:
+            self.err(f"unbalanced {{강조}} braces: {s!r}")
         if s not in self.text_index:
             self.text_index[s] = len(self.texts)
             self.texts.append(s)
@@ -598,7 +614,7 @@ def build(story_path, font_path, out_dir):
         comp.scene(key)
 
     # glyph table from every character used
-    chars = sorted({c for t in comp.texts for c in t if c != "\n"})
+    chars = sorted({c for t in comp.texts for c in t if c not in "\n{}"})
     gmap = {c: i for i, c in enumerate(chars)}
     rows_used = [r for c in chars for _, r in font.pixels(c)]
     top, bottom = min(rows_used), max(rows_used)
@@ -615,7 +631,7 @@ def build(story_path, font_path, out_dir):
     text_data, text_ofs = [], []
     for t in comp.texts:
         text_ofs.append(len(text_data))
-        text_data.extend(NL if c == "\n" else gmap[c] for c in t)
+        text_data.extend({"\n": NL, "{": EMPH_ON, "}": EMPH_OFF}.get(c) or gmap[c] for c in t)
         text_data.append(END)
 
     scene_keys = sorted(comp.scenes, key=comp.scenes.get)
@@ -632,7 +648,8 @@ def build(story_path, font_path, out_dir):
          f"#define PORTRAIT_W {art.PORTRAIT_W}", f"#define PORTRAIT_H {art.PORTRAIT_H}",
          f"#define THUMB_W {art.THUMB_W}", f"#define THUMB_H {art.THUMB_H}",
          f"#define ICON_SIZE {art.ICON_SIZE}", "#define TRANSPARENT 0xFFFF", "#define NONE 0xFFFF",
-         "#define TXT_NL 0xFFFE", "#define TXT_END 0xFFFF"]
+         "#define TXT_NL 0xFFFE", "#define TXT_END 0xFFFF",
+         "#define TXT_EMPH_ON 0xFFFD", "#define TXT_EMPH_OFF 0xFFFC"]
     for k, v in OPS.items():
         h.append(f"#define OP_{k} {v}")
     for k, v in FX.items():
