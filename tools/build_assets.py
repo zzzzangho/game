@@ -463,7 +463,7 @@ class Compiler:
                 self.err("@cut takes a cut_* image (assets/cuts)")
             self.emit(OPS["FX"], FX["flash"])
             self.emit(OPS["SCENE"], self.scene(a[0]) | 0x8000)
-        elif cmd == "inset":  # small framed picture over the middle of the screen, until "@inset off"
+        elif cmd == "inset":  # small framed picture over the middle of the screen for the next line
             self.need_args(a, 1, "@inset ins_KEY | off")
             if a[0] == "off":
                 self.emit(OPS["INSET"], NONE)

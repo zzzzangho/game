@@ -539,6 +539,26 @@ static void ambient_tick(void)
     mark(y0, y1);
 }
 
+/* An @inset picture is shown for one line, then folds back into the middle. */
+static void inset_close(void)
+{
+    int shown = cur_inset, y0 = INSET_Y - 2, y1 = INSET_Y + INSET_H + 2, cy = INSET_Y + INSET_H / 2;
+    for (int h = INSET_H / 2 - 10; ; h -= 14) {
+        cur_inset = NONE;
+        plat_copy32(fb + y0 * SCREEN_W, scene_img[cur_scene] + y0 * SCREEN_W, (y1 - y0) * SCREEN_W / 2);
+        blit_portrait_rows(y0, y1);
+        draw_hearts();
+        draw_name_tag(box_spk);
+        mark(y0, y1);
+        if (h <= 0) break;
+        cur_inset = shown;
+        draw_inset(cy - h, cy + h);
+        frame();
+    }
+    frame();
+    save_screen(); /* popups after this line restore the screen without the picture */
+}
+
 static void set_speaker_portrait(int spk)
 {
     cur_portrait = (spk != NONE) ? char_portrait[spk] : NONE;
@@ -673,6 +693,7 @@ static void say(int spk, int t, int portrait)
     save_screen();
     wait_advance();
     anim_on = 0;
+    if (cur_inset != NONE) inset_close();
     if (spk != NONE && prof_text[spk] != NONE && !(prof_flags & (1u << spk))) meet(spk, UI_MEET);
 }
 
