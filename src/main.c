@@ -617,11 +617,14 @@ static void chapter_card(int t, int card)
 
 /* texts: option text ids. extra: optional trailing option (UI text) or NONE.
  * dbg_id/traps only feed the host test harness (which option set this is, which ones to avoid). */
+static int choose_start; /* cursor position the next choose() opens at */
+
 static int choose(int spk, int q, const u16 *texts, int n, u32 greyed, int extra, int dbg_kind, int dbg_id,
                   u32 traps)
 {
     int total = n + (extra != NONE);
-    int sel = 0, w = 120;
+    int sel = choose_start < total ? choose_start : 0, w = 120;
+    choose_start = 0;
     for (int i = 0; i < total; i++) {
         int tw = text_width(i < n ? texts[i] : extra, 1) + 30;
         if (tw > w) w = tw;
@@ -885,6 +888,20 @@ static int run(u16 pc);
 /* Option menu shared by @investigate and @menu. opts: n entries of (text, label, cond, mark) where
  * mark = flag remembering the option was chosen (greys it out), bit 15 = trap (test harness avoids it).
  * need: evidence required before the exit option works (0 = exit any time). */
+/* Last option picked in each exploration menu, so the cursor comes back to it after a talk. */
+static u16 menu_mem_id[32], menu_mem_opt[32];
+static int menu_mem_next;
+
+static int menu_mem_slot(int id, int create)
+{
+    for (int i = 0; i < 32; i++)
+        if (menu_mem_id[i] == id + 1) return i;
+    if (!create) return -1;
+    int i = menu_mem_next++ & 31;
+    menu_mem_id[i] = id + 1;
+    return i;
+}
+
 static int option_menu(int id, int spk, int q, int exit_text, u64 need, int n, const u16 *opts)
 {
     for (;;) {
@@ -899,7 +916,12 @@ static int option_menu(int id, int spk, int q, int exit_text, u64 need, int n, c
             texts[m] = o[0];
             idx[m++] = i;
         }
+        int slot = menu_mem_slot(id, 0);
+        if (slot >= 0)
+            for (int k = 0; k < m; k++)
+                if (idx[k] == menu_mem_opt[slot]) choose_start = k;
         int sel = choose(spk, q, texts, m, grey, exit_text, DBG_MENU, id, traps);
+        if (sel < m) menu_mem_opt[menu_mem_slot(id, 1)] = idx[sel];
         if (sel >= m) {
             if ((ev_flags & need) == need) return RET_RETURN;
             say(NONE, UI_INVEST_NOTYET, NONE);
@@ -950,9 +972,8 @@ static void banner(int kind)
 }
 
 /* Video player: step through frames and stop on the suspicious one. Returns frame index or -1. */
-static int video(int title, int n, const u16 *frames)
+static int video(int title, int n, const u16 *frames, int cur)
 {
-    int cur = 0;
     for (int redraw = 1;;) {
         if (redraw) {
             const u16 *f = frames + cur * 3;
@@ -1222,8 +1243,14 @@ static int run(u16 pc)
             int title = S[pc], n = S[pc + 1], correct = S[pc + 2], ok = S[pc + 3], wrong = S[pc + 4];
             const u16 *frames = &S[pc + 5];
             pc += 5 + n * 3;
-            int sel = video(title, n, frames);
-            if (sel >= 0 && run(sel == correct ? ok : wrong) == RET_TITLE) return RET_TITLE;
+            /* a wrong stop comments on the frame, then the tape keeps playing from there (B = stop watching) */
+            for (int cur = 0;;) {
+                int sel = video(title, n, frames, cur);
+                if (sel < 0) break;
+                if (run(sel == correct ? ok : wrong) == RET_TITLE) return RET_TITLE;
+                if (sel == correct) break;
+                cur = sel;
+            }
             break;
         }
         case OP_TIMER:
