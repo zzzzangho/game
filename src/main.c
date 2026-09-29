@@ -799,7 +799,7 @@ static int record(int present, int question)
             }
             int hint = present ? UI_PRESENT_HINT : UI_RECORD_HINT;
             draw_hint_right(hint, 146, 88);
-            if (!present && in_game) draw_hint_right(UI_RECORD_SAVE, 184, 7);
+            if (!present && in_game) draw_hint_right(UI_RECORD_SAVE, SCREEN_W - 6 - max_lives * 10, 6);
 
             if (n == 0) {
                 draw_text(12, REC_LIST_Y + 4, UI_EMPTY, C_GREY);
@@ -1124,15 +1124,19 @@ static void banner(int kind)
 /* Video player: step through frames and stop on the suspicious one. Returns frame index or -1. */
 static int video(int title, int n, const u16 *frames, int cur)
 {
+    int rec_x = SCREEN_W - 80;
     for (int redraw = 1;;) {
         if (redraw) {
             const u16 *f = frames + cur * 3;
             plat_copy32(fb, scene_img[f[0]], SCREEN_W * SCREEN_H / 2);
             mark(0, SCREEN_H);
             for (int y = 0; y < BOX_Y; y += 2) shade(0, y, SCREEN_W, 1, RGB(0, 6, 2)); /* scanlines */
-            fill(0, 0, SCREEN_W, 16, RGB(1, 2, 1));
-            draw_text(8, 2, title, RGB(10, 31, 12));
-            draw_text(SCREEN_W - 8 - text_width(f[1], 1), 2, f[1], RGB(10, 31, 12));
+            fill(0, 0, SCREEN_W, 18, RGB(1, 2, 1));
+            fill(0, 18, SCREEN_W, 1, RGB(10, 31, 12));
+            draw_text(8, 3, title, RGB(10, 31, 12));
+            rec_x = SCREEN_W - 8 - text_width(f[1], 1);
+            draw_text(rec_x, 3, f[1], RGB(10, 31, 12));
+            rec_x -= 12;
             if (cur > 0) for (int r = 0; r < 4; r++) fill(4 + r, 56 - r, 1, 1 + 2 * r, C_WHITE);
             if (cur < n - 1) for (int r = 0; r < 4; r++) fill(SCREEN_W - 5 - r, 56 - r, 1, 1 + 2 * r, C_WHITE);
             shade(0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, C_BOX);
@@ -1142,8 +1146,8 @@ static int video(int title, int n, const u16 *frames, int cur)
             save_screen();
             redraw = 0;
         }
-        restore_rect(SCREEN_W - 70, 2, 10, 10);
-        if ((frame_count >> 4) & 1) fill(SCREEN_W - 68, 4, 7, 7, C_RED); /* REC lamp */
+        restore_rect(rec_x - 1, 5, 9, 9);
+        if ((frame_count >> 4) & 1) fill(rec_x, 6, 7, 7, C_RED); /* REC lamp, just left of the timecode */
         plat_debug_event("video", cur);
         int d = plat_debug_choice(DBG_VIDEO, n);
         if (d != -1) return d < n ? d : -1;
@@ -1217,10 +1221,9 @@ static int testimony(int spk, int title, int n, const u16 *stmts, int wrong)
         if (redraw) {
             set_speaker_portrait(spk);
             draw_scene();
-            fill(0, 6, SCREEN_W, 14, RGB(2, 10, 4));
-            fill(0, 6, SCREEN_W, 1, RGB(10, 31, 12));
+            fill(0, 0, SCREEN_W, 19, RGB(2, 10, 4));
             fill(0, 19, SCREEN_W, 1, RGB(10, 31, 12));
-            draw_text(8, 7, title, RGB(16, 31, 16));
+            draw_text(8, 3, title, RGB(16, 31, 16));
             draw_hearts();
             draw_box(spk);
             draw_text(TEXT_X, TEXT_Y, st[0], RGB(20, 31, 20));
