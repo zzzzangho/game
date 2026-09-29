@@ -187,7 +187,7 @@ static int disp_height(int t) { return disp_of_text[t] == NONE ? LINE_H : disp_h
 static void draw_hint_right(int t, int xr, int y) { draw_disp(t, xr - disp_width(t) / 2, y + disp_height(t) / 2); }
 
 static int anim_t, anim_snap_t; /* background animation frame (see ambient_tick) */
-static int breath_lift, breath_snap; /* idle breathing: head and shoulders raised by 0..2 px */
+static int breath_lift, breath_snap; /* idle breathing: portrait row offset, -2 (rest, 2 px lower) .. 0 */
 static int blink_shut, blink_snap;   /* idle blink: eyes closed (blink_img patch shown) */
 
 static void save_screen(void)
@@ -343,7 +343,6 @@ static void draw_hearts(void)
 /* ---- looping background animation (snow, the view past the train windows) ----
  * anim_data holds per scene ANIM_FRAMES diffs; entry t turns frame t-1 into frame t. */
 static int anim_scene = NONE, anim_on, portrait_dx, portrait_dither;
-#define BREATH_SPLIT BOX_Y /* everything above the box breathes; the step hides under its border */
 static int breath_t;
 
 /* Writes diff t into the back buffer. Where the portrait covers a changed pixel, the
@@ -362,8 +361,8 @@ FAST static void anim_apply(int t, int *y0, int *y1)
         u16 *dst = fb + ofs;
         d += 2;
         int y = ofs / SCREEN_W, x = ofs - y * SCREEN_W;
-        const u16 *prow = (por && y >= PORTRAIT_Y && y < PORTRAIT_Y + PORTRAIT_H)
-            ? por + (y - PORTRAIT_Y + (y < BREATH_SPLIT ? breath_lift : 0)) * PORTRAIT_W : 0;
+        int sy = y - PORTRAIT_Y + breath_lift;
+        const u16 *prow = (por && (unsigned)sy < PORTRAIT_H) ? por + sy * PORTRAIT_W : 0;
         for (int i = 0; i < len; i++) {
             int pxi = x + i - px0;
             u16 c = d[i];
@@ -384,9 +383,9 @@ FAST static void blit_portrait_rows(int y0, int y1)
     if (cur_portrait == NONE || cut_mode) return;
     const u16 *src = portrait_img[cur_portrait];
     int x0 = PORTRAIT_X + portrait_dx;
-    for (int j = y0; j < y1 && j < PORTRAIT_Y + PORTRAIT_H; j++) {
-        if (j < PORTRAIT_Y) continue;
-        int sj = j - PORTRAIT_Y + (j < BREATH_SPLIT ? breath_lift : 0); /* breathing lifts the upper body */
+    for (int j = y0; j < y1; j++) {
+        int sj = j - PORTRAIT_Y + breath_lift; /* breathing shifts the whole picture */
+        if ((unsigned)sj >= PORTRAIT_H) continue;
         const u16 *row = src + sj * PORTRAIT_W;
         u16 *dst = fb + j * SCREEN_W;
         for (int i = 0; i < PORTRAIT_W; i++) {
@@ -408,8 +407,7 @@ static void blink_draw(int y0, int y1)
     const u16 *por = portrait_img[cur_portrait], *shut = blink_img[cur_portrait], *bg = scene_img[cur_scene];
     int x0 = PORTRAIT_X + portrait_dx + r[0];
     for (int k = 0; k < r[3]; k++) {
-        int sy = r[1] + k, j = PORTRAIT_Y + sy;
-        if (j - breath_lift < BREATH_SPLIT) j -= breath_lift; /* rows above the split breathe */
+        int sy = r[1] + k, j = PORTRAIT_Y + sy - breath_lift;
         if (j < y0 || j >= y1) continue;
         const u16 *src = blink_shut ? shut + k * r[2] : por + sy * PORTRAIT_W + r[0];
         for (int i = 0; i < r[2]; i++) {
@@ -435,7 +433,33 @@ static void draw_scene(void)
     draw_hearts();
 }
 
-/* Idle breathing: a 96-frame cycle, 0 -> 1 -> 2 -> 1 px, redrawing only the rows above the box. */
+/* Scene pixel with the portrait (row offset `off`) over it, as blit_portrait_rows draws it. */
+static inline u16 composed(int x, int j, int off)
+{
+    u16 c = scene_img[cur_scene][j * SCREEN_W + x];
+    int sj = j - PORTRAIT_Y + off, i = x - PORTRAIT_X - portrait_dx;
+    if ((unsigned)sj >= PORTRAIT_H || (unsigned)i >= PORTRAIT_W) return c;
+    u16 p = portrait_img[cur_portrait][sj * PORTRAIT_W + i];
+    if (p == TRANSPARENT) return c;
+    return (p & 0x8000) ? (u16)(((c >> 1) & 0x3DEF) + ((p >> 1) & 0x3DEF)) : p;
+}
+
+/* Moves the portrait under the translucent dialogue box from offset `from` to the current one.
+ * A pixel still equal to the old shaded picture is replaced; anything else (text, the arrow)
+ * was drawn on top and is kept. */
+FAST static void breathe_box(int from)
+{
+    u16 half = (C_BOX >> 1) & 0x3DEF;
+    int x0 = PORTRAIT_X + portrait_dx;
+    for (int j = BOX_Y + 1; j < SCREEN_H; j++)
+        for (int x = x0 < 0 ? 0 : x0; x < x0 + PORTRAIT_W && x < SCREEN_W; x++) {
+            u16 *d = &fb[j * SCREEN_W + x];
+            u16 was = ((composed(x, j, from) >> 1) & 0x3DEF) + half;
+            if (*d == was) *d = ((composed(x, j, breath_lift) >> 1) & 0x3DEF) + half;
+        }
+}
+
+/* Idle breathing: a 96-frame cycle; the whole picture rests 2 px low and rises 1, 2 px. */
 static int box_spk = NONE;
 static void draw_name_tag(int spk);
 
@@ -443,14 +467,16 @@ static void breathe_tick(void)
 {
     if (cur_portrait == NONE || cut_mode || !portrait_breathe[cur_portrait] || portrait_dx) return;
     breath_t = (breath_t + 1) % 96;
-    int lift = breath_t < 40 ? 0 : breath_t < 48 ? 1 : breath_t < 88 ? 2 : 1;
+    int lift = breath_t < 40 ? -2 : breath_t < 48 ? -1 : breath_t < 88 ? 0 : -1;
     if (lift == breath_lift) return;
+    int from = breath_lift;
     breath_lift = lift;
-    plat_copy32(fb, scene_img[cur_scene], BREATH_SPLIT * SCREEN_W / 2);
-    blit_portrait_rows(0, BREATH_SPLIT);
+    plat_copy32(fb, scene_img[cur_scene], BOX_Y * SCREEN_W / 2);
+    blit_portrait_rows(0, BOX_Y);
     draw_hearts();
     draw_name_tag(box_spk);
-    mark(0, BREATH_SPLIT);
+    breathe_box(from);
+    mark(0, SCREEN_H);
 }
 
 /* Idle blink: eyes open 2-4 s, closed for 7 frames (~120 ms). */
@@ -587,7 +613,10 @@ static void say(int spk, int t, int portrait)
     /* a new speaker slides in from the right, fading in (dithered) over the first steps */
     int slide = portrait != NONE && spk != last_spk && !cut_mode;
     last_spk = spk;
-    if (portrait != cur_portrait) breath_lift = breath_t = blink_shut = 0, blink_wait = 90;
+    if (portrait != cur_portrait) {
+        breath_t = blink_shut = 0, blink_wait = 90;
+        breath_lift = portrait != NONE && portrait_breathe[portrait] ? -2 : 0;
+    }
     cur_portrait = portrait;
     if (slide) {
         static const signed char steps[] = {36, 20, 10, 4, 1};
