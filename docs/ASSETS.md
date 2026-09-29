@@ -121,6 +121,10 @@
 흰 배경만 투명하게 오려서 `assets/portraits/<키>.png`로 저장합니다(git에는 올라가지 않음).
 표정 파일(`kin_serious.png` 등)이 없으면 기본 원화가 대신 쓰입니다.
 
+눈 깜빡임: 같은 그림에서 눈만 감은 `<키>_blink.png`(예: `kin_serious_blink.png`)가 있으면, 대사 중에 2~4초마다 약 0.1초씩 눈을 감습니다.
+`python3 tools/import_blink.py <폴더>`는 `pairs/<표정>/open.png`, `closed.png` 짝에서 이 파일들을 만듭니다(현재 김전일만 해당).
+ROM에는 바뀐 눈 부분만 작은 사각형으로 들어갑니다.
+
 ## 배경 그림 교체
 
 `assets/scenes/<키>.png`(240×160 비율, 아무 크기)를 넣으면 그 배경이 그려 둔 그림 대신 쓰입니다.

@@ -188,12 +188,14 @@ static void draw_hint_right(int t, int xr, int y) { draw_disp(t, xr - disp_width
 
 static int anim_t, anim_snap_t; /* background animation frame (see ambient_tick) */
 static int breath_lift, breath_snap; /* idle breathing: head and shoulders raised by 0..2 px */
+static int blink_shut, blink_snap;   /* idle blink: eyes closed (blink_img patch shown) */
 
 static void save_screen(void)
 {
     plat_copy32(snapshot, fb, SCREEN_W * SCREEN_H / 2);
     anim_snap_t = anim_t;
     breath_snap = breath_lift;
+    blink_snap = blink_shut;
 }
 
 static void restore_screen(void)
@@ -201,6 +203,7 @@ static void restore_screen(void)
     plat_copy32(fb, snapshot, SCREEN_W * SCREEN_H / 2);
     anim_t = anim_snap_t;
     breath_lift = breath_snap;
+    blink_shut = blink_snap;
     mark(0, SCREEN_H);
 }
 
@@ -374,6 +377,8 @@ FAST static void anim_apply(int t, int *y0, int *y1)
     }
 }
 
+static void blink_draw(int y0, int y1);
+
 FAST static void blit_portrait_rows(int y0, int y1)
 {
     if (cur_portrait == NONE || cut_mode) return;
@@ -391,7 +396,29 @@ FAST static void blit_portrait_rows(int y0, int y1)
             dst[x] = (p & 0x8000) ? (u16)(((dst[x] >> 1) & 0x3DEF) + ((p >> 1) & 0x3DEF)) : p; /* soft edge: 50% */
         }
     }
+    if (blink_shut && blink_img[cur_portrait]) blink_draw(y0, y1);
     mark(y0, y1);
+}
+
+/* Draws the eye rectangle (closed eyes while blink_shut, else the open portrait) over screen
+ * rows y0..y1. Soft pixels are blended with the scene, so the patch can be redrawn freely. */
+static void blink_draw(int y0, int y1)
+{
+    const u8 *r = blink_rect + cur_portrait * 4;
+    const u16 *por = portrait_img[cur_portrait], *shut = blink_img[cur_portrait], *bg = scene_img[cur_scene];
+    int x0 = PORTRAIT_X + portrait_dx + r[0];
+    for (int k = 0; k < r[3]; k++) {
+        int sy = r[1] + k, j = PORTRAIT_Y + sy;
+        if (j - breath_lift < BREATH_SPLIT) j -= breath_lift; /* rows above the split breathe */
+        if (j < y0 || j >= y1) continue;
+        const u16 *src = blink_shut ? shut + k * r[2] : por + sy * PORTRAIT_W + r[0];
+        for (int i = 0; i < r[2]; i++) {
+            int x = x0 + i;
+            u16 p = src[i];
+            if (p == TRANSPARENT || (unsigned)x >= SCREEN_W) continue;
+            fb[j * SCREEN_W + x] = (p & 0x8000) ? (u16)(((bg[j * SCREEN_W + x] >> 1) & 0x3DEF) + ((p >> 1) & 0x3DEF)) : p;
+        }
+    }
 }
 
 static void draw_scene(void)
@@ -422,11 +449,25 @@ static void breathe_tick(void)
     mark(0, BREATH_SPLIT);
 }
 
-/* Called every frame while a dialogue page is on screen: breathing and the background loop. */
+/* Idle blink: eyes open 2-4 s, closed for 7 frames (~120 ms). */
+static int blink_wait = 150;
+static void blink_tick(void)
+{
+    if (cur_portrait == NONE || cut_mode || !blink_img[cur_portrait] || portrait_dx || --blink_wait > 0) return;
+    blink_shut ^= 1;
+    blink_wait = blink_shut ? 7 : 120 + (int)((frame_count * 37u) % 120);
+    const u8 *r = blink_rect + cur_portrait * 4;
+    int y0 = PORTRAIT_Y + r[1] - 2, y1 = PORTRAIT_Y + r[1] + r[3];
+    blink_draw(y0 < 0 ? 0 : y0, y1);
+    mark(y0 < 0 ? 0 : y0, y1);
+}
+
+/* Called every frame while a dialogue page is on screen: breathing, blinking, background loop. */
 static void ambient_tick(void)
 {
     if (!anim_on) return;
     breathe_tick();
+    blink_tick();
     if (cut_mode || !anim_count[cur_scene] || anim_scene != cur_scene || (frame_count & 3)) return;
     int y0, y1;
     anim_t = (anim_t + 1) % ANIM_FRAMES;
@@ -536,7 +577,7 @@ static void say(int spk, int t, int portrait)
     /* a new speaker slides in from the right, fading in (dithered) over the first steps */
     int slide = portrait != NONE && spk != last_spk && !cut_mode;
     last_spk = spk;
-    if (portrait != cur_portrait) breath_lift = breath_t = 0;
+    if (portrait != cur_portrait) breath_lift = breath_t = blink_shut = 0, blink_wait = 90;
     cur_portrait = portrait;
     if (slide) {
         static const signed char steps[] = {36, 20, 10, 4, 1};

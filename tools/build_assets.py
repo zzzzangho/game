@@ -764,7 +764,7 @@ def build(story_path, font_path, out_dir):
     h += ["extern const u16 script[];", "extern const u16 text_data[];", "extern const u32 text_ofs[];",
           "extern const u16 glyph_bits[];", "extern const u8 glyph_adv[];",
           "extern const u16 anim_data[];", "extern const u32 anim_ofs[];", "extern const u8 anim_count[];",
-          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u8 portrait_breathe[];", "extern const u16 *const portrait_thumb[];",
+          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u8 portrait_breathe[];", "extern const u8 blink_rect[];", "extern const u16 *const blink_img[];", "extern const u16 *const portrait_thumb[];",
           "extern const u16 icon_img[];",
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
           "extern const u16 char_profile[];",
@@ -829,8 +829,26 @@ def build(story_path, font_path, out_dir):
     c.append(c_array("anim_data", "u16", anim_data, fmt="0x{:04X}"))
     c.append(c_array("anim_ofs", "u32", anim_ofs or [0]))
     c.append(c_array("anim_count", "u8", anim_n or [0]))
+    blink_rect, blink_ptr = [], []
     for k in portrait_keys:
-        c.append(c_array(f"portrait_{k}", "u16", art.render_portrait(k), fmt="0x{:04X}"))
+        pix = art.render_portrait(k)
+        c.append(c_array(f"portrait_{k}", "u16", pix, fmt="0x{:04X}"))
+        # idle blink: <key>_blink.png is the same picture with the eyes closed; keep the changed rectangle
+        shut = art.render_portrait(k + "_blink") if k + "_blink" in art.USER_PORTRAITS else None
+        diff = [i for i in range(len(pix)) if shut and shut[i] != pix[i]]
+        if not diff:
+            blink_rect += [0, 0, 0, 0]
+            blink_ptr.append("0")
+            continue
+        W = art.PORTRAIT_W
+        ys = [i // W for i in diff]
+        xs = [i % W for i in diff]
+        x0, y0, x1, y1 = min(xs), min(ys), max(xs) + 1, max(ys) + 1
+        blink_rect += [x0, y0, x1 - x0, y1 - y0]
+        c.append(c_array(f"blink_{k}", "u16", [shut[y * W + x] for y in range(y0, y1) for x in range(x0, x1)], fmt="0x{:04X}"))
+        blink_ptr.append(f"blink_{k}")
+    c.append(c_array("blink_rect", "u8", blink_rect or [0]))
+    c.append("const u16 *const blink_img[] = {" + ",".join(blink_ptr or ["0"]) + "};")
     c.append("const u16 *const portrait_img[] = {" + ",".join(f"portrait_{k}" for k in portrait_keys) + ("" if portrait_keys else "0") + "};")
     # idle breathing (test: Kindaichi only)
     c.append(c_array("portrait_breathe", "u8", [1 if k == "kin" or k.startswith("kin_") else 0 for k in portrait_keys] or [0]))
