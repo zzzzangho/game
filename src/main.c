@@ -914,6 +914,8 @@ static void eyecatch(void)
 #endif
 }
 
+static void chapter_save_ask(void);
+
 static void chapter_card(int t, int card)
 {
     eyecatch();
@@ -936,13 +938,13 @@ static void chapter_card(int t, int card)
         fill(40, 76 + h / 2 + 8, 160, 1, C_BORDER);
         draw_disp(t, SCREEN_W / 2, 76);
     }
-    draw_disp(UI_SAVED, SCREEN_W / 2, 150);
     fade_in();
     plat_debug_event("chapter", 0);
     for (int i = 0; i < 180; i++) {
         frame();
         if (i > 20 && (keys_new & (KEY_A | KEY_START))) break;
     }
+    chapter_save_ask();
     fade_out();
     cur_scene = SCENE_BLACK;
     cut_mode = 0;
@@ -1180,7 +1182,7 @@ static int record(int present, int question)
 /* ------------------------------------------------------------------ save data (SRAM) */
 
 #define SAVE_MAGIC (0x354D4A4Bu ^ SCRIPT_HASH) /* "KJM5" + script: saves from another build are ignored */
-#define SLOT_COUNT 4   /* 0 = automatic (chapter start), 1-3 = saved by the player */
+#define SLOT_COUNT 4   /* 0 = automatic (older versions, load only), 1-3 = saved by the player */
 #define SLOT_SIZE 512
 
 typedef struct {
@@ -1238,7 +1240,6 @@ static int load_slot(int slot, SaveData *s)
     return s->magic == SAVE_MAGIC && s->check == save_sum(s);
 }
 
-static void save_game(u16 pc) { save_slot(0, pc); }
 
 /* First line of a text only (slot list labels). Returns the x after it. */
 static int draw_first_line(int x, int y, int id, u16 c)
@@ -1256,8 +1257,9 @@ static int slot_menu(int saving)
 {
     static const u16 names[SLOT_COUNT] = {UI_SLOT_AUTO, UI_SLOT_1, UI_SLOT_2, UI_SLOT_3};
     SaveData d[SLOT_COUNT];
-    int ok[SLOT_COUNT], first = saving ? 1 : 0, sel = first;
+    int ok[SLOT_COUNT], first, sel;
     for (int i = 0; i < SLOT_COUNT; i++) ok[i] = load_slot(i, &d[i]);
+    first = sel = (saving || !ok[0]) ? 1 : 0; /* slot 0: automatic saves from older versions */
     if (!saving)
         while (sel < SLOT_COUNT - 1 && !ok[sel]) sel++;
     save_screen();
@@ -1315,6 +1317,66 @@ static int slot_menu(int saving)
     plat_sfx(sel >= 0 ? SFX_OK : SFX_CANCEL);
     restore_screen();
     return sel;
+}
+
+/* Chapter start: "저장하시겠습니까?" 예 / 아니오, then the slot list. Saves resume after the card. */
+static u16 chapter_save_pc;
+static void chapter_save(int slot)
+{
+    int scene = cur_scene, cut = cut_mode;
+    cur_scene = SCENE_BLACK; /* loading starts on a black screen, like after the card */
+    cut_mode = 0;
+    save_slot(slot, chapter_save_pc);
+    cur_scene = scene;
+    cut_mode = cut;
+}
+
+static void chapter_save_ask(void)
+{
+    int dbg = plat_debug_choice(DBG_CHSAVE, 0); /* test harness: slot to save in, 0 = no */
+    if (dbg >= 0) {
+        if (dbg > 0) chapter_save(dbg);
+        return;
+    }
+    save_screen();
+    int yes = 1, x = 60, y = 58, w = SCREEN_W - 120;
+    for (int redraw = 1;;) {
+        if (redraw) {
+            restore_screen();
+            popup_window(x, y, w, 46);
+            draw_text_ex(SCREEN_W / 2, y + 8, UI_CHSAVE_Q, C_GOLD, 1, 1);
+            for (int i = 0; i < 2; i++) {
+                int cx = SCREEN_W / 2 + (i ? 30 : -30), on = (i == 0) == yes;
+                if (on) {
+                    fill(cx - 24, y + 25, 48, 15, C_HILITE);
+                    draw_cursor(cx - 21, y + 29, C_GOLD);
+                }
+                draw_text_ex(cx + 3, y + 27, i ? UI_NO : UI_YES, on ? C_GOLD : C_WHITE, 1, 1);
+            }
+            redraw = 0;
+        }
+        frame();
+        if (keys_new & (KEY_LEFT | KEY_RIGHT | KEY_UP | KEY_DOWN)) {
+            yes ^= 1;
+            plat_sfx(SFX_MOVE);
+            redraw = 1;
+        } else if (keys_new & (KEY_A | KEY_B)) {
+            if (keys_new & KEY_B) yes = 0;
+            plat_sfx(yes ? SFX_OK : SFX_CANCEL);
+            break;
+        }
+    }
+    restore_screen();
+    frame();
+    if (!yes) return;
+    int slot = slot_menu(1);
+    if (slot < 1) return;
+    chapter_save(slot);
+    save_screen();
+    popup_window(60, 64, SCREEN_W - 120, 26);
+    draw_text_ex(SCREEN_W / 2, 70, UI_SAVED, C_GOLD, 1, 1);
+    wait_a(20);
+    restore_screen();
 }
 
 static void save_prompt(void)
@@ -1674,7 +1736,7 @@ static int run_inner(u16 pc)
             cur_chapter = S[pc];
             cur_place = NONE;
             cur_inset = NONE;
-            save_game(op_pc);
+            chapter_save_pc = pc + 2; /* a save made here resumes after the card */
             chapter_card(S[pc], S[pc + 1]);
             pc += 2;
             break;

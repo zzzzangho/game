@@ -27,6 +27,7 @@ FRAMES = {
     "cabin_empty": ("p1/348", C32),       # the rose carpet after the body vanished
     "train_toilet": ("p3/159", C32),      # the washroom window, rope mark on the frame
     "dining": ("p1/095", C32),            # dining car window: lamp, green hills
+    "dining_show": ("p1/124", C32),       # the dining-car aisle where Yamagami opens the show
     "freight_yard": ("p1/230", C32),      # the train stopped among green fields
     "country_station": ("p1/355", C32),   # Shikotsugahara station, arched roof
     "hotel_exterior": ("p1/369", C32),    # the red-brick station hotel

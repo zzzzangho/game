@@ -90,6 +90,9 @@ UI_STRINGS = [
     ("UI_PRESS_A", "A 버튼을 누르세요"),
     ("UI_THANKS", "플레이해 주셔서 감사합니다!"),
     ("UI_SAVED", "저장했습니다"),
+    ("UI_CHSAVE_Q", "저장하시겠습니까?"),
+    ("UI_YES", "예"),
+    ("UI_NO", "아니오"),
     ("UI_RECORD_KEY", "START: 수첩"),
     ("UI_TO_TITLE", "타이틀로 돌아갑니다"),
 ]

@@ -120,6 +120,10 @@ int plat_debug_choice(int kind, int n)
         return c;
     case DBG_SLOT:
         return getenv("SLOT") ? atoi(getenv("SLOT")) : 0;
+    case DBG_CHSAVE: /* chapter start: save in slot CHSAVE (0 = answer "no") */
+        c = getenv("CHSAVE") ? atoi(getenv("CHSAVE")) : 0;
+        if (c) printf("EVENT chapter_save %d\n", c);
+        return c;
     case DBG_SAVE: {
         int c, p, sl;
         if (getenv("SAVE_AT") && sscanf(getenv("SAVE_AT"), "%d:%d:%d", &c, &p, &sl) == 3 && chapters == c &&
