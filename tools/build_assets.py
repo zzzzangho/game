@@ -344,12 +344,18 @@ class Compiler:
             if cur and len(cur) + len(block) > TEXT_LINES:
                 pages.append(cur)
                 cur = []
-            while len(block) > TEXT_LINES:
-                pages.append(block[:TEXT_LINES])
-                block = block[TEXT_LINES:]
+            while len(block) > TEXT_LINES:  # long sentence: split evenly (4 -> 2+2), no one-line leftover
+                n_pages = -(-len(block) // TEXT_LINES)
+                take = -(-len(block) // n_pages)
+                pages.append(block[:take])
+                block = block[take:]
             cur += block
         if cur:
             pages.append(cur)
+        # a lone short line on the last page borrows the previous page's last line (3+1 -> 2+2)
+        if len(pages) > 1 and len(pages[-1]) == 1 and len(pages[-2]) == TEXT_LINES \
+                and len(re.sub(r"[^가-힣A-Za-z0-9]", "", pages[-1][0])) <= 12:
+            pages[-1].insert(0, pages[-2].pop())
         for page in pages:
             self.emit(OPS["SAY"], spk, self.text("\n".join(page)), portrait)
 

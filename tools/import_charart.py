@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Import hand-drawn character busts (white background) as transparent portraits.
 
-    python3 tools/import_charart.py <folder with 김전일.png, 미유키.png, ...>
+    python3 tools/import_charart.py <folder with 김전일.png, 미유키.png, ...> [--clean]
+
+Transparent PNGs are used as drawn (just cropped); --clean also repairs leftover background
+(white slivers by the hair, stray outline bits, the hand-marked HOLES).
 
 The white background is flood-filled from the top edge and the upper part of the side
 edges only, so white clothing that runs off the bottom of the picture is kept (the line
@@ -171,7 +174,9 @@ def clear_holes(img, seeds, light=225):
 
 
 def main():
-    src = sys.argv[1] if len(sys.argv) > 1 else "."
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    clean = "--clean" in sys.argv  # repair leftover background in transparent art (off: use it as drawn)
+    src = args[0] if args else "."
     os.makedirs(OUT, exist_ok=True)
     for fn in sorted(os.listdir(src)):
         stem, ext = os.path.splitext(fn)
@@ -180,14 +185,21 @@ def main():
                 print(f"skip {fn} (unknown name)")
             continue
         img = Image.open(os.path.join(src, fn))
-        if img.mode in ("RGBA", "LA") and img.getextrema()[-1][0] < 255:  # already transparent
-            img, n = defringe(img)
+        transparent = img.mode in ("RGBA", "LA") and img.getextrema()[-1][0] < 255
+        if transparent:
+            img = img.convert("RGBA")
+            if clean:
+                img, n = defringe(img)
+                print(f"  {fn}: removed {n} leftover background pixels")
             img = img.crop(img.getchannel("A").getbbox())
-            print(f"  {fn}: removed {n} leftover background pixels")
         else:
             img = cut_out(img)
-        # keep it reasonably small; art.py fits it into the 128x144 bust area
+        # keep it reasonably small; art.py fits it into the bust area
         img.thumbnail((512, 640), Image.LANCZOS)
+        if transparent and not clean:
+            img.save(os.path.join(OUT, NAMES[stem] + ".png"))
+            print(f"{fn} -> portraits/{NAMES[stem]}.png {img.size} (as drawn)")
+            continue
         if stem in HOLES:
             img, c = clear_holes(img, HOLES[stem])
             print(f"  {fn}: cleared {c} px of enclosed background")
