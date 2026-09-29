@@ -110,7 +110,7 @@ src/main.c              게임 엔진 (텍스트, 수첩, 선택지, 추리, 저
 src/plat_gba.c          GBA 하드웨어 계층 (Mode 3 화면, 입력, 효과음, SRAM)
 src/crt0.s, src/gba.ld  시작 코드 / 링커 스크립트
 test/                   PC용 테스트 하네스와 자동 플레이 테스트
-assets/fonts/           갈무리11·9 (BDF, 대사·이름표), Black Han Sans (제목·배너)
+assets/fonts/           갈무리11·9 (BDF, 대사·이름표), 나눔명조 ExtraBold (제목·배너·인물 소개)
 ```
 
 ## 스토리 스크립트 문법 (`story/story.txt`)
@@ -180,6 +180,6 @@ assets/fonts/           갈무리11·9 (BDF, 대사·이름표), Black Han Sans 
 ## 크레딧 / 라이선스
 
 - 폰트: [갈무리(Galmuri)](https://github.com/quiple/galmuri) 11(대사) / 9(이름표) — © Lee Minseo, SIL Open Font License 1.1 (`assets/fonts/`)
-- 제목·배너 폰트: Black Han Sans — © The Black Han Sans Project Authors, SIL Open Font License 1.1 (`assets/fonts/`)
+- 제목·배너 폰트: 나눔명조 ExtraBold — © NHN Corporation, SIL Open Font License 1.1 (`assets/fonts/`)
 - `tools/gbafix.c`: devkitPro GBA ROM fixer (LGPL)
 - 원작: 「소년탐정 김전일」 — 이 게임은 비영리 팬 창작물입니다.

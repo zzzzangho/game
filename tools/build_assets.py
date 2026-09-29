@@ -48,7 +48,7 @@ UI_STRINGS = [
     ("UI_TITLE_FAN", "비공식 팬 게임"),
     ("UI_NEW", "처음부터"),
     ("UI_CONTINUE", "이어하기"),
-    ("UI_DISCLAIMER", "이 게임은 「소년탐정 김전일」의\n팬이 만든 비공식 2차 창작\n게임입니다. 원작의 모든 권리는\n원작자와 출판사에 있습니다.\n\n폰트: 갈무리, Black Han Sans\n(SIL OFL 1.1)"),
+    ("UI_DISCLAIMER", "이 게임은 「소년탐정 김전일」의\n팬이 만든 비공식 2차 창작\n게임입니다. 원작의 모든 권리는\n원작자와 출판사에 있습니다.\n\n폰트: 갈무리, 나눔명조\n(SIL OFL 1.1)"),
     ("UI_TAB_EVIDENCE", "증거물"),
     ("UI_TAB_PROFILE", "인물"),
     ("UI_RECORD_HINT", "L/R 전환  B 닫기"),

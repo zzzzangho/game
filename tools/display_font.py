@@ -1,4 +1,4 @@
-"""Titles, banners and shouts rendered in a bold display font (Black Han Sans).
+"""Titles, banners and shouts rendered in a bold serif display font (Nanum Myeongjo ExtraBold).
 
 The dialogue keeps the compact Galmuri pixel font so a lot of text fits on screen; the big
 one-off texts ("조사 개시!", chapter titles, endings, the logo...) are pre-rendered here as
@@ -8,7 +8,7 @@ import os
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-FONT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fonts", "BlackHanSans-Regular.ttf")
+FONT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fonts", "NanumMyeongjo-ExtraBold.ttf")
 SS = 4  # supersampling
 
 # style: (size px, max width, top colour, bottom colour, outline colour, outline px, line gap)

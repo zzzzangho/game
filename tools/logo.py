@@ -12,7 +12,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FONT = os.path.join(HERE, "..", "assets", "fonts", "BlackHanSans-Regular.ttf")
+FONT = os.path.join(HERE, "..", "assets", "fonts", "NanumMyeongjo-ExtraBold.ttf")
 USER_LOGO = os.path.join(HERE, "..", "assets", "cuts", "logo.png")
 K = 4  # supersampling
 
