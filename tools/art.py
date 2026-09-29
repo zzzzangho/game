@@ -520,6 +520,7 @@ BUILTIN_SCENES["hotel_hall"] = lambda: scene_image("lobby_night")
 BUILTIN_SCENES["bridge_up"] = lambda: scene_image("drawbridge")
 BUILTIN_SCENES["yumi_tree"] = lambda: scene_image("yumi_room")
 BUILTIN_SCENES["cabin_door"] = lambda: scene_image("corridor")
+BUILTIN_SCENES["freight_petals"] = lambda: scene_image("freight_yard")
 BUILTIN_SCENES["dining_show"] = lambda: scene_image("dining")
 BUILTIN_SCENES["cabin_reenact"] = lambda: art_scenes2.polish(art_hd.scene_cabin_roses(), seed=5)
 
@@ -541,6 +542,8 @@ BUILTIN_CUTS = {
     "cut_reiko": art_hd.card_final,
     "cut_rock": art_hd.card_final,
     "cut_fire": art_hd.card_final,
+    "cut_burst": lambda: scene_image("freight_yard"),
+    "cut_petals": lambda: scene_image("freight_yard"),
 }
 BUILTIN_SCENES.update(BUILTIN_CUTS)
 
@@ -1232,7 +1235,64 @@ def scene_image(key):
 
 
 def render_scene(key):
+    if key in PETAL_SCENES:
+        return [int(v) for v in petal_frames(key)[0].ravel()]
     return to15(scene_image(key))
+
+
+# Scenes with red rose petals drifting down over another scene (the fake bomb on the train roof).
+PETAL_SCENES = {"freight_petals": "freight_yard"}
+PETAL_MAX_Y = 100  # petals stay above the name tag and text box (the animated rows)
+
+
+def _c15(r, g, b):
+    return (b >> 3) << 10 | (g >> 3) << 5 | (r >> 3)
+
+
+# petal shapes (tumbling): 1 bright, 2 mid, 3 dark, 4 highlight
+PETAL_SHAPES = [
+    [".12..", "11222", "..23."],
+    [".1.", "142", "122", ".3."],
+    [".11.", "1422", ".23."],
+    ["12.", "422", ".23"],
+]
+PETAL_SMALL = [["12", "23"], ["1.", "22", ".3"], ["122"], [".1", "23"]]
+PETAL_COLS = {"1": _c15(236, 40, 56), "2": _c15(196, 20, 40), "3": _c15(120, 8, 24), "4": _c15(255, 150, 160)}
+_petal_cache = {}
+
+
+def petal_frames(key):
+    """ANIM_FRAMES 15-bit frames of the base scene with petals falling and swaying in a loop."""
+    import math
+    import random
+    import numpy as np
+    if key in _petal_cache:
+        return _petal_cache[key]
+    base = np.array(render_scene(PETAL_SCENES[key]), dtype=np.uint16).reshape(H, W)
+    rnd = random.Random(7)
+    span = PETAL_MAX_Y + 12
+    big = [[("".join(c * 2 for c in row)) for row in shape for _ in (0, 1)] for shape in PETAL_SHAPES]
+    petals = []
+    for i in range(80):  # three depths: big and fast in front, small and slow far away
+        layer = 0 if i < 16 else 1 if i < 46 else 2
+        petals.append(dict(x=rnd.uniform(-10, W), y=rnd.uniform(0, span), k=(2, 1, 1)[layer],
+                           sway=rnd.uniform(*((5, 12), (2, 6), (1, 3))[layer]), ph=rnd.random(),
+                           rot=rnd.randrange(4), shapes=(big, PETAL_SHAPES, PETAL_SMALL)[layer]))
+    frames = []
+    for t in range(ANIM_FRAMES):
+        f = base.copy()
+        for p in petals:
+            y = int((p["y"] + t * span * p["k"] / ANIM_FRAMES) % span) - 12
+            x = int(p["x"] + p["sway"] * math.sin(2 * math.pi * (t / ANIM_FRAMES + p["ph"])))
+            shape = p["shapes"][(p["rot"] + t // 2) % 4]
+            for dy, row in enumerate(shape):
+                for dx, ch in enumerate(row):
+                    yy, xx = y + dy, x + dx
+                    if ch != "." and 0 <= yy < PETAL_MAX_Y and 0 <= xx < W:
+                        f[yy, xx] = PETAL_COLS[ch]
+        frames.append(f)
+    _petal_cache[key] = frames
+    return frames
 
 
 ANIM_FRAMES = 16
@@ -1245,17 +1305,20 @@ def scene_anim(key, max_y):
     frame t (entry 0: last frame -> frame 0), each as (y0, y1, [(offset, [pixels])...]),
     limited to rows < max_y; or None for a static scene."""
     import numpy as np
-    if not ANIMATE or key in USER_SCENES or key not in art_hd.LOCATIONS:
-        return None
-    frames = []
-    for t in range(ANIM_FRAMES):
-        art_hd.ANIM = (t, ANIM_FRAMES)
-        try:
-            frames.append(np.array(to15(art_hd.LOCATIONS[key]()), dtype=np.uint16).reshape(H, W))
-        finally:
-            art_hd.ANIM = None
-        if t == 1 and np.array_equal(frames[0][:max_y], frames[1][:max_y]):
+    if key in PETAL_SCENES:
+        frames = petal_frames(key)
+    else:
+        if not ANIMATE or key in USER_SCENES or key not in art_hd.LOCATIONS:
             return None
+        frames = []
+        for t in range(ANIM_FRAMES):
+            art_hd.ANIM = (t, ANIM_FRAMES)
+            try:
+                frames.append(np.array(to15(art_hd.LOCATIONS[key]()), dtype=np.uint16).reshape(H, W))
+            finally:
+                art_hd.ANIM = None
+            if t == 1 and np.array_equal(frames[0][:max_y], frames[1][:max_y]):
+                return None
     out = []
     for t in range(ANIM_FRAMES):
         prev, cur = frames[t - 1][:max_y], frames[t][:max_y]

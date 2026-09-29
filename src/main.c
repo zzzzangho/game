@@ -772,6 +772,14 @@ static void do_fx(int kind)
         restore_screen();
         frame();
         break;
+    case FX_BOOM: /* the explosion on the train roof: blinding flash, then a long rumble */
+        plat_sfx(SFX_SHOCK);
+        flash(C_WHITE, 4);
+        shake(12, 8);
+        plat_sfx(SFX_SHOCK);
+        flash(C_WHITE, 2);
+        shake(36, 5);
+        break;
     }
 }
 

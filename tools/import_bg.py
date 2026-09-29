@@ -59,6 +59,12 @@ INSETS = {
 }
 CUTS = os.path.join(HERE, "..", "assets", "cuts")
 
+# Full-screen anime captures for @cut: key -> (frame, crop)
+CUT_FRAMES = {
+    "cut_burst": ("p1/288", C32),         # the fake bomb bursts on the train roof
+    "cut_petals": ("p1/292", C32),        # red rose petals raining from the sky
+}
+
 
 def process(img, box):
     img = img.convert("RGB").crop(box)
@@ -78,6 +84,13 @@ def main():
         process(Image.open(found[0]), box).save(os.path.join(OUT, key + ".png"))
         print(f"{frame} -> scenes/{key}.png")
     os.makedirs(CUTS, exist_ok=True)
+    for key, (frame, box) in CUT_FRAMES.items():
+        found = glob.glob(os.path.join(src, frame + ".*"))
+        if not found:
+            print(f"skip {key}: {frame} not found")
+            continue
+        process(Image.open(found[0]), box).save(os.path.join(CUTS, key + ".png"))
+        print(f"{frame} -> cuts/{key}.png")
     for key, (frame, box) in INSETS.items():
         found = glob.glob(os.path.join(src, frame + ".*"))
         if not found:
