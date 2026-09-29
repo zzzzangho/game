@@ -325,7 +325,17 @@ class Compiler:
             text = rest.strip()
             if not text:
                 return
-        sentences = [s for para in text.split("\n") for s in SENTENCE_END.split(para)]
+        sentences = []
+        for para in text.split("\n"):
+            parts = SENTENCE_END.split(para)
+            for i, part in enumerate(parts):
+                # a tiny fragment ("설마.", "헤헤.") stays on the line of its neighbour when both fit
+                short = len(re.sub(r"[^가-힣A-Za-z0-9]", "", part)) <= 6
+                prev_short = i > 0 and len(re.sub(r"[^가-힣A-Za-z0-9]", "", parts[i - 1])) <= 6
+                if i > 0 and (short or prev_short) and self.font.width(sentences[-1] + " " + part) <= TEXT_W:
+                    sentences[-1] += " " + part
+                else:
+                    sentences.append(part)
         # each sentence wrapped with balanced line lengths; pages break between sentences when possible
         pages, cur = [], []
         for sent in sentences:
