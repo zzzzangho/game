@@ -15,8 +15,8 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 import art_hd
 
 W, H = 240, 160
-PORTRAIT_W, PORTRAIT_H = 128, 160   # dialogue bust: full screen height so cut-outs reach the bottom edge
-CAPTURE_H = 144                     # framed screenshot busts keep their old window size
+PORTRAIT_W, PORTRAIT_H = 160, 160   # dialogue bust: full screen height so cut-outs reach the bottom edge
+CAPTURE_W, CAPTURE_H = 128, 144     # framed screenshot busts keep their old window size
 THUMB_W, THUMB_H = 64, 80           # face crop for the court record / popups
 ICON_SIZE = 64
 OUTLINE = (28, 20, 32, 255)
@@ -1226,6 +1226,39 @@ def _procedural_portrait(key):
     return outline(img)
 
 
+def ace_sprite(img, w, h, crop=0.72):
+    """Cut-out drawing -> Ace-Attorney-style bust: cropped head to waist, scaled with
+    premultiplied supersampling so the edges follow the drawing's own line art (no extra
+    outline or shadow); partly covered edge pixels are pulled toward the line colour."""
+    bb = img.getchannel("A").getbbox()
+    img = img.crop(bb) if bb else img
+    img = img.crop((0, 0, img.width, max(1, int(img.height * crop))))
+    sc = min(w / img.width, h / img.height)
+    tw, th = max(1, round(img.width * sc)), max(1, round(img.height * sc))
+    K = 4
+    big = img.resize((tw * K, th * K), Image.LANCZOS)
+    a = big.getchannel("A")
+    pm = Image.composite(big.convert("RGB"), Image.new("RGB", big.size, (0, 0, 0)), a).resize((tw, th), Image.BOX)
+    cov = a.resize((tw, th), Image.BOX)
+    out = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+    pp, cp, op = pm.load(), cov.load(), out.load()
+    line = (30, 22, 30)
+    for y in range(th):
+        for x in range(tw):
+            c = cp[x, y]
+            if c < 110:
+                continue
+            f = 255 / c
+            col = [min(255, int(v * f)) for v in pp[x, y]]
+            if c < 250:
+                t = 0.35 + 0.4 * (1 - c / 255)
+                col = [int(col[i] * (1 - t) + line[i] * t) for i in range(3)]
+            op[x, y] = tuple(col) + (255,)
+    canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    canvas.paste(out, ((w - tw) // 2, h - th))
+    return canvas
+
+
 def stage_look(img):
     """Cut-out bust -> game look: slight contrast boost, warm rim light on the top-left edge,
     1px ink outline and a dark drop shadow so the figure sits on the scene."""
@@ -1273,9 +1306,9 @@ def portrait_image(key):
         img = load_rgba(USER_PORTRAITS[key], PORTRAIT_W, PORTRAIT_H)
         if img.getextrema()[3][0] == 255:  # opaque: fill the whole bust area
             canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
-            canvas.paste(framed(img.resize((PORTRAIT_W, CAPTURE_H), Image.LANCZOS)), (0, 0))
+            canvas.paste(framed(img.resize((CAPTURE_W, CAPTURE_H), Image.LANCZOS)), ((PORTRAIT_W - CAPTURE_W) // 2, 0))
             return canvas
-        return stage_look(fit(img, PORTRAIT_W, PORTRAIT_H))
+        return ace_sprite(img, PORTRAIT_W, PORTRAIT_H)
     small = _procedural_portrait(key).resize((96, 120), Image.NEAREST)
     canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
     canvas.paste(small, ((PORTRAIT_W - 96) // 2, 0))  # keep the face above the text box
