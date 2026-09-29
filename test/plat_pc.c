@@ -10,6 +10,8 @@
  *   TITLE      title menu choice (0 = new game, 1 = continue)
  *   SRAM_FILE  file used as battery save
  *   SHOTS      directory for PPM screenshots (optional), MAX_SHOTS limits the count
+ *   SLOT       save slot picked in the load list (default 0 = chapter autosave)
+ *   SAVE_AT    "c:p:s" = save to slot s on the p-th dialogue page after the c-th chapter card
  * Exit codes: 0 = returned to title after an ending, 2 = frame limit, 3 = ROUTE exhausted.
  */
 #include <stdio.h>
@@ -23,6 +25,7 @@ static u8 sram[32768];
 static unsigned long frames;
 static int route[512], route_len, route_pos;
 static int invest_counter;
+static int chapters, pages_since_chapter;
 static int muted; /* waiting for a timer to run out */
 static int video_route[64], video_len, video_pos;
 static unsigned short menu_next[65536];
@@ -114,6 +117,17 @@ int plat_debug_choice(int kind, int n)
         c = next_route("testimony");
         printf("testimony -> %d\n", c);
         return c;
+    case DBG_SLOT:
+        return getenv("SLOT") ? atoi(getenv("SLOT")) : 0;
+    case DBG_SAVE: {
+        int c, p, sl;
+        if (getenv("SAVE_AT") && sscanf(getenv("SAVE_AT"), "%d:%d:%d", &c, &p, &sl) == 3 && chapters == c &&
+            pages_since_chapter == p) {
+            printf("EVENT save_request %d\n", sl);
+            return sl;
+        }
+        return -1;
+    }
     case DBG_TITLE:
         return getenv("TITLE") ? atoi(getenv("TITLE")) : 0;
     case DBG_INVEST:
@@ -179,6 +193,9 @@ void plat_debug_event(const char *what, int value)
     static const char *last;
     static int last_value = -1;
     if (!strcmp(what, "invest")) invest_counter = 0;
+    if (!strcmp(what, "chapter")) chapters++, pages_since_chapter = 0;
+    if (!strcmp(what, "page")) pages_since_chapter++;
+    if (!strcmp(what, "saved")) printf("EVENT saved %d\n", value);
     if (!strcmp(what, "timeout")) {
         muted = 0;
         printf("EVENT timeout\n");

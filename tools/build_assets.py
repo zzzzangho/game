@@ -49,7 +49,16 @@ UI_STRINGS = [
     ("UI_DISCLAIMER", "이 게임은 「소년탐정 김전일」의\n팬이 만든 비공식 2차 창작\n게임입니다. 원작의 모든 권리는\n원작자와 출판사에 있습니다.\n\n폰트: 갈무리, Black Han Sans\n(SIL OFL 1.1)"),
     ("UI_TAB_EVIDENCE", "증거물"),
     ("UI_TAB_PROFILE", "인물"),
-    ("UI_RECORD_HINT", "L/R: 전환  B: 닫기"),
+    ("UI_RECORD_HINT", "L/R 전환  B 닫기"),
+    ("UI_RECORD_SAVE", "SELECT: 저장"),
+    ("UI_SAVE_Q", "어느 칸에 저장할까요?"),
+    ("UI_LOAD_Q", "어느 기록을 불러올까요?"),
+    ("UI_SLOT_AUTO", "자동 저장"),
+    ("UI_SLOT_1", "기록 1"),
+    ("UI_SLOT_2", "기록 2"),
+    ("UI_SLOT_3", "기록 3"),
+    ("UI_SLOT_EMPTY", "비어 있음"),
+    ("UI_SLOT_SEP", " · "),
     ("UI_PRESENT_HINT", "A: 제시하기"),
     ("UI_EMPTY", "아직 아무것도 없다."),
     ("UI_GOT", "증거물 입수!"),
@@ -713,6 +722,10 @@ def build(story_path, font_path, out_dir):
          "#define TXT_EMPH_ON 0xFFFD", "#define TXT_EMPH_OFF 0xFFFC"]
     for k, v in OPS.items():
         h.append(f"#define OP_{k} {v}")
+    script_hash = 0x811C9DC5
+    for w in comp.code:
+        script_hash = ((script_hash ^ w) * 0x01000193) & 0xFFFFFFFF
+    h.append(f"#define SCRIPT_HASH 0x{script_hash:08X}u")
     for k, v in FX.items():
         h.append(f"#define FX_{k.upper()} {v}")
     for k, v in ui_ids:

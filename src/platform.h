@@ -32,7 +32,7 @@ typedef signed int s32;
 enum { SFX_BLIP, SFX_MOVE, SFX_OK, SFX_CANCEL, SFX_GET, SFX_WRONG, SFX_SHOCK, SFX_OBJECTION };
 
 /* Debug hooks used only by the host harness. */
-enum { DBG_MENU, DBG_ACCUSE, DBG_PRESENT, DBG_INVEST, DBG_TITLE, DBG_VIDEO, DBG_TESTIMONY, DBG_MASH };
+enum { DBG_MENU, DBG_ACCUSE, DBG_PRESENT, DBG_INVEST, DBG_TITLE, DBG_VIDEO, DBG_TESTIMONY, DBG_MASH, DBG_SLOT, DBG_SAVE };
 
 void plat_init(void);
 u16 *plat_fb(void);                     /* 240x160 BGR555 back buffer */

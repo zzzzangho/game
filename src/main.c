@@ -387,9 +387,15 @@ static void restore_rect(int x, int y, int w, int h)
 }
 
 /* Wait for A on a finished page (snapshot must hold the page). START opens the court record. */
+static void save_slot(int slot, u16 pc);
+static void save_prompt(void);
+static u16 top_pc;
+
 static void wait_advance(void)
 {
     plat_debug_event("page", 0);
+    int dbg_save = plat_debug_choice(DBG_SAVE, 0); /* test harness: save here */
+    if (dbg_save > 0) save_slot(dbg_save, top_pc);
     for (;;) {
         restore_rect(224, 154, 8, 5);
         if ((frame_count >> 4) & 1) draw_arrow(225, 154, C_WHITE);
@@ -758,6 +764,7 @@ static int record(int present, int question)
             }
             int hint = present ? UI_PRESENT_HINT : UI_RECORD_HINT;
             draw_text(144 - text_width(hint, 1), 86, hint, C_GREY);
+            if (!present && in_game) draw_text(182 - text_width(UI_RECORD_SAVE, 1), 4, UI_RECORD_SAVE, C_GREY);
 
             if (n == 0) {
                 draw_text(12, REC_LIST_Y + 4, UI_EMPTY, C_GREY);
@@ -827,6 +834,9 @@ static int record(int present, int question)
         } else if (!present && (keys_new & (KEY_B | KEY_START))) {
             plat_sfx(SFX_CANCEL);
             break;
+        } else if (!present && in_game && (keys_new & KEY_SELECT)) {
+            save_prompt();
+            redraw = 1;
         }
     }
     plat_copy32(fb, saved_screen, SCREEN_W * SCREEN_H / 2);
@@ -836,7 +846,9 @@ static int record(int present, int question)
 
 /* ------------------------------------------------------------------ save data (SRAM) */
 
-#define SAVE_MAGIC 0x344D4A4Bu /* "KJM4" (v4: 64 evidence items) */
+#define SAVE_MAGIC (0x354D4A4Bu ^ SCRIPT_HASH) /* "KJM5" + script: saves from another build are ignored */
+#define SLOT_COUNT 4   /* 0 = automatic (chapter start), 1-3 = saved by the player */
+#define SLOT_SIZE 512
 
 typedef struct {
     u32 magic;
@@ -845,19 +857,26 @@ typedef struct {
     u8 lives, max_lives;
     u16 prof_text[32];
     u32 flags[32];
+    u16 chapter, place; /* for the slot list: chapter title and location caption text ids */
+    u16 cut, pad;
     u32 check;
 } SaveData;
+
+/* where a save made right now resumes: the top-level statement being executed (a dialogue line,
+ * or the investigation / menu / deduction that the player is inside) */
+static u16 cur_chapter = NONE, cur_place = NONE;
+static int run_depth;
 
 static u32 save_sum(const SaveData *s)
 {
     u32 sum = s->ev * 3 + s->ev_hi * 23 + s->prof * 5 + s->pc * 7 + s->scene * 11 + s->gameover * 13 + s->lives * 17 +
-              s->max_lives * 19 + 0x1234;
+              s->max_lives * 19 + s->chapter * 29 + s->place * 31 + s->cut * 41 + 0x1234;
     for (int i = 0; i < 32; i++) sum = sum * 31 + s->prof_text[i];
     for (int i = 0; i < 32; i++) sum = sum * 37 + s->flags[i];
     return sum;
 }
 
-static void save_game(u16 pc)
+static void save_slot(int slot, u16 pc)
 {
     SaveData s;
     s.magic = SAVE_MAGIC;
@@ -866,19 +885,115 @@ static void save_game(u16 pc)
     s.prof = prof_flags;
     s.pc = pc;
     s.scene = cur_scene;
+    s.cut = cut_mode;
+    s.pad = 0;
     s.gameover = gameover_pc;
     s.lives = lives;
     s.max_lives = max_lives;
+    s.chapter = cur_chapter;
+    s.place = cur_place;
     for (int i = 0; i < 32; i++) s.prof_text[i] = prof_text[i];
     for (int i = 0; i < 32; i++) s.flags[i] = flags[i];
     s.check = save_sum(&s);
-    plat_sram_write(&s, 0, sizeof s);
+    plat_sram_write(&s, slot * SLOT_SIZE, sizeof s);
+    plat_debug_event("saved", slot);
 }
 
-static int load_game(SaveData *s)
+static int load_slot(int slot, SaveData *s)
 {
-    plat_sram_read(s, 0, sizeof *s);
+    plat_sram_read(s, slot * SLOT_SIZE, sizeof *s);
     return s->magic == SAVE_MAGIC && s->check == save_sum(s);
+}
+
+static void save_game(u16 pc) { save_slot(0, pc); }
+
+/* First line of a text only (slot list labels). Returns the x after it. */
+static int draw_first_line(int x, int y, int id, u16 c)
+{
+    for (const u16 *g = txt(id); *g != TXT_END && *g != TXT_NL; g++) {
+        if (*g >= TXT_EMPH_OFF) continue;
+        glyph_shadowed(x, y, *g, c, 1);
+        x += glyph_adv[*g];
+    }
+    return x;
+}
+
+/* Slot list for saving (slots 1-3) or loading (all slots). Returns the slot or -1 for cancel. */
+static int slot_menu(int saving)
+{
+    static const u16 names[SLOT_COUNT] = {UI_SLOT_AUTO, UI_SLOT_1, UI_SLOT_2, UI_SLOT_3};
+    SaveData d[SLOT_COUNT];
+    int ok[SLOT_COUNT], first = saving ? 1 : 0, sel = first;
+    for (int i = 0; i < SLOT_COUNT; i++) ok[i] = load_slot(i, &d[i]);
+    if (!saving)
+        while (sel < SLOT_COUNT - 1 && !ok[sel]) sel++;
+    save_screen();
+    for (int redraw = 1;;) {
+        if (redraw) {
+            restore_screen();
+            int rows = SLOT_COUNT - first, y0 = 22;
+            popup_window(10, y0 - 4, SCREEN_W - 20, 18 + rows * 28);
+            draw_text(18, y0, saving ? UI_SAVE_Q : UI_LOAD_Q, C_GOLD);
+            for (int i = first; i < SLOT_COUNT; i++) {
+                int y = y0 + 16 + (i - first) * 28;
+                if (i == sel) {
+                    fill(14, y - 1, SCREEN_W - 28, 27, C_HILITE);
+                    draw_cursor(17, y + 3, C_GOLD);
+                }
+                u16 c = (!saving && !ok[i]) ? C_GREY : (i == sel ? C_GOLD : C_WHITE);
+                draw_text(28, y, names[i], c);
+                if (ok[i]) {
+                    for (int h = 0; h < d[i].lives; h++) draw_heart(SCREEN_W - 26 - h * 9, y + 3, C_RED);
+                    int x = 28;
+                    if (d[i].chapter != NONE) x = draw_first_line(x, y + 13, d[i].chapter, C_WHITE);
+                    if (d[i].place != NONE) {
+                        x = draw_first_line(x, y + 13, UI_SLOT_SEP, C_GREY);
+                        draw_first_line(x, y + 13, d[i].place, C_WHITE);
+                    }
+                } else {
+                    draw_text(28, y + 13, UI_SLOT_EMPTY, C_GREY);
+                }
+            }
+            redraw = 0;
+        }
+        plat_debug_event("slots", sel);
+        int dbg = plat_debug_choice(DBG_SLOT, SLOT_COUNT);
+        if (dbg >= 0) {
+            sel = dbg;
+            break;
+        }
+        frame();
+        if (keys_new & (KEY_UP | KEY_DOWN)) {
+            int step = (keys_new & KEY_UP) ? -1 : 1;
+            sel = first + (sel - first + step + (SLOT_COUNT - first)) % (SLOT_COUNT - first);
+            plat_sfx(SFX_MOVE);
+            redraw = 1;
+        } else if (keys_new & KEY_A) {
+            if (!saving && !ok[sel]) {
+                plat_sfx(SFX_WRONG);
+                continue;
+            }
+            break;
+        } else if (keys_new & KEY_B) {
+            sel = -1;
+            break;
+        }
+    }
+    plat_sfx(sel >= 0 ? SFX_OK : SFX_CANCEL);
+    restore_screen();
+    return sel;
+}
+
+static void save_prompt(void)
+{
+    int slot = slot_menu(1);
+    if (slot < 1) return;
+    save_slot(slot, top_pc);
+    save_screen();
+    popup_window(60, 64, SCREEN_W - 120, 26);
+    draw_text_ex(SCREEN_W / 2, 70, UI_SAVED, C_GOLD, 1, 1);
+    wait_a(20);
+    restore_screen();
 }
 
 /* ------------------------------------------------------------------ interpreter */
@@ -1152,11 +1267,22 @@ static void ending(int kind, int t)
     fade_out();
 }
 
+static int run_inner(u16 pc);
+
 static int run(u16 pc)
+{
+    run_depth++;
+    int r = run_inner(pc);
+    run_depth--;
+    return r;
+}
+
+static int run_inner(u16 pc)
 {
     const u16 *S = script;
     for (;;) {
         u16 op_pc = pc;
+        if (run_depth == 1) top_pc = op_pc;
         u16 op = S[pc++];
         switch (op) {
         case OP_SAY: {
@@ -1202,9 +1328,12 @@ static int run(u16 pc)
             break;
         }
         case OP_PLACE:
+            cur_place = S[pc];
             place_caption(S[pc++]);
             break;
         case OP_CHAPTER:
+            cur_chapter = S[pc];
+            cur_place = NONE;
             save_game(op_pc);
             chapter_card(S[pc], S[pc + 1]);
             pc += 2;
@@ -1441,17 +1570,26 @@ int main(void)
     plat_fade(16);
     disclaimer();
     for (;;) {
-        int has_save = load_game(&s);
-        int choice = title_screen(has_save);
+        int has_save = 0;
+        for (int i = 0; i < SLOT_COUNT; i++) has_save |= load_slot(i, &s);
+        int choice = title_screen(has_save), slot = -1;
+        if (choice == 1 && has_save) {
+            plat_fade(0);           /* the list sits on the title picture */
+            slot = slot_menu(0);
+            fade_out();
+            if (slot < 0) continue;
+            load_slot(slot, &s);
+        }
         u16 pc = 0;
         lives = max_lives = 5;
         ev_flags = prof_flags = 0;
         gameover_pc = 0;
         cur_scene = SCENE_BLACK;
         cut_mode = 0;
+        cur_chapter = cur_place = NONE;
         for (int i = 0; i < 32; i++) prof_text[i] = i < CHAR_COUNT ? char_profile[i] : NONE;
         for (int i = 0; i < 32; i++) flags[i] = 0;
-        if (choice == 1 && has_save) {
+        if (slot >= 0) {
             ev_flags = s.ev | ((u64)s.ev_hi << 32);
             prof_flags = s.prof;
             lives = s.lives;
@@ -1460,6 +1598,9 @@ int main(void)
             for (int i = 0; i < 32; i++) prof_text[i] = s.prof_text[i];
             for (int i = 0; i < 32; i++) flags[i] = s.flags[i];
             cur_scene = s.scene;
+            cut_mode = s.cut;
+            cur_chapter = s.chapter;
+            cur_place = s.place;
             pc = s.pc;
         }
         in_game = 1;

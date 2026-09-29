@@ -41,8 +41,11 @@ def load_ids():
     return ids
 
 
-def run(exe, route, ids, title=0, sram=None, shots=None, video="3", traps=False, mash="win"):
+def run(exe, route, ids, title=0, sram=None, shots=None, video="3", traps=False, mash="win", slot=0, save_at=None):
     env = dict(os.environ)
+    env["SLOT"] = str(slot)
+    if save_at:
+        env["SAVE_AT"] = save_at
     env["VIDEO"] = video
     if traps:
         env["TRAPS"] = "1"
@@ -172,6 +175,23 @@ def main():
                              out[-500:] + err))
         code, out, err = run(args.exe, CH2 + CH3 + FINAL_TRUE, ids, title=1, sram=sram)
         results.append(check("continue from chapter 2 save", code == 0 and "EVENT true_end" in out
+                             and out.count("EVENT chapter") == 3, out[-500:] + err))
+
+    # save anywhere: a manual save in the middle of chapter 2's dialogue resumes on that line
+    with tempfile.TemporaryDirectory() as tmp:
+        sram = os.path.join(tmp, "save.sav")
+        code, out, err = run(args.exe, CH1, ids, sram=sram, save_at="3:4:1")
+        results.append(check("manual save mid-dialogue (slot 1)", "EVENT saved 1" in out, out[-500:] + err))
+        code, out, err = run(args.exe, CH2 + CH3 + FINAL_TRUE, ids, title=1, sram=sram, slot=1)
+        results.append(check("load slot 1 -> resumes mid-chapter, no chapter card replay",
+                             code == 0 and "EVENT true_end" in out and out.count("EVENT chapter") == 2,
+                             out[-500:] + err))
+        # a save made inside the chapter 1 investigation resumes at the investigation
+        code, out, err = run(args.exe, CH1, ids, sram=sram, save_at="2:30:2")
+        results.append(check("manual save inside an investigation (slot 2)", "EVENT saved 2" in out, out[-500:] + err))
+        code, out, err = run(args.exe, CH1 + CH2 + CH3 + FINAL_TRUE, ids, title=1, sram=sram, slot=2)
+        results.append(check("load slot 2 -> back in the investigation",
+                             code == 0 and "EVENT true_end" in out and 0 <= out.find("video ->") < out.find("testimony ->")
                              and out.count("EVENT chapter") == 3, out[-500:] + err))
 
     failed = results.count(False)
