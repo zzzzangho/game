@@ -12,6 +12,8 @@ import random
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
+import art_hd
+
 W, H = 240, 160
 PORTRAIT_W, PORTRAIT_H = 128, 144   # dialogue bust, bottom-centred behind the text box
 THUMB_W, THUMB_H = 64, 80           # face crop for the court record / popups
@@ -407,33 +409,6 @@ def scene_cabin_empty():
     return img
 
 
-def scene_police():
-    img = Image.new("RGB", (W, H))
-    d = ImageDraw.Draw(img)
-    vgrad(d, (0, 0, W, 110), (170, 176, 170), (140, 146, 140))
-    d.rectangle([20, 12, 150, 80], fill=(120, 150, 190))
-    for x in range(26, 150, 18):  # city skyline
-        h = 20 + (x * 37) % 40
-        d.rectangle([x, 80 - h, x + 12, 80], fill=(80, 96, 120))
-    for y in range(12, 80, 5):  # blinds
-        d.line([(20, y), (150, y)], fill=(210, 214, 210))
-    d.rectangle([20, 12, 150, 80], outline=(90, 90, 90), width=2)
-    d.rectangle([170, 20, 226, 100], fill=(110, 110, 104), outline=(80, 80, 76))
-    for y in range(30, 100, 16):
-        d.line([(170, y), (226, y)], fill=(80, 80, 76))
-    d.rectangle([0, 110, W, H], fill=(90, 90, 96))
-    d.polygon([(10, 118), (230, 118), (240, 140), (0, 140)], fill=(120, 96, 70))
-    d.rectangle([60, 104, 110, 118], fill=(220, 220, 214))
-    d.rectangle([140, 100, 176, 118], fill=(40, 40, 44))
-    # the twisted marionette in its box
-    d.rectangle([96, 88, 146, 118], fill=(150, 110, 70), outline=(90, 60, 40))
-    d.ellipse([112, 84, 124, 96], fill=(240, 230, 220), outline=OUTLINE[:3])
-    d.line([(118, 96), (108, 108), (126, 104), (116, 116)], fill=(40, 30, 60), width=2)
-    d.line([(118, 98), (134, 92)], fill=(40, 30, 60), width=2)
-    d.ellipse([130, 84, 138, 92], fill=(200, 10, 30))
-    return img
-
-
 def scene_hotel():
     img = Image.new("RGB", (W, H))
     d = ImageDraw.Draw(img)
@@ -455,23 +430,6 @@ def scene_hotel():
     d.ellipse([110, 4, 130, 14], fill=(255, 236, 180))
     glow(img, 120, 10, 50, (255, 220, 150), 0.35)
     night_window(img, d, random.Random(8), (190, 10, 230, 40), frame=(140, 100, 50))
-    return img
-
-
-def scene_hotel_room():
-    img = Image.new("RGB", (W, H))
-    d = ImageDraw.Draw(img)
-    rng = random.Random(9)
-    vgrad(d, (0, 0, W, 112), (200, 190, 160), (170, 158, 128))
-    d.rectangle([0, 112, W, H], fill=(110, 90, 70))
-    night_window(img, d, rng, (70, 14, 170, 90), frame=(120, 90, 60))
-    d.line([(96, 90), (104, 40), (130, 20)], fill=(30, 26, 30), width=4)  # tree outside
-    d.line([(104, 40), (86, 24)], fill=(30, 26, 30), width=2)
-    d.rectangle([184, 76, 236, 124], fill=(120, 80, 56))
-    d.rectangle([188, 70, 236, 90], fill=(236, 232, 220))
-    d.rectangle([8, 70, 50, 112], fill=(100, 70, 46))  # dresser with jade
-    for x in (14, 26, 38):
-        d.ellipse([x, 62, x + 8, 69], fill=(60, 170, 110), outline=(30, 90, 60))
     return img
 
 
@@ -525,17 +483,6 @@ def scene_cabin_roses_hand():
     return img
 
 
-def scene_cabin_smoke():
-    img = scene_cabin_roses()
-    rng = random.Random(11)
-    px = img.load()
-    for y in range(H):
-        for x in range(W):
-            t = 0.55 + 0.25 * rng.random()
-            px[x, y] = mix(px[x, y], (230, 230, 235), t)
-    return img
-
-
 BUILTIN_SCENES = {
     "black": scene_black,
     "title": scene_title,
@@ -547,15 +494,16 @@ BUILTIN_SCENES = {
     "dining": scene_dining,
     "baggage": scene_baggage,
     "snowfield": scene_snowfield,
-    "police": scene_police,
+    "police": art_hd.scene_police,
     "cabin_roses": scene_cabin_roses,
     "cabin_empty": scene_cabin_empty,
     "hotel": scene_hotel,
-    "hotel_room": scene_hotel_room,
+    "hotel_room": art_hd.scene_hotel_room,
     "theater": scene_theater,
     "swamp": scene_swamp,
     "cabin_roses_hand": scene_cabin_roses_hand,
-    "cabin_smoke": scene_cabin_smoke,
+    "cabin_smoke": lambda: art_hd.smoke_over(scene_image("cabin_roses")),
+    **art_hd.CARDS,
 }
 
 
@@ -1335,6 +1283,8 @@ def icon_image(key):
                 return pixelize(img, ICON_SIZE, ICON_SIZE, 24, 1)
             return img.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
         return fit(img, ICON_SIZE, ICON_SIZE, anchor_bottom=False)
+    if key in art_hd.ICONS_HD:
+        return art_hd.ICONS_HD[key]()
     img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
     BUILTIN_ICONS[key](ImageDraw.Draw(img))
     return outline(img).resize((ICON_SIZE, ICON_SIZE), Image.NEAREST)

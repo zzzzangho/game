@@ -512,17 +512,31 @@ static int lose_life(void)
     return lives == 0;
 }
 
-static void chapter_card(int t)
+static void chapter_card(int t, int card)
 {
     fade_out();
-    fill(0, 0, SCREEN_W, SCREEN_H, 0);
     int h = LINE_H;
     for (const u16 *s = txt(t); *s != TXT_END; s++)
         if (*s == TXT_NL) h += LINE_H;
-    fill(40, 76 - h / 2 - 8, 160, 1, C_BORDER);
-    fill(40, 76 + h / 2 + 8, 160, 1, C_BORDER);
-    draw_text_ex(SCREEN_W / 2, 76 - h / 2, t, C_GOLD, 1, 1);
-    draw_text_ex(SCREEN_W / 2, 140, UI_SAVED, C_GREY, 1, 1);
+    int ty = 76 - h / 2;
+    if (card != NONE) {
+        /* illustrated card: the picture stays visible, the title sits on a dark band near the bottom */
+        int y0 = 138 - h - 8, y1 = 140;
+        ty = y0 + 6;
+        plat_copy32(fb, scene_img[card], SCREEN_W * SCREEN_H / 2);
+        mark(0, SCREEN_H);
+        shade(0, y0, SCREEN_W, SCREEN_H - y0, 0);
+        shade(0, y0, SCREEN_W, SCREEN_H - y0, 0);
+        fill(0, y0 - 3, SCREEN_W, 1, C_RED);
+        fill(0, y0 - 1, SCREEN_W, 1, C_BORDER);
+        fill(0, y1, SCREEN_W, 1, C_BORDER);
+    } else {
+        fill(0, 0, SCREEN_W, SCREEN_H, 0);
+        fill(40, 76 - h / 2 - 8, 160, 1, C_BORDER);
+        fill(40, 76 + h / 2 + 8, 160, 1, C_BORDER);
+    }
+    draw_text_ex(SCREEN_W / 2, ty, t, C_GOLD, 1, 1);
+    draw_text_ex(SCREEN_W / 2, 145, UI_SAVED, C_GREY, 1, 1);
     fade_in();
     plat_debug_event("chapter", 0);
     for (int i = 0; i < 180; i++) {
@@ -1093,7 +1107,8 @@ static int run(u16 pc)
         }
         case OP_CHAPTER:
             save_game(op_pc);
-            chapter_card(S[pc++]);
+            chapter_card(S[pc], S[pc + 1]);
+            pc += 2;
             break;
         case OP_INVEST: {
             int n = S[pc];

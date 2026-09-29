@@ -372,7 +372,9 @@ class Compiler:
                 self.err(f"@fx needs one of {', '.join(FX)}")
             self.emit(OPS["FX"], FX[a[0]])
         elif cmd == "chapter":
-            self.emit(OPS["CHAPTER"], self.wrapped(a[0], TEXT_W, 3, "chapter title"))
+            self.need_args(a, 1, "@chapter \"title\" [CARD_SCENE]")
+            self.emit(OPS["CHAPTER"], self.wrapped(a[0], TEXT_W, 3, "chapter title"),
+                      self.scene(a[1]) if len(a) > 1 else NONE)
         elif cmd == "lives":
             self.emit(OPS["LIVES"], int(a[0]))
         elif cmd == "gameover":

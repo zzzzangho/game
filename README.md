@@ -103,7 +103,8 @@ make preview    # 배경·초상화·아이콘 미리보기 PNG → build/previe
 ```
 story/story.txt         스토리 스크립트 (대사, 증거, 인물, 추리, 엔딩 전부 여기)
 tools/build_assets.py   스크립트 컴파일러: 스크립트 + 폰트 + 그림 → build/gen_data.c
-tools/art.py            배경/초상화/증거 아이콘 도트 그림 (코드로 생성)
+tools/art.py            그림 불러오기/변환, 임시 도트 그림
+tools/art_hd.py         내장 일러스트: 챕터 카드, 경시청·호텔 객실 배경, 연기 장면, 증거물 아이콘
 src/main.c              게임 엔진 (텍스트, 수첩, 선택지, 추리, 저장)
 src/plat_gba.c          GBA 하드웨어 계층 (Mode 3 화면, 입력, 효과음, SRAM)
 src/crt0.s, src/gba.ld  시작 코드 / 링커 스크립트
@@ -131,7 +132,7 @@ assets/fonts/           갈무리11 Condensed (BDF)
 @meet 이름                  대사 없이 인물 파일만 추가하고 싶을 때
 @get ID                     증거물 입수 (팝업)
 
-@chapter "제목\n부제"       챕터 카드 + 자동 저장
+@chapter "제목\n부제" [카드배경]   챕터 카드(일러스트 위에 제목 띠) + 자동 저장
 @scene 배경키               배경 전환 (위 표의 배경 이름, 또는 black)
 @fx flash|shock|shake|red   화면 효과
 @shout 이름[표정] "대사"    큰 글씨 외침 연출 (예: 수수께끼는 모두 풀렸어!)
