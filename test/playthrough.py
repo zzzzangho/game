@@ -179,7 +179,8 @@ def main():
         results.append(check("no automatic save when the player says no", "EVENT saved" not in out, out[-500:] + err))
         code, out, err = run(args.exe, CH1, ids, sram=sram, chsave=3)
         results.append(check("stop in chapter 2 (route exhausted), saved at the card",
-                             code == 3 and out.count("EVENT chapter ") == 3 and "EVENT saved 3" in out,
+                             code == 3 and out.count("EVENT chapter ") == 3 and "EVENT saved 3" in out
+                             and out.count("EVENT chapter_save") == 2,  # not asked on the prologue card
                              out[-500:] + err))
         code, out, err = run(args.exe, CH2 + CH3 + FINAL_TRUE, ids, title=1, sram=sram, slot=3)
         results.append(check("continue from chapter 2 save (card not replayed)", code == 0 and "EVENT true_end" in out

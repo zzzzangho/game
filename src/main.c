@@ -1321,6 +1321,7 @@ static int slot_menu(int saving)
 
 /* Chapter start: "저장하시겠습니까?" 예 / 아니오, then the slot list. Saves resume after the card. */
 static u16 chapter_save_pc;
+static int chapter_ask;
 static void chapter_save(int slot)
 {
     int scene = cur_scene, cut = cut_mode;
@@ -1333,6 +1334,7 @@ static void chapter_save(int slot)
 
 static void chapter_save_ask(void)
 {
+    if (!chapter_ask) return;
     int dbg = plat_debug_choice(DBG_CHSAVE, 0); /* test harness: slot to save in, 0 = no */
     if (dbg >= 0) {
         if (dbg > 0) chapter_save(dbg);
@@ -1733,6 +1735,7 @@ static int run_inner(u16 pc)
             place_caption(S[pc++]);
             break;
         case OP_CHAPTER:
+            chapter_ask = cur_chapter != NONE; /* no save question on the very first card */
             cur_chapter = S[pc];
             cur_place = NONE;
             cur_inset = NONE;
