@@ -469,6 +469,18 @@
 켄모치[shock]: 주, 죽었어…! 지옥의 인형술사 녀석, 이번엔 정말…!
 켄모치[shock]: 아이고! 무슨 장미가 이렇게 많아!
 @fx flash
+@scene cabin_smoke1 quick
+@wait 5
+@scene cabin_smoke2 quick
+@wait 5
+@scene cabin_smoke3 quick
+@wait 5
+@scene cabin_smoke4 quick
+@wait 5
+@scene cabin_smoke5 quick
+@wait 5
+@scene cabin_smoke6 quick
+@wait 5
 그 순간, 객실 안에서 흰 연기가 확 피어올랐다.
 사콘지[shock]: 이게 뭐지? 설마… 폭탄?!
 켄모치[shock]: 다들 피해! 위험해! 빨리 엎드려!

@@ -508,6 +508,9 @@ BUILTIN_SCENES = {
     "swamp": scene_swamp,
     "cabin_roses_hand": scene_cabin_roses_hand,
     "cabin_smoke": lambda: art_hd.smoke_over(scene_image("cut_roses")),
+    # white smoke pouring from the ceiling vent and filling compartment 5 (shown one after another)
+    **{f"cabin_smoke{k}": (lambda st=st: smoke_rise(scene_image("cabin_roses"), st))
+       for k, st in enumerate((0.08, 0.18, 0.3, 0.45, 0.65, 1.0), 1)},
     **art_hd.CARDS,
     **art_hd.LOCATIONS,
 }
@@ -1227,6 +1230,32 @@ def pixelize(img, w, h, colors, scale):
     return small.resize((w * scale, h * scale), Image.NEAREST)
 
 
+def smoke_rise(base, stage):
+    """base with white smoke that has poured out of a ceiling vent up to stage (0..1)."""
+    import random
+    from PIL import ImageFilter
+    rng = random.Random(23)
+    K = 2
+    img = base.convert("RGBA").resize((base.width * K, base.height * K), Image.LANCZOS)
+    for n, rmin, rmax, amin, amax, blur in ((40, 26, 60, 150, 225, 8), (60, 12, 30, 80, 150, 4)):
+        lay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(lay)
+        for _ in range(n):
+            t0 = rng.random() * 0.75                     # when this puff comes out of the vent
+            ox, oy = rng.uniform(90, 150), rng.uniform(-6, 10)
+            fx, fy = rng.uniform(-30, 270), rng.uniform(-10, 170)
+            r, a, g = rng.uniform(rmin, rmax), rng.uniform(amin, amax), rng.randrange(222, 250)
+            if stage <= t0:
+                continue
+            p = min(1.0, (stage - t0) / 0.45)
+            p = 1 - (1 - p) ** 2                         # bursts out, then slows as it spreads
+            x, y, rr = ox + (fx - ox) * p, oy + (fy - oy) * p, r * (0.35 + 0.65 * p)
+            d.ellipse([(x - rr) * K, (y - rr * 0.6) * K, (x + rr) * K, (y + rr * 0.6) * K],
+                      fill=(g, g, min(255, g + 6), int(a * (0.5 + 0.5 * p))))
+        img = Image.alpha_composite(img, lay.filter(ImageFilter.GaussianBlur(blur * K)))
+    return img.resize(base.size, Image.LANCZOS).convert("RGB")
+
+
 def scene_image(key):
     if key in USER_SCENES:
         img = Image.open(USER_SCENES[key]).convert("RGB")
@@ -1373,6 +1402,8 @@ def ace_sprite(img, w, h, crop=1.0, trim=True):
         img = img.crop((x0, 0, x0 + max_w, img.height))
     # bust about 1.2x the fitted size: the head stays near the top, the waist goes under the text box
     sc = min(w * 0.86 / img.width, h * 0.84 / img.height) * BUST_SCALE
+    if not trim:
+        sc = min(sc, w / img.width)  # art kept whole never runs off the sides
     tw, th = max(1, round(img.width * sc)), max(1, round(img.height * sc))
     K = 4
     big = img.resize((tw * K, th * K), Image.LANCZOS)
@@ -1454,7 +1485,8 @@ def portrait_image(key):
             canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
             canvas.paste(framed(img.resize((CAPTURE_W, CAPTURE_H), Image.LANCZOS)), ((PORTRAIT_W - CAPTURE_W) // 2, 0))
             return canvas
-        return ace_sprite(img, PORTRAIT_W, PORTRAIT_H, trim=key not in KEEP_SIDES)
+        keep = any(key == k or key.startswith(k + "_") for k in KEEP_SIDES)  # every expression of it too
+        return ace_sprite(img, PORTRAIT_W, PORTRAIT_H, trim=not keep)
     small = _procedural_portrait(key).resize((96, 120), Image.NEAREST)
     canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
     canvas.paste(small, ((PORTRAIT_W - 96) // 2, 0))  # keep the face above the text box
