@@ -759,15 +759,71 @@
 # ---------------- 대화
 *c1_talk
 @menu - "누구와 이야기할까?"
+@opt "미유키" c1t_miyuki
 @opt "사키" c1t_saki
 @opt "켄모치 아저씨" c1t_ken
 @opt "아케치 형사" c1t_akechi
 @opt "타카토" c1t_takato
 @opt "유미" c1t_yumi
 @opt "사콘지" c1t_sakonji
-@opt "사쿠라바" c1t_sakuraba if=joker
-@opt "사토미" c1t_satomi if=joker
+@opt "사쿠라바" c1t_sakuraba
+@opt "사토미" c1t_satomi
 @end
+@return
+
+*c1t_miyuki
+@menu 미유키 "무엇을 이야기할까?"
+@opt "지금 기분" c1t_miy_feel
+@opt "마술 공연" c1t_miy_show
+@opt "사건에 대해" c1t_miy_case
+@opt "증거물을 보여 준다" c1t_miy_ev
+@end
+@return
+
+*c1t_miy_feel
+미유키[sad]: 대게 먹으러 가는 즐거운 여행일 줄 알았는데… 사람이 죽다니.
+미유키[tense]: 전일아, 너무 무리하지 마. …아니, 해도 돼. 너라면 풀 수 있을 거야.
+김전일[playful]: 걱정 마. 대게는 사건 해결하고 먹자고.
+미유키[angry]: 지금 대게 얘기가 나와?!
+@return
+
+*c1t_miy_show
+미유키[happy]: 공연은 진짜 재밌었어. 특히 사토미 씨랑 로버트! 인형이 진짜 살아 있는 것 같더라.
+미유키[angry]: …유라마 씨 마술만 빼고. 그 일은 생각하기도 싫어.
+@return
+
+*c1t_miy_case
+미유키[tense]: 장미랑 풍선에 둘러싸여 있던 단장님… 그게 전부 누군가의 '연출'이었다는 거지?
+미유키[serious]: 사람이 죽었는데 그걸 마술 쇼처럼 꾸미다니. 용서 못 해.
+@return
+
+*c1t_miy_ev
+@show 미유키 "미유키에게 무엇을 보여 줄까?" c1t_miy_ev_x
+@ev rosesalad c1t_miy_ev_salad
+@ev marionette c1t_miy_ev_doll
+@ev letter c1t_miy_ev_letter
+@ev pamphlet c1t_miy_ev_pam
+@ev joker c1t_miy_ev_joker
+@end
+@return
+*c1t_miy_ev_x
+미유키: 음… 그게 왜? 나한테 물어봐도 잘 모르겠어, 전일아.
+@return
+*c1t_miy_ev_salad
+미유키[tense]: 그 샐러드… 아무도 주문 안 했는데 켄모치 아저씨 앞으로 나왔잖아. 처음부터 이상했어.
+@return
+*c1t_miy_ev_doll
+미유키[shock]: 치, 치워! 그 인형 얼굴 다시 보고 싶지 않아…!
+@return
+*c1t_miy_ev_letter
+미유키[tense]: '죽음과 공포의 마술'… 정말로 일어나 버렸네.
+@return
+*c1t_miy_ev_pam
+미유키[surprised]: 이 사진, 아까부터 신경 쓰였어. 지금 마술단에는 없는 사람이지?
+@return
+*c1t_miy_ev_joker
+미유키[surprised]: 조커 카드? 카드 마술이라면… 사콘지 씨?
+김전일: 그렇게 단순하면 좋겠지만.
 @return
 
 *c1t_saki
@@ -776,6 +832,8 @@
 @opt "비디오를 돌려 본다" c1t_saki_video
 @opt "무엇을 찍었나" c1t_saki_what
 @opt "마술 공연 소감" c1t_saki_show
+@opt "사키에 대해" c1t_saki_self
+@opt "증거물을 보여 준다" c1t_saki_ev
 @end
 @return
 
@@ -788,6 +846,37 @@
 사키[playful]: 유라마 씨가 미유키 선배 속옷을 꺼냈는데, 선배가 장미로 바꿔 버린 장면이요! 그게 최고였어요!
 김전일[playful]: 오, 그 부분 따로 편집해 둬.
 미유키[angry]: 사키! 당장 지워!! 전일이 너도!!
+@return
+
+*c1t_saki_self
+사키[happy]: 저요? 캠코더로 뭐든 찍어 두는 게 취미예요. 선배들 따라다니면 꼭 찍을 게 생기거든요!
+김전일[playful]: 그 대신 사건도 꼭 생기지.
+사키[playful]: 그러니까요! 이번 여행도 벌써 테이프가 모자랄 것 같아요.
+@return
+
+*c1t_saki_ev
+@show 사키 "사키에게 무엇을 보여 줄까?" c1t_saki_ev_x
+@ev video c1t_saki_ev_video
+@ev mailvideo c1t_saki_ev_mail
+@ev pamphlet c1t_saki_ev_pam
+@ev phone c1t_saki_ev_phone
+@end
+@return
+*c1t_saki_ev_x
+사키: 음… 이건 제가 잘 모르겠는데요, 선배.
+@return
+*c1t_saki_ev_video
+사키[happy]: 제가 찍은 거네요! 몇 번이든 돌려 드릴게요. 이상한 데가 있으면 멈춰 보세요.
+@return
+*c1t_saki_ev_mail
+사키[happy]: 화물역에서 대피할 때 찍은 거요. 맞은편 선로에 서 있던 열차까지 전부 찍혔어요!
+김전일[serious]: (맞은편 열차라…)
+@return
+*c1t_saki_ev_pam
+사키[happy]: 환상 마술단 팸플릿이다! 사진이 다 멋있네요. …어? 이 여자분은 누구지?
+@return
+*c1t_saki_ev_phone
+사키[tense]: 켄모치 아저씨 주머니에 들어 있었다는 그 휴대폰이요? 으… 누가 넣었는지 생각만 해도 소름 돋아요.
 @return
 
 *c1t_saki_video
@@ -866,6 +955,8 @@
 @opt "폭탄 협박 전화" c1t_ken_bomb
 @opt "요술 상자" c1t_ken_box
 @opt "대게 맛집" c1t_ken_food
+@opt "지옥의 인형술사" c1t_ken_puppet
+@opt "증거물을 보여 준다" c1t_ken_ev
 @end
 @return
 
@@ -886,11 +977,45 @@
 켄모치[angry]: 사건부터 해결해!!
 @return
 
+*c1t_ken_puppet
+켄모치[angry]: 그 녀석, 하필 나한테 예고장을 보냈단 말이야. 왜 하필 나냐고!
+켄모치[serious]: …하지만 이제 진짜 사람이 죽었어. 장난으로 끝날 일이 아니다.
+@return
+
+*c1t_ken_ev
+@show 켄모치 "켄모치 아저씨에게 무엇을 보여 줄까?" c1t_ken_ev_x
+@ev letter c1t_ken_ev_letter
+@ev phone c1t_ken_ev_phone
+@ev marionette c1t_ken_ev_doll
+@ev smoke c1t_ken_ev_smoke
+@ev rosesalad c1t_ken_ev_salad
+@end
+@return
+*c1t_ken_ev_x
+켄모치[serious]: 흠, 그게 뭐 어쨌다는 거냐?
+@return
+*c1t_ken_ev_letter
+켄모치[tense]: 그 예고장 받고 나서 사흘 동안 잠을 제대로 못 잤다.
+@return
+*c1t_ken_ev_phone
+켄모치[angry]: 누가 내 주머니에 넣었는지도 몰랐다니… 경찰 체면이 말이 아니야!
+@return
+*c1t_ken_ev_doll
+켄모치[tense]: 경시청으로 배달된 그 인형… 팔다리가 꺾인 게 꼭 무슨 경고 같았지.
+@return
+*c1t_ken_ev_smoke
+켄모치[serious]: 원격으로 불을 붙이는 장치라. 치밀한 놈이야. 이건 감식반에 넘겨야겠어.
+@return
+*c1t_ken_ev_salad
+켄모치[angry]: 그 샐러드 얘기는 꺼내지도 마! 옷에 장미 꽃잎이 아직도 붙어 있다고!
+@return
+
 *c1t_akechi
 @menu 아케치 "무엇을 물어볼까?"
 @opt "휴가의 목적" c1t_ak_trip
 @opt "완벽한 마술사" c1t_ak_best
 @opt "사건에 대해" c1t_ak_case
+@opt "증거물을 보여 준다" c1t_ak_ev
 @end
 @return
 
@@ -907,11 +1032,32 @@
 아케치[playful]: 시체가 사라졌다라. 흥미로운 마술이군. 네 실력 좀 구경해 볼까, 김전일.
 @return
 
+*c1t_ak_ev
+@show 아케치 "아케치 형사에게 무엇을 보여 줄까?" c1t_ak_ev_x
+@ev pamphlet c1t_ak_ev_pam
+@ev rosesalad c1t_ak_ev_salad
+@ev video c1t_ak_ev_video
+@end
+@return
+*c1t_ak_ev_x
+아케치[playful]: 흥미롭긴 하지만, 그걸로는 아무것도 증명할 수 없어.
+@return
+*c1t_ak_ev_pam
+아케치[sad]: 그 사진의 여성이 궁금하겠지. …아직은 말할 때가 아니야.
+@return
+*c1t_ak_ev_salad
+아케치[playful]: 장미 샐러드라. 연출에 꽤 신경을 쓰는 범인이군.
+@return
+*c1t_ak_ev_video
+아케치[serious]: 좋은 기록이군. 기록은 거짓말을 하지 않아. 사람과 달리.
+@return
+
 *c1t_takato
 @menu 타카토 "무엇을 물어볼까?"
 @opt "단장님의 행방" c1t_tak_sched
 @opt "매니저 일" c1t_tak_job
 @opt "5년 전 일" c1t_tak_past
+@opt "증거물을 보여 준다" c1t_tak_ev
 @end
 @return
 
@@ -930,11 +1076,33 @@
 타카토[sad]: 다들 그 얘기만 나오면 입을 다물어서… 솔직히 좀 찝찝해요.
 @return
 
+*c1t_tak_ev
+@show 타카토 "타카토에게 무엇을 보여 줄까?" c1t_tak_ev_x
+@ev joker c1t_tak_ev_joker
+@ev bombnote c1t_tak_ev_bomb
+@ev roses c1t_tak_ev_roses
+@end
+@return
+*c1t_tak_ev_x
+타카토[tense]: 죄, 죄송해요. 그건 제가 잘 모르겠어요.
+@return
+*c1t_tak_ev_joker
+타카토: 사콘지 씨 카드 같은데요… 저는 카드 마술은 영 소질이 없어서요.
+@return
+*c1t_tak_ev_bomb
+타카토[tense]: 그 전화 때문에 20분 가까이 밖에 서 있었잖아요. 일정이 전부 꼬여 버렸어요…
+@return
+*c1t_tak_ev_roses
+타카토[sad]: 단장님이… 그 장미 속에… 으으, 생각하고 싶지 않아요.
+@return
+
 *c1t_yumi
 @menu 유미 "무엇을 물어볼까?"
 @opt "남편에 대해" c1t_yumi_hus
 @opt "유라마에 대해" c1t_yumi_yur
 @opt "5년 전 일" c1t_yumi_past
+@opt "마술단에 대해" c1t_yumi_troupe
+@opt "증거물을 보여 준다" c1t_yumi_ev
 @end
 @return
 
@@ -955,11 +1123,35 @@
 유미는 날카롭게 쏘아붙이고 등을 돌렸다.
 @return
 
+*c1t_yumi_troupe
+유미[serious]: 환상 마술단은 5년 전에 그 사람이 세운 거야. 해외에서도 제법 이름이 났지.
+유미[sad]: …그 사람이 없어지면, 이제 어떻게 될지 모르겠네.
+@return
+
+*c1t_yumi_ev
+@show 유미 "유미에게 무엇을 보여 줄까?" c1t_yumi_ev_x
+@ev yumiclaim c1t_yumi_ev_claim
+@ev pamphlet c1t_yumi_ev_pam
+@end
+@return
+*c1t_yumi_ev_x
+유미[serious]: 그런 걸 보여 줘서 뭐 어쩌라고. 난 몰라.
+@return
+*c1t_yumi_ev_claim
+유미[angry]: 내 말이 틀렸어? 유라마 그 녀석이라니까.
+@return
+*c1t_yumi_ev_pam
+유미[tense]: …이 팸플릿, 어디서 났어?
+유미는 한 여성의 사진에서 황급히 눈을 돌렸다.
+김전일[serious]: (지금, 사진을 피했어.)
+@return
+
 *c1t_sakonji
 @menu 사콘지 "무엇을 물어볼까?"
 @opt "카드 마술" c1t_sak_card
 @opt "사건에 대해" c1t_sak_case
 @opt "침대 밑의 조커" c1t_sak_joker if=joker
+@opt "증거물을 보여 준다" c1t_sak_ev
 @end
 @return
 
@@ -980,13 +1172,93 @@
 사콘지[playful]: 누가 날 범인으로 만들고 싶은가 보지. 인기가 많아서 곤란하다니까.
 @return
 
+*c1t_sak_ev
+@show 사콘지 "사콘지에게 무엇을 보여 줄까?" c1t_sak_ev_x
+@ev sakonjiclaim c1t_sak_ev_claim
+@ev satomitalk c1t_sak_ev_satomi
+@ev pamphlet c1t_sak_ev_pam
+@end
+@return
+*c1t_sak_ev_x
+사콘지[playful]: 헤헤, 그런 걸로 내 카드 마술의 비밀이 풀리겠어?
+@return
+*c1t_sak_ev_claim
+사콘지[playful]: 헤헤, 내가 한 말 그대로네. 받아 적기까지 했어?
+@return
+*c1t_sak_ev_satomi
+사콘지[tense]: …사토미가 그랬다고? 헤, 헤헤. 애가 뭘 착각했겠지.
+김전일[serious]: (표정이 굳었어.)
+@return
+*c1t_sak_ev_pam
+사콘지[tense]: 팸플릿이 뭐? …헤헤, 난 사진발이 안 받아서 말이야.
+@return
+
 *c1t_sakuraba
+@menu 사쿠라바 "무엇을 물어볼까?"
+@opt "공연 뒤 행방" c1t_skr_where
+@opt "저주에 대해" c1t_skr_curse
+@opt "증거물을 보여 준다" c1t_skr_ev
+@end
+@return
+
+*c1t_skr_where
 사쿠라바[tense]: 저, 저는 공연이 끝나고 곧장 짐 정리를 했어요… 단장님 방엔 안 갔어요!
 사쿠라바[tense]: 이건 저주예요… 5년 전에 돌아가신 선생님의…
 김전일[serious]: (사콘지 씨 말과 다르네. 둘 중 하나는 거짓말을 하고 있어.)
 @return
 
+*c1t_skr_curse
+사쿠라바[tense]: 5년 전에… 돌아가신 분이 있어요. 그 뒤로 이상한 일만 생겨요.
+사쿠라바[shock]: 더는 말 못 해요! 말하면 저도…!
+@return
+
+*c1t_skr_ev
+@show 사쿠라바 "사쿠라바에게 무엇을 보여 줄까?" c1t_skr_ev_x
+@ev sakonjiclaim c1t_skr_ev_claim
+@ev pamphlet c1t_skr_ev_pam
+@end
+@return
+*c1t_skr_ev_x
+사쿠라바[tense]: 모, 모르겠어요. 저한테 그런 걸 보여 주지 마세요…
+@return
+*c1t_skr_ev_claim
+사쿠라바[shock]: 제가 혼자 객실 5호로 갔다고요?! 아니에요! 저는 사토미 씨랑 계속 소품 정리를 했어요!
+@return
+*c1t_skr_ev_pam
+사쿠라바[shock]: 히익…! 그, 그 사진…! 치워 주세요!
+@return
+
 *c1t_satomi
+@menu 사토미 "무엇을 물어볼까?"
+@opt "공연 뒤 행방" c1t_sat_where
+@opt "로버트" c1t_sat_robert
+@opt "증거물을 보여 준다" c1t_sat_ev
+@end
+@return
+
+*c1t_sat_robert
+로버트: 안녕! 난 로버트야. 누나 복화술 실력은 아직 멀었지만, 내가 잘 봐주고 있어!
+사토미[angry]: 로버트! …죄송해요. 얘가 입이 좀 험해서.
+@return
+
+*c1t_sat_ev
+@show 사토미 "사토미에게 무엇을 보여 줄까?" c1t_sat_ev_x
+@ev rubber c1t_sat_ev_rubber
+@ev sakonjiclaim c1t_sat_ev_claim
+@end
+@return
+*c1t_sat_ev_x
+사토미: 음… 죄송해요, 잘 모르겠어요.
+로버트: 누나는 원래 잘 몰라!
+@return
+*c1t_sat_ev_rubber
+사토미[surprised]: 풍선 조각이요? 제 소품 풍선은 그대로 있었는데… 이건 어디서 난 거지?
+@return
+*c1t_sat_ev_claim
+사토미[surprised]: 사쿠라바 씨가 혼자 객실 5호로요? 그럴 리 없어요. 폭탄 소동 때까지 저랑 계속 같이 있었는걸요.
+@return
+
+*c1t_sat_where
 사토미: 로버트랑 공연 준비 때문에 정신이 없었어요. 풍선이요? 제 소품 풍선은 다 제대로 있는 것 같은데…
 사토미: 아, 사쿠라바 씨는 공연 끝나고 저랑 같이 소품 정리했어요. 폭탄 소동 때까지 계속 같이 있었는데요?
 @get satomitalk

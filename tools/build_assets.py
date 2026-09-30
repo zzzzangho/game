@@ -718,8 +718,8 @@ class Compiler:
         if cmd != "end":
             self.err(f"@{cmd} not allowed inside @{kind}")
         if kind in ("investigate", "menu"):
-            if not items or len(items) > 12 or sum(1 for it in items if it[3] == NONE) > 6:
-                self.err(f"@{kind} needs 1-12 options, at most 6 without if=")
+            if not items or len(items) > 11:  # 11 + the exit fill the two-column menu
+                self.err(f"@{kind} needs 1-11 options")
             if kind == "investigate":
                 mask = 0
                 for e in need:
