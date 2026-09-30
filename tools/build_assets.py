@@ -467,9 +467,11 @@ class Compiler:
                                        name=self.text(a[2]),
                                        desc=self.wrapped(a[3], TEXT_W, DESC_LINES, "evidence description"))
             self.ev_order.append(a[0])
-        elif cmd == "scene":
-            self.need_args(a, 1, "@scene KEY")
-            self.emit(OPS["SCENE"], self.scene(a[0]))
+        elif cmd == "scene":  # @scene KEY [quick]: quick swaps the picture without a fade
+            self.need_args(a, 1, "@scene KEY [quick]")
+            if len(a) > 1 and a[1] != "quick":
+                self.err("@scene KEY [quick]")
+            self.emit(OPS["SCENE"], self.scene(a[0]) | (0x4000 if len(a) > 1 else 0))
         elif cmd == "cut":  # anime capture at a key moment: white flash, no portraits over it
             self.need_args(a, 1, "@cut CUT_KEY")
             if not a[0].startswith("cut_"):

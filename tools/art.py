@@ -1279,7 +1279,7 @@ def petal_frames(key):
     petals = []
     for i in range(80):  # three depths: big and fast in front, small and slow far away
         layer = 0 if i < 16 else 1 if i < 46 else 2
-        petals.append(dict(x=rnd.uniform(-10, W), y=rnd.uniform(0, span), k=(2, 1, 1)[layer],
+        petals.append(dict(x=rnd.uniform(-10, W), y=rnd.uniform(0, span), k=(3, 2, 1)[layer],
                            sway=rnd.uniform(*((5, 12), (2, 6), (1, 3))[layer]), ph=rnd.random(),
                            rot=rnd.randrange(4), shapes=(big, PETAL_SHAPES, PETAL_SMALL)[layer]))
     frames = []
@@ -1288,7 +1288,7 @@ def petal_frames(key):
         for p in petals:
             y = int((p["y"] + t * span * p["k"] / ANIM_FRAMES) % span) - 12
             x = int(p["x"] + p["sway"] * math.sin(2 * math.pi * (t / ANIM_FRAMES + p["ph"])))
-            shape = p["shapes"][(p["rot"] + t // 2) % 4]
+            shape = p["shapes"][(p["rot"] + t // 6) % 4]
             for dy, row in enumerate(shape):
                 for dx, ch in enumerate(row):
                     yy, xx = y + dy, x + dx
@@ -1299,7 +1299,7 @@ def petal_frames(key):
     return frames
 
 
-ANIM_FRAMES = 16
+ANIM_FRAMES = 48  # one step every 2 frames: a 1.6 s loop
 ANIMATE = False  # looping snow animation (off: backgrounds are still pictures)
 
 

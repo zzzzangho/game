@@ -425,6 +425,7 @@
 김전일[happy]: 오오오오.
 @get pamphlet
 김전일[surprised]: (어? 이 여자분은. 환상 마술단 멤버 중에 없었던 것 같은데?)
+@scene freight_yard quick
 따르르르르릉.
 아케치[playful]: 불꽃놀이를 선물한 사람이겠군요.
 ???: 제 선물은 잘 받으셨습니까, 흩날리는 붉은 장미꽃.

@@ -32,7 +32,10 @@ enum { RET_RETURN, RET_TITLE };
 
 static u16 *fb;
 static u16 snapshot[SCREEN_W * SCREEN_H] EWRAM_BSS;
-static u16 scratch[SCREEN_W * SCREEN_H] EWRAM_BSS; /* the court record's saved screen; banners borrow it */
+static u16 scratch[SCREEN_W * SCREEN_H] EWRAM_BSS; /* the animated background, or the court record's saved screen */
+/* scratch holds the animated background (no characters) at the current step, so a new line
+ * redraws the scene with one copy instead of replaying every animation step */
+static int anim_bg_ok;
 static int dirty0 = SCREEN_H, dirty1 = 0;
 static u16 keys_held, keys_new;
 static u32 frame_count;
@@ -213,6 +216,7 @@ static void save_screen(void)
 static void restore_screen(void)
 {
     plat_copy32(fb, snapshot, SCREEN_W * SCREEN_H / 2);
+    if (anim_t != anim_snap_t) anim_bg_ok = 0;
     anim_t = anim_snap_t;
     breath_lift = breath_snap;
     blink_shut = blink_snap;
@@ -366,6 +370,21 @@ static int breath_t;
 
 /* Writes diff t into the back buffer. Where the portrait covers a changed pixel, the
  * portrait pixel wins, so the character never needs a full redraw. */
+/* one animation step written to a plain background buffer (no characters over it) */
+FAST static void anim_apply_plain(u16 *dst, int t)
+{
+    const u16 *d = anim_data + anim_ofs[cur_scene * ANIM_FRAMES + t];
+    int n = d[2];
+    d += 3;
+    while (n--) {
+        u16 *o = dst + d[0];
+        int len = d[1];
+        d += 2;
+        for (int i = 0; i < len; i++) o[i] = d[i];
+        d += len;
+    }
+}
+
 FAST static void anim_apply(int t, int *y0, int *y1)
 {
     const u16 *d = anim_data + anim_ofs[cur_scene * ANIM_FRAMES + t];
@@ -472,14 +491,22 @@ static void blink_draw(int y0, int y1)
 
 static void draw_scene(void)
 {
-    plat_copy32(fb, scene_img[cur_scene], SCREEN_W * SCREEN_H / 2);
-    mark(0, SCREEN_H);
     if (anim_scene != cur_scene) {
         anim_scene = cur_scene;
         anim_t = 0;
+        anim_bg_ok = 0;
     }
-    if (anim_count[cur_scene] && !cut_mode)
-        for (int t = 1, y0, y1; t <= anim_t; t++) anim_apply(t, &y0, &y1);
+    if (anim_count[cur_scene] && !cut_mode) {
+        if (!anim_bg_ok) { /* rebuild the background at the current animation step */
+            plat_copy32(scratch, scene_img[cur_scene], SCREEN_W * SCREEN_H / 2);
+            for (int t = 1; t <= anim_t; t++) anim_apply_plain(scratch, t);
+            anim_bg_ok = 1;
+        }
+        plat_copy32(fb, scratch, SCREEN_W * SCREEN_H / 2);
+    } else {
+        plat_copy32(fb, scene_img[cur_scene], SCREEN_W * SCREEN_H / 2);
+    }
+    mark(0, SCREEN_H);
     blit_portrait_rows(0, SCREEN_H);
     draw_hearts();
 }
@@ -516,7 +543,10 @@ static void draw_name_tag(int spk);
 
 static void breathe_tick(void)
 {
-    if (cur_portrait == NONE || cut_mode || !portrait_breathe[cur_portrait] || portrait_dx) return;
+    /* over an animated background (the falling petals) the bust keeps still: redrawing it would
+     * need the whole animation replayed */
+    if (cur_portrait == NONE || cut_mode || !portrait_breathe[cur_portrait] || portrait_dx || anim_count[cur_scene])
+        return;
     breath_t = (breath_t + 1) % 96;
     int lift = breath_t < 40 ? -2 : breath_t < 48 ? -1 : breath_t < 88 ? 0 : -1;
     if (lift == breath_lift) return;
@@ -549,10 +579,11 @@ static void ambient_tick(void)
     if (!anim_on) return;
     breathe_tick();
     blink_tick();
-    if (cut_mode || !anim_count[cur_scene] || anim_scene != cur_scene || (frame_count & 3)) return;
+    if (cut_mode || !anim_count[cur_scene] || anim_scene != cur_scene || (frame_count & 1)) return;
     int y0, y1;
     anim_t = (anim_t + 1) % ANIM_FRAMES;
     anim_apply(anim_t, &y0, &y1);
+    if (anim_bg_ok) anim_apply_plain(scratch, anim_t);
     if (y1 <= y0) return;
     if (y0 < 12) draw_hearts();
     mark(y0, y1);
@@ -700,7 +731,8 @@ static int last_spk = NONE;
 static void say(int spk, int t, int portrait)
 {
     /* a new speaker slides in from the right, fading in (dithered) over the first steps */
-    int slide = portrait != NONE && spk != last_spk && !cut_mode;
+    int slide = portrait != NONE && spk != last_spk && !cut_mode &&
+                !anim_count[cur_scene]; /* over falling petals the speaker just appears: they keep falling */
     last_spk = spk;
     if (portrait != cur_portrait) {
         breath_t = blink_shut = 0, blink_wait = 90;
@@ -1135,6 +1167,7 @@ static void draw_tab(int x, int label, int active)
 static int record(int present, int question)
 {
     u16 *saved_screen = scratch;
+    anim_bg_ok = 0; /* the notebook borrows the animated background's buffer */
     static int tab, sel[2];
     u8 list[64];
     int top = 0, result = -1;
@@ -1757,16 +1790,22 @@ static int run_inner(u16 pc)
             say(spk, t, por);
             break;
         }
-        case OP_SCENE:
-            fade_out();
+        case OP_SCENE: {
+            int quick = S[pc] & 0x4000; /* @scene KEY quick: change the picture in place, no fade */
+            if (!quick) fade_out();
             cut_mode = S[pc] >> 15;
-            cur_scene = S[pc++] & 0x7FFF;
+            cur_scene = S[pc++] & 0x3FFF;
             cur_portrait = NONE;
             cur_inset = NONE;
             draw_scene();
+            if (quick) {
+                frame();
+                break;
+            }
             wait_frames(6); /* a beat of black between places */
             fade_in();
             break;
+        }
         case OP_GET: {
             int e = S[pc++];
             if (ev_flags & EV_BIT(e)) break; /* re-examined spot: already in the record */
