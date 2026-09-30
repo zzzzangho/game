@@ -2775,6 +2775,7 @@
 @opt "타카토" c3t_takato
 @opt "켄모치 아저씨" c3t_ken
 @opt "미유키" c3t_miyuki
+@opt "사토미" c3t_satomi
 @end
 @return
 
@@ -2783,6 +2784,7 @@
 @opt "5년 전 일" c3t_sk_past
 @opt "사건 당시" c3t_sk_alibi
 @opt "앞으로의 계획" c3t_sk_plan
+@opt "증거물을 보여 준다" c3t_sk_ev
 @end
 @return
 
@@ -2805,12 +2807,39 @@
 김전일[serious]: (선생님의 노트에 있던 마술… 바위, 인, 그리고 뜨거운 조명…)
 @return
 
+*c3t_sk_ev
+@show 사콘지 "사콘지에게 무엇을 보여 줄까?" c3t_sk_ev_x
+@ev nails c3t_sk_ev_nails
+@ev sakurabawit c3t_sk_ev_wit
+@ev secret c3t_sk_ev_secret
+@end
+@return
+*c3t_sk_ev_x
+사콘지[playful]: 헤헤, 그런 걸로 날 흔들 수 있을 것 같아?
+@return
+*c3t_sk_ev_nails
+사콘지[tense]: …5년이나 지난 낡은 판자야. 못이 헐거워질 수도 있지. 헤, 헤헤.
+@return
+*c3t_sk_ev_wit
+사콘지[angry]: 사쿠라바 그 겁쟁이가…! 그 녀석 말을 믿는 거야?
+@return
+*c3t_sk_ev_secret
+사콘지[tense]: 로비에서 한 얘기까지 엿들었어? 헤헤… 탐정 놀이도 적당히 해.
+@return
+
 *c3t_sakuraba
 사쿠라바[tense]: 판자에 손을 댄 건 정말 사콘지 씨 혼자예요. 저는 망만 봤어요…
 사쿠라바[tense]: 유미 씨 일이 있던 시간엔 제 방에 틀어박혀 있었어요. 무서워서 문도 못 열었죠.
 @return
 
 *c3t_takato
+@menu 타카토 "무엇을 물어볼까?"
+@opt "사건 당시" c3t_takato_talk
+@opt "증거물을 보여 준다" c3t_tak_ev
+@end
+@return
+
+*c3t_takato_talk
 @if yumi_alive c3t_takato_b
 타카토[sad]: 유미 씨까지…
 @goto c3t_takato_alibi
@@ -2821,15 +2850,116 @@
 @get takatoalibi
 @return
 
+*c3t_tak_ev
+@show 타카토 "타카토에게 무엇을 보여 줄까?" c3t_tak_ev_x
+@ev receipt c3t_tak_ev_receipt
+@ev jadebelow c3t_tak_ev_jade
+@ev rockplan c3t_tak_ev_rock
+@end
+@return
+*c3t_tak_ev_x
+타카토[tense]: 죄송해요, 그건 제가 잘 모르겠어요…
+@return
+*c3t_tak_ev_receipt
+타카토: 열차 우편이요? 공연 소품은 늘 우편으로 부치니까요. 그런 건 제 일이에요.
+김전일[serious]: (…'트네 마리오' 앞으로 온 짐인데도?)
+@return
+*c3t_tak_ev_jade
+타카토[surprised]: 비취 원석이 아래층에요? 이상하네요… 호텔 사람이 옮긴 거 아닐까요?
+@return
+*c3t_tak_ev_rock
+타카토[tense]: 사콘지 씨 피날레 말씀이죠. 인이라니… 조명 아래서 정말 괜찮을까요.
+@return
+
 *c3t_ken
+@menu 켄모치 "무엇을 물어볼까?"
+@opt "모두의 알리바이" c3t_ken_alibi
+@opt "호텔 경비" c3t_ken_guard
+@opt "증거물을 보여 준다" c3t_ken_ev
+@end
+@return
+
+*c3t_ken_alibi
 켄모치[serious]: 사콘지 녀석, 로비 바에 있었다는 게 사실로 확인됐다. 바텐더가 봤다는군.
 켄모치[serious]: 사쿠라바는 자기 방, 사토미는 미유키와 목욕탕에 있었고.
 @return
 
+*c3t_ken_guard
+켄모치[tense]: 내가 이 호텔에 있었는데도… 또 범인한테 한 방 먹었어.
+켄모치[angry]: 코앞에서 또 당하다니… 전일아, 이번엔 반드시 잡는다!
+@return
+
+*c3t_ken_ev
+@show 켄모치 "켄모치 아저씨에게 무엇을 보여 줄까?" c3t_ken_ev_x
+@ev tree c3t_ken_ev_tree
+@ev scream c3t_ken_ev_scream
+@ev jadebelow c3t_ken_ev_jade
+@end
+@return
+*c3t_ken_ev_x
+켄모치[serious]: 흠, 그게 이번 사건이랑 무슨 상관이냐?
+@return
+*c3t_ken_ev_tree
+켄모치[serious]: 범인은 저 나무를 타고 도망친 거 아니냐? …이끼가 그대로라고? 음.
+@return
+*c3t_ken_ev_scream
+켄모치[angry]: 문은 안에서 잠겨 있었어. 부수고 들어갔을 땐 아무도 없었고. 이게 말이 되냐고!
+@return
+*c3t_ken_ev_jade
+켄모치[surprised]: 아래층 빈 방에 원석이 두 개? 누가 굳이 그런 짓을…
+@return
+
 *c3t_miyuki
+@menu 미유키 "무엇을 이야기할까?"
+@opt "비명을 들었을 때" c3t_miy_scream
+@opt "지금 기분" c3t_miy_feel
+@opt "증거물을 보여 준다" c3t_miy_ev
+@end
+@return
+
+*c3t_miy_scream
 미유키[tense]: 전일아, 사토미 씨랑 목욕탕에서 나오다가 비명을 들었어. 2층에서.
 미유키: 그리고 잠깐 뒤에… 1층 쪽에서 창문 닫히는 소리가 난 것 같아.
 김전일[surprised]: 1층에서…?
+@return
+
+*c3t_miy_feel
+미유키[sad]: 대게 먹으러 온 여행이었는데… 벌써 몇 명째야.
+미유키[serious]: 그래도 전일아, 너 요즘 눈빛이 달라. 거의 다 온 거지?
+김전일[serious]: …응. 조금만 더.
+@return
+
+*c3t_miy_ev
+@show 미유키 "미유키에게 무엇을 보여 줄까?" c3t_miy_ev_x
+@ev jadebelow c3t_miy_ev_jade
+@ev yumiwitness c3t_miy_ev_wit
+@end
+@return
+*c3t_miy_ev_x
+미유키: 음… 그걸 나한테 왜 보여 줘?
+@return
+*c3t_miy_ev_jade
+미유키[surprised]: 아래층에 원석이 두 개…? 그럼 창문 닫히는 소리랑 무슨 관계가 있는 거야?
+@return
+*c3t_miy_ev_wit
+미유키[tense]: 품에 딱딱하고 묵직한 걸 안고 있었다니… 뭘 안고 있었던 걸까.
+@return
+
+*c3t_satomi
+@menu 사토미 "무엇을 물어볼까?"
+@opt "비명을 들었을 때" c3t_sat_scream
+@opt "마술단의 앞날" c3t_sat_future
+@end
+@return
+
+*c3t_sat_scream
+사토미[tense]: 미유키 씨랑 목욕탕에서 나오는데 비명이 들렸어요. 너무 무서워서 다리가 풀릴 뻔했어요.
+@return
+
+*c3t_sat_future
+사토미[sad]: 선배들이 한 명씩… 이제 마술단은 어떻게 되는 걸까요.
+로버트: 누나, 울지 마. 내가 있잖아!
+사토미[sad]: …응, 고마워 로버트.
 @return
 
 # =====================================================================
