@@ -546,6 +546,8 @@ BUILTIN_CUTS = {
     "cut_petals": lambda: scene_image("freight_yard"),
     "cut_akechi_feet": lambda: scene_image("freight_yard"),
     "cut_akechi": lambda: scene_image("freight_yard"),
+    "cut_salad_boom": lambda: scene_image("dining_show"),
+    "cut_salad_blast": lambda: scene_image("dining_show"),
 }
 BUILTIN_SCENES.update(BUILTIN_CUTS)
 

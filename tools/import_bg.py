@@ -56,6 +56,8 @@ INSETS = {
     "ins_salad_served": ("p1/099", C32),  # the waitress brings Kenmochi the rose salad
     "ins_salad": ("p1/100", C32),         # the rose salad
     "ins_robert": ("p1/110", C32),        # Robert greets the dining car
+    "ins_underwear": ("p1/172", (0, 0, 640, 427)),  # Yurama holds Miyuki's underwear up high
+    "ins_rose_trick": ("p1/188", C32),    # ...and a red rose appears instead
 }
 CUTS = os.path.join(HERE, "..", "assets", "cuts")
 
@@ -65,6 +67,8 @@ CUT_FRAMES = {
     "cut_petals": ("p1/292", C32),        # red rose petals raining from the sky
     "cut_akechi_feet": ("p1/259", C32),   # Akechi's shoes crunching over the gravel
     "cut_akechi": ("p1/278", C32),        # Akechi's face, smiling, the sky behind
+    "cut_salad_boom": ("p1/215", C32),    # the rose salad bursts on the table
+    "cut_salad_blast": ("p1/216", C32),   # rose petals blast into Kenmochi, Kindaichi and Miyuki
 }
 
 
