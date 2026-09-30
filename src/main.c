@@ -90,7 +90,7 @@ static void wait_frames(int n)
 
 static void fade_out(void)
 {
-    for (int l = 2; l <= 16; l += 2) {
+    for (int l = 1; l <= 16; l++) {
         plat_fade(l);
         frame();
     }
@@ -99,7 +99,7 @@ static void fade_out(void)
 static void fade_in(void)
 {
     frame(); /* make sure the new picture is on screen first */
-    for (int l = 14; l >= 0; l -= 2) {
+    for (int l = 15; l >= 0; l--) {
         plat_fade(l);
         frame();
     }
@@ -321,11 +321,13 @@ static void type_text(int x, int y, int id, u16 c)
         }
         glyph_shadowed(cx, y, *s, caption ? C_GOLD : emph ? C_EMPH : c, 1);
         cx += glyph_adv[*s];
-        if (!instant && (++n & 1) == 0) {
-            if ((n & 3) == 0) plat_sfx(SFX_BLIP);
-            ambient_tick();
-            frame();
-            if (keys_new & (KEY_A | KEY_B)) instant = 1;
+        if (!instant) { /* about 40 characters a second: 1 and 2 frames in turn */
+            if ((++n & 1) == 0) plat_sfx(SFX_BLIP);
+            for (int k = 0; k < 1 + (n & 1) && !instant; k++) {
+                ambient_tick();
+                frame();
+                if (keys_new & (KEY_A | KEY_B)) instant = 1;
+            }
         }
     }
 }
@@ -933,7 +935,7 @@ static void eyecatch(void)
     frame();
     plat_fade(0);
     plat_debug_event("eyecatch", 0);
-    for (int a = 64; a <= 256; a += 12) {  /* 1/4 turn (edge-on) .. full turn, 17 frames */
+    for (int a = 64; a <= 256; a += 8) {   /* 1/4 turn (edge-on) .. full turn, 25 frames */
         int q = a & 255, c;
         if (q <= 64) c = cosq[q];
         else if (q <= 128) c = -cosq[128 - q];
@@ -948,7 +950,7 @@ static void eyecatch(void)
     plat_sfx(SFX_DUN);          /* -dun! */
     flash(C_WHITE, 2);
     shake(8, 2);
-    wait_frames(22);
+    wait_frames(45);
 #endif
 }
 
@@ -978,9 +980,9 @@ static void chapter_card(int t, int card)
     }
     fade_in();
     plat_debug_event("chapter", 0);
-    for (int i = 0; i < 180; i++) {
+    for (int i = 0; i < 240; i++) {
         frame();
-        if (i > 20 && (keys_new & (KEY_A | KEY_START))) break;
+        if (i > 60 && (keys_new & (KEY_A | KEY_START))) break;
     }
     chapter_save_ask();
     fade_out();
@@ -1738,6 +1740,7 @@ static int run_inner(u16 pc)
             cur_portrait = NONE;
             cur_inset = NONE;
             draw_scene();
+            wait_frames(6); /* a beat of black between places */
             fade_in();
             break;
         case OP_GET: {
