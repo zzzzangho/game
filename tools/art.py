@@ -1348,7 +1348,7 @@ def _procedural_portrait(key):
     return outline(img)
 
 
-OUTLINE_PX = 1.5             # dark outline round the characters so they stand out from the scene
+OUTLINE_PX = 1.0             # dark outline round the characters so they stand out from the scene
 OUTLINE_RGB = (22, 14, 28)
 KEEP_SIDES = {"sakuraba_stage"}  # wide art shown whole (the arms reach the picture's edges)
 
