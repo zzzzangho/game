@@ -257,7 +257,9 @@ class Compiler:
         raise CompileError(f"story.txt:{self.lineno}: {msg}")
 
     # -- tables
-    def text(self, s):
+    def text(self, s, style=None):
+        """Text id for s. style keeps a separate copy per display style (the name '김전일' is both a
+        name tag and an intro caption)."""
         for ch in s:
             if re.match(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", ch):
                 self.err(f"한자/일본어는 쓰지 않습니다: {ch!r}")
@@ -270,10 +272,11 @@ class Compiler:
                 self.err(f"unbalanced {{강조}} braces: {s!r}")
         if depth:
             self.err(f"unbalanced {{강조}} braces: {s!r}")
-        if s not in self.text_index:
-            self.text_index[s] = len(self.texts)
+        key = s if style is None else (style, s)
+        if key not in self.text_index:
+            self.text_index[key] = len(self.texts)
             self.texts.append(s)
-        return self.text_index[s]
+        return self.text_index[key]
 
     def wrapped(self, s, width, max_lines, what):
         lines = wrap(self.font, s, width)
@@ -534,7 +537,8 @@ class Compiler:
         elif cmd == "intro":  # character introduction card: epithet over a big name, like the anime captions
             self.need_args(a, 3, "@intro SPEAKER \"epithet\" \"name\"")
             spk, por = self.speaker_portrait(a[0])
-            self.emit(OPS["INTRO"], spk, por, self.disp(self.text(a[1]), "intro_epi"), self.disp(self.text(a[2]), "intro_name"))
+            self.emit(OPS["INTRO"], spk, por, self.disp(self.text(a[1], "intro_epi"), "intro_epi"),
+                      self.disp(self.text(a[2], "intro_name"), "intro_name"))
         elif cmd == "set":
             self.need_args(a, 1, "@set FLAG")
             self.emit(OPS["SET"], self.flag(a[0]))
