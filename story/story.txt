@@ -474,8 +474,8 @@
 김전일[surprised]: 이럴 수가…!
 김전일[serious]: (없어, 야마가미 단장님의 시체가. 사라졌어…!)
 @profile_update 야마가미 "환상 마술단 단장. 객실 5호에서 장미와 풍선에 둘러싸여 죽은 채 발견됐지만, 연기 소동 뒤 시체가 감쪽같이 사라졌다."
-@shout 김전일[angry] "할아버지의 이름을 걸고!"
 김전일[serious]: 이 마술, 내가 반드시 벗겨 주겠어!
+@shout 김전일[angry] "할아버지의 이름을 걸고!"
 
 *ch1_invest
 @scene corridor
@@ -796,43 +796,40 @@
 @return
 *c1v_hand
 김전일[serious]: 단장님의 손… 바로 여기야.
-@ask 김전일 "단장님의 손, 뭐가 이상하지?"
+*c1v_hand_q
+@choice 김전일 "단장님의 손, 뭐가 이상하지?"
 @opt "흰 장갑을 끼고 있다" c1v_q_glove
 @opt "손가락이 조금 움직였다" c1v_q_move
-@opt "풍선 몇 개에 매달려 떠 있다" ok
+@opt "풍선 몇 개에 매달려 떠 있다" c1v_hand_ok
 @opt "가시에 긁힌 자국이 없다" c1v_q_scratch
 @end
+*c1v_hand_ok
 사키[surprised]: 그게 왜요? 풍선이니까 뜨는 거 아니에요?
 김전일[serious]: 사람 팔은 무거워. 저렇게 작은 풍선 몇 개로는 절대 안 떠. 저 팔이 '진짜'라면 말이야.
 @return
 *c1v_q_glove
 김전일: (단장님은 무대에서 늘 흰 장갑을 끼셨어. 그건 이상할 게 없지.)
-@return
+@goto c1v_hand_q
 *c1v_q_move
 김전일: (…아니야, 몇 번을 돌려 봐도 손가락은 꼼짝도 안 해.)
-@return
+@goto c1v_hand_q
 *c1v_q_scratch
 김전일: (장갑을 끼고 있으니 긁힌 자국이 안 보이는 게 당연해.)
-@return
+@goto c1v_hand_q
 *c1v_trap_balloon
 김전일: 풍선이야 객실 가득 매달려 있었지. 이것만 봐선 이상할 게 없어.
-@penalty
 @return
 *c1v_trap_hat
 김전일: 단장님의 실크해트… 무대 의상 그대로야. 특별할 건 없어.
-@penalty
 @return
 *c1v_trap_face
 김전일: 얼굴은… 눈을 감은 채 움직이지 않아. 이건 아까도 봤지.
-@penalty
 @return
 *c1v_trap_rose
 김전일: 바닥을 뒤덮은 장미. 이건 처음부터 그랬어.
-@penalty
 @return
 *c1v_trap_cape
 김전일: 검은 망토. 몸을 덮고 있어서 속은 안 보여.
-@penalty
 @return
 *c1v_wrong
 @examine "어디가 이상하지?"

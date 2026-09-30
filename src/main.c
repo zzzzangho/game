@@ -1190,6 +1190,9 @@ static int record(int present, int question)
     plat_copy32(saved_screen, fb, SCREEN_W * SCREEN_H / 2);
     plat_sfx(SFX_OK);
     if (present) tab = 0;
+    /* animation: the notebook opens from the middle, the highlight bar glides, the picture
+     * slides in and the description is uncovered left to right when the selection changes */
+    int open_t = 0, bar_y = -1, pic_dx = 24, wipe_x = 0;
 
     for (int redraw = 1;;) {
         int n = collect(tab, list);
@@ -1219,13 +1222,15 @@ static int record(int present, int question)
             if (n == 0) {
                 draw_text(12, REC_LIST_Y + 4, UI_EMPTY, C_GREY);
             }
+            int target_y = REC_LIST_Y + (sel[tab] - top) * 13;
+            if (bar_y < 0) bar_y = target_y;
+            if (n) {
+                fill(4, bar_y, 156, 13, C_HILITE);
+                draw_cursor(7, bar_y + 3, C_GOLD);
+            }
             for (int r = 0; r < REC_ROWS && top + r < n; r++) {
                 int i = top + r, y = REC_LIST_Y + r * 13;
                 int name = tab == 0 ? ev_name[list[i]] : char_name[list[i]];
-                if (i == sel[tab]) {
-                    fill(4, y, 156, 13, C_HILITE);
-                    draw_cursor(7, y + 3, C_GOLD);
-                }
                 draw_text(16, y, name, i == sel[tab] ? C_GOLD : C_WHITE);
             }
             if (top > 0) draw_arrow(150, REC_LIST_Y - 2, C_GOLD);
@@ -1237,20 +1242,49 @@ static int record(int present, int question)
             fill(0, REC_DESC_Y, SCREEN_W, 1, C_BORDER);
             if (n) {
                 int item = list[sel[tab]];
+                u16 edge = pic_dx > 10 ? C_WHITE : C_BORDER; /* the frame flashes as a new picture comes in */
                 if (tab == 0) {
-                    fill(168, 22, ICON_SIZE + 4, ICON_SIZE + 4, C_BORDER);
+                    fill(168, 22, ICON_SIZE + 4, ICON_SIZE + 4, edge);
                     fill(170, 24, ICON_SIZE, ICON_SIZE, RGB(1, 1, 3));
-                    blit_keyed(170, 24, ICON_SIZE, ICON_SIZE, icon_img + ev_icon[item] * ICON_SIZE * ICON_SIZE);
+                    blit_keyed(170 + pic_dx, 24, ICON_SIZE, ICON_SIZE, icon_img + ev_icon[item] * ICON_SIZE * ICON_SIZE);
+                    fill(170 + ICON_SIZE, 22, 2, ICON_SIZE + 4, edge);
+                    fill(172 + ICON_SIZE, 22, SCREEN_W - 172 - ICON_SIZE, ICON_SIZE + 4, RGB(3, 3, 7));
                     draw_text(8, REC_DESC_Y + 3, ev_desc[item], C_WHITE);
                 } else {
-                    fill(168, 18, THUMB_W + 4, THUMB_H + 2, C_BORDER);
+                    fill(168, 18, THUMB_W + 4, THUMB_H + 2, edge);
                     fill(170, 20, THUMB_W, THUMB_H, char_color[item]);
                     if (char_portrait[item] != NONE)
-                        blit_keyed(170, 20, THUMB_W, THUMB_H, portrait_thumb[char_portrait[item]]);
+                        blit_keyed(170 + pic_dx, 20, THUMB_W, THUMB_H, portrait_thumb[char_portrait[item]]);
+                    fill(170 + THUMB_W, 18, 2, THUMB_H + 2, edge);
+                    fill(172 + THUMB_W, 18, SCREEN_W - 172 - THUMB_W, THUMB_H + 2, RGB(3, 3, 7));
                     draw_text(8, REC_DESC_Y + 3, prof_text[item], C_WHITE);
                 }
+                if (wipe_x < SCREEN_W) fill(wipe_x, REC_DESC_Y + 1, SCREEN_W - wipe_x, SCREEN_H - REC_DESC_Y - 1, C_BOX);
             }
             redraw = 0;
+            /* step the animations; anything still moving redraws next frame */
+            if (open_t < 8) { /* opening: only a band around the middle shows the notebook yet */
+                int half = (open_t + 1) * SCREEN_H / 16;
+                for (int y = 0; y < SCREEN_H; y++)
+                    if (y < SCREEN_H / 2 - half || y >= SCREEN_H / 2 + half)
+                        plat_copy32(fb + y * SCREEN_W, saved_screen + y * SCREEN_W, SCREEN_W / 2);
+                mark(0, SCREEN_H);
+                open_t++;
+                redraw = 1;
+            }
+            if (bar_y != target_y) {
+                int d = (target_y - bar_y) / 2;
+                bar_y += d ? d : (target_y > bar_y ? 1 : -1);
+                redraw = 1;
+            }
+            if (pic_dx > 0) {
+                pic_dx = pic_dx * 5 / 8;
+                redraw = 1;
+            }
+            if (wipe_x < SCREEN_W) {
+                wipe_x += 30;
+                redraw = 1;
+            }
         }
 
         plat_debug_event("record", tab);
@@ -1269,17 +1303,34 @@ static int record(int present, int question)
         }
         if (keys_new & (KEY_UP | KEY_DOWN)) {
             if (n) {
+                int old_top = top;
                 sel[tab] = (sel[tab] + ((keys_new & KEY_UP) ? n - 1 : 1)) % n;
+                if (sel[tab] < top) top = sel[tab];
+                if (sel[tab] >= top + REC_ROWS) top = sel[tab] - REC_ROWS + 1;
+                if (top != old_top) bar_y = -1; /* the list scrolled: the bar jumps */
+                pic_dx = 24, wipe_x = 0;
                 plat_sfx(SFX_MOVE);
                 redraw = 1;
             }
         } else if (!present && (keys_new & (KEY_L | KEY_R | KEY_LEFT | KEY_RIGHT))) {
             tab ^= 1;
             top = 0;
+            bar_y = -1, pic_dx = 24, wipe_x = 0;
             plat_sfx(SFX_MOVE);
             redraw = 1;
         } else if (present && (keys_new & KEY_A) && n) {
             result = list[sel[tab]];
+            plat_sfx(SFX_OK);
+            for (int k = 0; k < 12; k++) { /* the chosen row flashes, the picture shakes */
+                int y = REC_LIST_Y + (sel[tab] - top) * 13;
+                fill(4, y, 156, 13, (k & 2) ? C_WHITE : C_HILITE);
+                draw_text(16, y, ev_name[result], (k & 2) ? C_BOX : C_GOLD);
+                fill(168, 22, ICON_SIZE + 4, ICON_SIZE + 4, (k & 2) ? C_WHITE : C_GOLD);
+                fill(170, 24, ICON_SIZE, ICON_SIZE, RGB(1, 1, 3));
+                blit_keyed(170 + ((k & 1) ? 2 : -2) * (k < 8), 24, ICON_SIZE, ICON_SIZE,
+                           icon_img + ev_icon[result] * ICON_SIZE * ICON_SIZE);
+                frame();
+            }
             break;
         } else if (!present && (keys_new & (KEY_B | KEY_START))) {
             plat_sfx(SFX_CANCEL);
@@ -1598,8 +1649,15 @@ static int ex_spot_at(int x, int y, int m, const u16 *idx, const u16 *opts)
     return best;
 }
 
+/* set when the player walked out (B) of an @examine that has an answering spot: the script
+ * after it (e.g. "@get video") is skipped, and a video stop does not count as solved */
+static int examine_quit;
+
 static int examine(int id, int q, int n, const u16 *opts)
 {
+    int has_end = 0;
+    for (int i = 0; i < n; i++) has_end |= (opts[i * 8 + 3] & 0x4000) != 0;
+    examine_quit = 0;
     for (;;) {
         u16 idx[12];
         u32 traps = 0;
@@ -1625,14 +1683,10 @@ static int examine(int id, int q, int n, const u16 *opts)
                 int rx = ox - 7 < 0 ? 0 : ox - 7, ry = oy - 7 < 0 ? 0 : oy - 7;
                 restore_rect(rx, ry, rx + 19 > SCREEN_W ? SCREEN_W - rx : 19, ry + 19 > SCREEN_H ? SCREEN_H - ry : 19);
                 restore_rect(0, 0, SCREEN_W, EX_BAR_H);
-                if (h >= 0) {
-                    const u16 *o = opts + idx[h] * 8;
-                    draw_text(6, 1, o[0], flag_get(o[3] & 0x3FFF) ? C_GREY : C_WHITE);
-                } else {
-                    draw_text(6, 1, q, C_GOLD);
-                    if (6 + text_width(q, 1) + 8 < SCREEN_W - 6 - disp_width(UI_EXAMINE_HINT) / 2)
-                        draw_hint_right(UI_EXAMINE_HINT, SCREEN_W - 6, 3);
-                }
+                /* only the question: naming what is under the cursor would give the answers away */
+                draw_text(6, 1, q, C_GOLD);
+                if (6 + text_width(q, 1) + 8 < SCREEN_W - 6 - disp_width(UI_EXAMINE_HINT) / 2)
+                    draw_hint_right(UI_EXAMINE_HINT, SCREEN_W - 6, 3);
                 draw_magnifier(ex_x, ex_y, h >= 0 ? C_GOLD : C_WHITE);
                 hover = h;
                 ox = ex_x;
@@ -1646,7 +1700,10 @@ static int examine(int id, int q, int n, const u16 *opts)
             }
             int d = plat_debug_menu(id, m + 1, traps);
             if (d >= 0) { /* test harness: point at the picked spot, then take it */
-                if (d >= m) return RET_RETURN;
+                if (d >= m) {
+                    examine_quit = has_end;
+                    return RET_RETURN;
+                }
                 const u16 *o = opts + idx[d] * 8;
                 ex_x = o[4] + o[6] / 2;
                 ex_y = o[5] + o[7] / 2;
@@ -1671,6 +1728,7 @@ static int examine(int id, int q, int n, const u16 *opts)
                 plat_sfx(SFX_CANCEL);
             } else if (keys_new & KEY_B) {
                 plat_sfx(SFX_MOVE);
+                examine_quit = has_end;
                 return RET_RETURN;
             } else if (keys_new & KEY_START) {
                 record(0, NONE);
@@ -2021,6 +2079,7 @@ static int run_inner(u16 pc)
             const u16 *opts = &S[pc + 2];
             pc += 2 + n * 8;
             if (examine(op_pc, q, n, opts) == RET_TITLE) return RET_TITLE;
+            if (examine_quit) return RET_RETURN; /* left without an answer: skip what follows */
             break;
         }
         case OP_MENU: {
@@ -2053,8 +2112,9 @@ static int run_inner(u16 pc)
                 int sel = video(title, n, frames, cur);
                 if (sel < 0) break;
                 cur_scene = frames[sel * 3];
+                examine_quit = 0;
                 if (run(sel == correct ? ok : wrong) == RET_TITLE) return RET_TITLE;
-                if (sel == correct) break;
+                if (sel == correct && !examine_quit) break; /* backed out of the stop: keep watching */
                 cur = sel;
             }
             cur_scene = back;
