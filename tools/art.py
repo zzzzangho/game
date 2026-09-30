@@ -1546,7 +1546,10 @@ def icon_image(key):
             if PIXEL_STYLE == "native":
                 return pixelize(img, ICON_SIZE, ICON_SIZE, 24, 1)
             return img.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
-        return fit(img, ICON_SIZE, ICON_SIZE, anchor_bottom=False)
+        # busts drawn down to the picture's bottom edge sit on the bottom of the box (no gap under them)
+        src = Image.open(USER_ICONS[key]).convert("RGBA")
+        bottom = src.getchannel("A").crop((0, src.height - 1, src.width, src.height)).getextrema()[1] > 0
+        return fit(img, ICON_SIZE, ICON_SIZE, anchor_bottom=bottom)
     if key in art_hd.ICONS_HD:
         return art_hd.ICONS_HD[key]()
     img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
