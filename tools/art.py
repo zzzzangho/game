@@ -21,6 +21,8 @@ CAPTURE_W, CAPTURE_H = 128, 144     # framed screenshot busts keep their old win
 THUMB_W, THUMB_H = 64, 80           # face crop for the court record / popups
 INSET_W, INSET_H = 132, 88          # small framed picture over the middle of the screen (@inset)
 ICON_SIZE = 64
+BUST_SCALE = 1.2                    # character busts, relative to fitting the whole cut-out
+BUST_TOP = 4                        # when a bust is taller than the screen: top of the head here
 OUTLINE = (28, 20, 32, 255)
 
 BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
@@ -1369,7 +1371,8 @@ def ace_sprite(img, w, h, crop=1.0, trim=True):
     if trim and img.width > max_w:
         x0 = (img.width - max_w) // 2
         img = img.crop((x0, 0, x0 + max_w, img.height))
-    sc = min(w * 0.86 / img.width, h * 0.84 / img.height)  # leave some of the scene visible around the bust
+    # bust about 1.2x the fitted size: the head stays near the top, the waist goes under the text box
+    sc = min(w * 0.86 / img.width, h * 0.84 / img.height) * BUST_SCALE
     tw, th = max(1, round(img.width * sc)), max(1, round(img.height * sc))
     K = 4
     big = img.resize((tw * K, th * K), Image.LANCZOS)
@@ -1398,7 +1401,7 @@ def ace_sprite(img, w, h, crop=1.0, trim=True):
             col = [min(255, int(v * f)) for v in pp[x, y]]
             op[x, y] = tuple(col) + (255 if c >= 200 else 128,)  # 128 = soft edge, blended 50% in game
     canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    canvas.paste(out, ((w - tw) // 2, h - th))
+    canvas.paste(out, ((w - tw) // 2, h - th if h - th >= BUST_TOP else BUST_TOP))  # bottom-aligned, or cropped below
     return canvas
 
 

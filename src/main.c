@@ -703,6 +703,15 @@ static void popup_window(int x, int y, int w, int h);
 static void wait_a(int min_frames);
 
 /* Adds a character to the court record (after they first talk, or via @meet). */
+/* light backdrop behind a character's face picture: warm white fading to soft beige */
+static void thumb_backdrop(int x, int y, int w, int h)
+{
+    for (int j = 0; j < h; j++) {
+        int t = j * 8 / h;
+        fill(x, y + j, w, 1, RGB(30 - t / 2, 29 - t / 2, 26 - t));
+    }
+}
+
 static void meet(int c, int title)
 {
     prof_flags |= 1u << c;
@@ -718,7 +727,7 @@ static void meet(int c, int title)
     plat_sfx(SFX_GET);
     popup_window(x, y, w, h);
     draw_text(SCREEN_W / 2 - hw / 2, y + 5, title, C_GOLD);
-    fill(SCREEN_W / 2 - THUMB_W / 2, y + 22, THUMB_W, THUMB_H, RGB(1, 1, 3));
+    thumb_backdrop(SCREEN_W / 2 - THUMB_W / 2, y + 22, THUMB_W, THUMB_H);
     blit_keyed(SCREEN_W / 2 - THUMB_W / 2, y + 22, THUMB_W, THUMB_H, portrait_thumb[char_portrait[c]]);
     draw_text(SCREEN_W / 2 - tw / 2, y + THUMB_H + 25, name, C_WHITE);
     plat_debug_event("get", 0);
@@ -1244,7 +1253,7 @@ static int record(int present, int question)
                     draw_text(8, REC_DESC_Y + 3, ev_desc[item], C_WHITE);
                 } else {
                     fill(168, 18, THUMB_W + 4, THUMB_H + 2, C_BORDER);
-                    fill(170, 20, THUMB_W, THUMB_H, char_color[item]);
+                    thumb_backdrop(170, 20, THUMB_W, THUMB_H);
                     if (char_portrait[item] != NONE)
                         blit_keyed(170, 20, THUMB_W, THUMB_H, portrait_thumb[char_portrait[item]]);
                     draw_text(8, REC_DESC_Y + 3, prof_text[item], C_WHITE);
