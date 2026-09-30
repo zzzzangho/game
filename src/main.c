@@ -2000,7 +2000,7 @@ static int run_inner(u16 pc)
         if (run_depth == 1) top_pc = op_pc;
         u16 op = S[pc++];
         int risky = op == OP_ASK || op == OP_PRESENT || op == OP_PRESENT_CHOICE || op == OP_ACCUSE ||
-                    op == OP_TESTIMONY || op == OP_VIDEO || op == OP_MASH;
+                    op == OP_TESTIMONY || op == OP_MASH; /* the video costs no hearts */
         if (risky) {
             if (!hearts_shown || run_depth < hearts_depth) hearts_depth = run_depth;
             hearts_shown = 1;
