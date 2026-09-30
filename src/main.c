@@ -799,11 +799,15 @@ static void do_fx(int kind)
  * one after another (disp_cuts: where each word ends), each with a boom and a jolt. */
 static void do_shout(int spk, int t, int portrait)
 {
-    (void)spk;
-    cur_portrait = portrait;
+    /* @shout (a character's declaration): only the background dims, the speaker stays lit and
+     * the words slam in low, under the face. Objections dim everything, words in the middle. */
+    int own = spk != NONE, cy = own ? 136 : 70;
+    cur_portrait = own ? NONE : portrait;
     draw_scene();
     shade(0, 0, SCREEN_W, SCREEN_H, 0);
     shade(0, 0, SCREEN_W, SCREEN_H, 0);
+    cur_portrait = portrait;
+    if (own) blit_portrait_rows(0, SCREEN_H);
     frame();
     int d = disp_of_text[t], n = 0;
     const u8 *cut = d == NONE ? 0 : disp_cuts + d * 3;
@@ -812,7 +816,7 @@ static void do_shout(int spk, int t, int portrait)
         int last = k == n;
         plat_sfx(last ? SFX_OBJECTION : SFX_SHOCK);
         if (last && k == 0) flash(C_WHITE, 2);
-        draw_disp_part(t, SCREEN_W / 2, 70, last ? -1 : cut[k]);
+        draw_disp_part(t, SCREEN_W / 2, cy, last ? -1 : cut[k]);
         shake(last ? 18 : 8, last ? 6 : 4);
         if (!last) wait_frames(4);
     }
@@ -1952,32 +1956,51 @@ static void disclaimer(void)
     fade_out();
 }
 
-static int title_screen(int has_save)
+/* Title background: white fog drifting over black, faint lights moving behind it. Two fog
+ * layers and a light layer (256 wide, tileable) scroll at their own speeds; title_lut turns the
+ * (fog, light) amounts into a colour. A fixed 4x4 dither hides the banding. */
+FAST static void title_fog_draw(int o1, int o2, int o3)
 {
-    int sel = has_save ? 1 : 0;
-    in_game = 0;
-    cur_scene = SCENE_TITLE;
-    cur_portrait = NONE;
-    draw_scene();
+    static const u8 dither[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
+    for (int y = 0; y < SCREEN_H; y += 2) { /* soft fog: one colour per 2x2 block */
+        const u8 *f1 = title_fog1 + y * 256, *f2 = title_fog2 + y * 256, *l = title_lights + y * 256;
+        const u8 *d = dither[(y >> 1) & 3];
+        u32 *dst = (u32 *)(fb + y * SCREEN_W), *dst2 = dst + SCREEN_W / 2;
+        for (int x = 0; x < SCREEN_W; x += 2) {
+            int a = f1[(x + o1) & 255] + f2[(x + o2) & 255] + d[(x >> 1) & 3];
+            if (a > 255) a = 255;
+            u32 c = title_lut[(a >> 3) << 5 | l[(x + o3) & 255] >> 3];
+            dst[x >> 1] = dst2[x >> 1] = c | c << 16;
+        }
+    }
+    mark(0, SCREEN_H);
+}
+
+static void title_draw(int t, int sel, int has_save)
+{
+    title_fog_draw(t, -(t * 2 / 3), t / 3);
     draw_disp(UI_TITLE_MAIN, SCREEN_W / 2, 6 + disp_height(UI_TITLE_MAIN) / 2);
     shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
     shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
     frame_rect(SCREEN_W / 2 - 56, 86, 112, 34, C_BORDER);
-    shade(0, 140, SCREEN_W, 16, 0);
     draw_disp(UI_TITLE_FAN, SCREEN_W / 2, 148);
-    save_screen();
+    for (int i = 0; i < 2; i++) {
+        int tx = i ? UI_CONTINUE : UI_NEW, y = 89 + i * 14;
+        u16 c = (i == 1 && !has_save) ? C_GREY : (i == sel ? C_GOLD : C_WHITE);
+        if (i == sel) draw_cursor(SCREEN_W / 2 - 40, y + 3, C_GOLD);
+        draw_text_ex(SCREEN_W / 2, y, tx, c, 1, 1);
+    }
+}
+
+static int title_screen(int has_save)
+{
+    int sel = has_save ? 1 : 0, t = 0;
+    in_game = 0;
+    cur_scene = SCENE_TITLE;
+    cur_portrait = NONE;
+    title_draw(t, sel, has_save);
     fade_in();
-    for (int redraw = 1;;) {
-        if (redraw) {
-            restore_screen();
-            for (int i = 0; i < 2; i++) {
-                int t = i ? UI_CONTINUE : UI_NEW, y = 89 + i * 14;
-                u16 c = (i == 1 && !has_save) ? C_GREY : (i == sel ? C_GOLD : C_WHITE);
-                if (i == sel) draw_cursor(SCREEN_W / 2 - 40, y + 3, C_GOLD);
-                draw_text_ex(SCREEN_W / 2, y, t, c, 1, 1);
-            }
-            redraw = 0;
-        }
+    for (int f = 1;; f++) {
         plat_debug_event("title", has_save);
         int d = plat_debug_choice(DBG_TITLE, 2);
         if (d >= 0) {
@@ -1985,12 +2008,15 @@ static int title_screen(int has_save)
             break;
         }
         frame();
+        int redraw = (f & 3) == 0; /* the fog moves one step every 4 frames */
+        if (redraw) t++;
         if ((keys_new & (KEY_UP | KEY_DOWN)) && has_save) {
             sel ^= 1;
             plat_sfx(SFX_MOVE);
             redraw = 1;
         }
         if (keys_new & (KEY_A | KEY_START)) break;
+        if (redraw) title_draw(t, sel, has_save);
     }
     plat_sfx(SFX_OK);
     fade_out();

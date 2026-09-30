@@ -17,6 +17,7 @@ import art  # noqa: E402
 import display_font  # noqa: E402
 import eyecatch  # noqa: E402
 import logo  # noqa: E402
+import title_fog  # noqa: E402
 
 # ---- layout constants (must match src/main.c) ----
 TEXT_W = 224          # dialogue box text width in pixels
@@ -787,7 +788,7 @@ def build(story_path, font_path, out_dir):
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
           "extern const u16 char_profile[];",
           "extern const u16 disp_of_text[];", "extern const u16 disp_data[];", "extern const u32 disp_ofs[];",
-          "extern const u16 disp_w[];", "extern const u16 disp_h[];", "extern const u8 disp_cuts[];", "extern const u16 eyecatch_img[];",
+          "extern const u16 disp_w[];", "extern const u16 disp_h[];", "extern const u8 disp_cuts[];", "extern const u8 title_fog1[];", "extern const u8 title_fog2[];", "extern const u8 title_lights[];", "extern const u16 title_lut[];", "extern const u16 eyecatch_img[];",
           f"#define HAVE_EYECATCH {1 if eyecatch.available() else 0}",
           "extern const u16 ev_name[];", "extern const u16 ev_desc[];", "extern const u16 ev_icon[];",
           "#endif"]
@@ -835,6 +836,12 @@ def build(story_path, font_path, out_dir):
     c.append(c_array("disp_w", "u16", disp_w or [0]))
     c.append(c_array("disp_h", "u16", disp_h or [0]))
     c.append(c_array("disp_cuts", "u8", disp_cuts or [0]))
+    # title screen fog: two drifting fog layers and a layer of faint lights, composed live
+    fog1, fog2 = title_fog.fog_layers()
+    c.append(c_array("title_fog1", "u8", fog1.ravel().tolist()))
+    c.append(c_array("title_fog2", "u8", fog2.ravel().tolist()))
+    c.append(c_array("title_lights", "u8", title_fog.light_layer().ravel().tolist()))
+    c.append(c_array("title_lut", "u16", title_fog.colour_table(), fmt="0x{:04X}"))
     for k in scene_keys:
         c.append(c_array(f"scene_{k}", "u16", art.render_scene(k), fmt="0x{:04X}"))
     c.append("const u16 *const scene_img[] = {" + ",".join(f"scene_{k}" for k in scene_keys) + "};")
