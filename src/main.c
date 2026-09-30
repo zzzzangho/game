@@ -668,13 +668,31 @@ static void wait_advance(void)
 }
 
 static void got_item(int title, int name, const u16 *img, int w, int h);
+static void popup_window(int x, int y, int w, int h);
+static void wait_a(int min_frames);
 
 /* Adds a character to the court record (after they first talk, or via @meet). */
 static void meet(int c, int title)
 {
     prof_flags |= 1u << c;
-    if (char_portrait[c] != NONE)
-        got_item(title, char_name[c], portrait_thumb[char_portrait[c]], THUMB_W, THUMB_H);
+    if (char_portrait[c] == NONE) return;
+    /* a small card in the middle: the face, the name under it (plus "갱신!" for an update) */
+    int name = char_name[c], upd = title == UI_PROFILE_UPDATED;
+    int tw = text_width(name, 1), uw = upd ? text_width(UI_UPDATED, 1) + 4 : 0;
+    int w = (tw + uw > THUMB_W ? tw + uw : THUMB_W) + 16, h = THUMB_H + 29;
+    int x = (SCREEN_W - w) / 2, y = (SCREEN_H - h) / 2;
+    save_screen();
+    plat_sfx(SFX_GET);
+    popup_window(x, y, w, h);
+    fill(SCREEN_W / 2 - THUMB_W / 2, y + 8, THUMB_W, THUMB_H, RGB(1, 1, 3));
+    blit_keyed(SCREEN_W / 2 - THUMB_W / 2, y + 8, THUMB_W, THUMB_H, portrait_thumb[char_portrait[c]]);
+    int nx = SCREEN_W / 2 - (tw + uw) / 2;
+    draw_text(nx, y + THUMB_H + 11, name, C_WHITE);
+    if (upd) draw_text(nx + tw + 4, y + THUMB_H + 11, UI_UPDATED, C_GOLD);
+    plat_debug_event("get", 0);
+    wait_a(10);
+    plat_sfx(SFX_OK);
+    restore_screen();
 }
 
 static int last_spk = NONE;
