@@ -51,6 +51,7 @@ UI_STRINGS = [
     ("UI_TITLE_FAN", "비공식 팬 게임"),
     ("UI_NEW", "처음부터"),
     ("UI_CONTINUE", "이어하기"),
+    ("UI_PRESS_START", "PRESS START"),
     ("UI_DISCLAIMER", "이 게임은 「소년탐정 김전일」의\n팬이 만든 비공식 2차 창작\n게임입니다. 원작의 모든 권리는\n원작자와 출판사에 있습니다.\n\n폰트: 갈무리, 나눔명조\n(SIL OFL 1.1)"),
     ("UI_TAB_EVIDENCE", "증거물"),
     ("UI_TAB_PROFILE", "인물"),
@@ -714,7 +715,7 @@ def build(story_path, font_path, out_dir):
     with open(story_path, encoding="utf-8") as f:
         comp.compile(f.read())
     ui_ids = [(k, comp.text(v)) for k, v in UI_STRINGS]
-    ui_style = dict(UI_TITLE_MAIN="logo_img", UI_TITLE_SERIES="logo_sub", UI_SLAM_INVEST="slam",
+    ui_style = dict(UI_TITLE_MAIN="logo_img", UI_TITLE_SERIES="logo_sub", UI_PRESS_START="place", UI_SLAM_INVEST="slam",
                     UI_SLAM_DEDUCE="slam", UI_SLAM_CROSS="slam", UI_SLAM_START="slam", UI_SLAM_DONE="slam", UI_PRESS_SHOUT="shout", UI_OBJECTION="shout", UI_BAD_END="bad_label",
                     UI_TRUE_END="end_label", UI_GOOD_END="end_label", UI_BEST_END="end_label",
                     UI_NORMAL_END="end_label", UI_WRONG="banner",

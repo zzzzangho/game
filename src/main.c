@@ -1976,29 +1976,38 @@ FAST static void title_fog_draw(int o1, int o2, int o3)
     mark(0, SCREEN_H);
 }
 
-static void title_draw(int t, int sel, int has_save)
+/* menu < 0: "PRESS START" blinks; otherwise the 처음부터 / 이어하기 box with a blinking cursor */
+static int title_blink0; /* fog step when the blink last restarted (a key press shows the cursor at once) */
+static void title_draw(int t, int menu, int has_save)
 {
+    int blink = ((t - title_blink0) >> 2) & 1; /* on/off about every half second */
     title_fog_draw(t, -(t * 2 / 3), t / 3);
     draw_disp(UI_TITLE_MAIN, SCREEN_W / 2, 6 + disp_height(UI_TITLE_MAIN) / 2);
-    shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
-    shade(SCREEN_W / 2 - 56, 86, 112, 34, 0);
-    frame_rect(SCREEN_W / 2 - 56, 86, 112, 34, C_BORDER);
-    draw_disp(UI_TITLE_FAN, SCREEN_W / 2, 148);
-    for (int i = 0; i < 2; i++) {
-        int tx = i ? UI_CONTINUE : UI_NEW, y = 89 + i * 14;
-        u16 c = (i == 1 && !has_save) ? C_GREY : (i == sel ? C_GOLD : C_WHITE);
-        if (i == sel) draw_cursor(SCREEN_W / 2 - 40, y + 3, C_GOLD);
-        draw_text_ex(SCREEN_W / 2, y, tx, c, 1, 1);
+    if (menu < 0) {
+        if (!blink) draw_disp(UI_PRESS_START, SCREEN_W / 2, 124);
+    } else {
+        int y0 = 106;
+        shade(SCREEN_W / 2 - 56, y0, 112, 34, 0);
+        shade(SCREEN_W / 2 - 56, y0, 112, 34, 0);
+        frame_rect(SCREEN_W / 2 - 56, y0, 112, 34, C_BORDER);
+        for (int i = 0; i < 2; i++) {
+            int tx = i ? UI_CONTINUE : UI_NEW, y = y0 + 3 + i * 14;
+            u16 c = (i == 1 && !has_save) ? C_GREY : (i == menu ? C_GOLD : C_WHITE);
+            if (i == menu && !blink) draw_cursor(SCREEN_W / 2 - 40, y + 3, C_GOLD);
+            draw_text_ex(SCREEN_W / 2, y, tx, c, 1, 1);
+        }
     }
+    draw_disp(UI_TITLE_FAN, SCREEN_W / 2, 151);
 }
 
 static int title_screen(int has_save)
 {
-    int sel = has_save ? 1 : 0, t = 0;
+    int sel = has_save ? 1 : 0, t = 0, menu = -1;
+    title_blink0 = 0;
     in_game = 0;
     cur_scene = SCENE_TITLE;
     cur_portrait = NONE;
-    title_draw(t, sel, has_save);
+    title_draw(t, menu, has_save);
     fade_in();
     for (int f = 1;; f++) {
         plat_debug_event("title", has_save);
@@ -2010,13 +2019,24 @@ static int title_screen(int has_save)
         frame();
         int redraw = (f & 3) == 0; /* the fog moves one step every 4 frames */
         if (redraw) t++;
-        if ((keys_new & (KEY_UP | KEY_DOWN)) && has_save) {
-            sel ^= 1;
-            plat_sfx(SFX_MOVE);
-            redraw = 1;
+        if (menu < 0) {
+            if (keys_new & (KEY_START | KEY_A)) {
+                plat_sfx(SFX_OK);
+                menu = sel;
+                title_blink0 = t;
+                redraw = 1;
+            }
+        } else {
+            if ((keys_new & (KEY_UP | KEY_DOWN)) && has_save) {
+                sel ^= 1;
+                menu = sel;
+                plat_sfx(SFX_MOVE);
+                title_blink0 = t;
+                redraw = 1;
+            }
+            if (keys_new & (KEY_A | KEY_START)) break;
         }
-        if (keys_new & (KEY_A | KEY_START)) break;
-        if (redraw) title_draw(t, sel, has_save);
+        if (redraw) title_draw(t, menu, has_save);
     }
     plat_sfx(SFX_OK);
     fade_out();
