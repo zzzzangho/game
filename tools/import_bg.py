@@ -58,6 +58,18 @@ INSETS = {
     "ins_robert": ("p1/110", C32),        # Robert greets the dining car
     "ins_underwear": ("p1/172", (0, 0, 640, 427)),  # Yurama holds Miyuki's underwear up high
     "ins_rose_trick": ("p1/188", C32),    # ...and a red rose appears instead
+    "ins_marionette_box": ("p1/085", C32),  # the twisted marionette out of the parcel
+    "ins_phone": ("p1/317", C32),         # the phone slipped into Kenmochi's pocket
+    "ins_rubber": ("p3/175", C32),        # a scrap of balloon rubber from among the roses
+    "ins_jade": ("p2/045", C32),          # the jade stone in the hotel lobby
+    "ins_pamphlet": ("p2/063", C32),      # the troupe photos in the pamphlet
+    "ins_newspaper": ("p3/265", C32),     # the old newspaper: a magician dead
+    "ins_control": ("p4/148", C32),       # a marionette's control bar and strings
+    "ins_fake_hand": ("p3/172", C32),     # the gloved hand tied to balloon strings
+    "ins_glove_balloon": ("p3/179", C32), # a white glove pulled over a balloon
+    "ins_jade_two": ("p3/348", C32),      # two jade stones on the stand downstairs
+    "ins_mailbag": ("p4/118", C32),       # the big bag sent by train post
+    "ins_notebooks": ("p4/381", C32),     # the teacher's two notebooks
 }
 CUTS = os.path.join(HERE, "..", "assets", "cuts")
 
