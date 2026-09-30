@@ -618,45 +618,86 @@
 @at 36 35 48 43 "창문" c1r_window
 @at 0 84 36 56 "침대 밑" c1r_bed
 @at 33 15 49 20 "천장의 통풍구" c1r_vent
+@at 94 16 117 98 "객실 문" c1r_door
 @end
 @scene corridor
 @return
 
+*c1r_door
+@if seen_c1r_door c1r_door_again
+김전일: 객실 문. 안쪽 손잡이에도, 장미 가시에 긁힌 자국 하나 없어.
+켄모치[serious]: 우리가 처음 열었을 때, 문은 잠겨 있지 않았지.
+김전일[serious]: (범인은 문으로 드나들 필요가 없었던 거야.)
+@set seen_c1r_door
+@return
+*c1r_door_again
+김전일: 문 너머 복도엔 아까부터 사람들이 오가고 있어. 여기로 몰래 나가는 건 불가능해.
+@return
+
 *c1r_roses
+@if seen_c1r_roses c1r_roses_again
 김전일: 바닥이 빈틈없이 장미야. 단장님이 쓰러져 있던 자리도 전부.
 김전일: 가시가 이렇게 많으니, 아까는 도저히 안으로 들어갈 수가 없었지.
 @get roses
 김전일[serious]: (범인은 왜 이렇게까지 장미를 깔았을까. 사람을 못 들어오게 하려고?)
+@set seen_c1r_roses
+@return
+*c1r_roses_again
+미유키[tense]: 이렇게 많은 장미를 누가, 언제 다 깔아 놓은 걸까…
+김전일[serious]: 공연이 끝나고 폭탄 소동이 나기 전까지… 시간은 그리 길지 않았을 거야.
 @return
 
 *c1r_rubber
+@if seen_c1r_rubber c1r_rubber_again
 @inset ins_rubber
 김전일: 장미를 헤쳐 보니… 얇은 고무 조각이 잔뜩 흩어져 있어.
 김전일: 천장에 매달려 있던 풍선들이 전부 터진 거야. 아까 들린 '펑' 소리는 이거였어.
 @get rubber
 김전일[serious]: (그런데 풍선은 왜 이렇게 잔뜩 갖다 놓은 거지? 장미야 그렇다 쳐도…)
+@set seen_c1r_rubber
+@return
+*c1r_rubber_again
+김전일: 빨강, 노랑, 파랑… 풍선 조각이 장미 사이사이에 잔뜩 박혀 있어.
+사키[playful]: 선배, 이거 전부 주워 가면 풍선 몇 개 분량이에요?
 @return
 
 *c1r_window
+@if seen_c1r_window c1r_window_again
 김전일: 창문이 10cm쯤 열려 있어. 더는 안 열리는 구조네.
 켄모치[serious]: 사람이 빠져나가는 건 절대 무리야.
 김전일: …그렇네요. 손이나 겨우 내밀 수 있을 정도예요.
 @get window
+@set seen_c1r_window
+@return
+*c1r_window_again
+김전일: 다시 봐도 10cm. 손 하나 겨우 내밀 틈이야.
+켄모치[serious]: 몇 번을 봐도 사람은 못 나가.
 @return
 
 *c1r_bed
+@if seen_c1r_bed c1r_bed_again
 김전일[surprised]: 침대 밑에… 카드 한 장? 조커네.
 김전일: 사콘지 씨는 카드 마술의 익살꾼이었지. 이게 왜 여기에…
 @get joker
 김전일[serious]: (너무 눈에 띄는 곳에 떨어져 있었어. 누가 일부러 둔 걸까, 아니면 진짜 실수일까.)
+@set seen_c1r_bed
+@return
+*c1r_bed_again
+김전일: 침대 밑엔 더 이상 아무것도 없어. 먼지 하나 없이 깨끗하네.
+김전일[serious]: (조커 한 장만 딱 떨어져 있었다는 게, 오히려 이상해.)
 @return
 
 *c1r_vent
+@if seen_c1r_vent c1r_vent_again
 김전일: 천장 통풍구 안에 뭔가 끼어 있어. 까맣게 그을린 작은 금속 통이야.
 @menu - "어떻게 할까?"
 @opt "손을 넣어 꺼내 본다" c1r_vent_trap trap
 @opt "켄모치 아저씨에게 맡긴다" c1r_vent_safe
 @end
+@set seen_c1r_vent
+@return
+*c1r_vent_again
+김전일: 통풍구 주변이 까맣게 그을려 있어. 연기는 여기서 방 안으로 퍼진 거야.
 @return
 
 *c1r_vent_trap
@@ -688,21 +729,38 @@
 @return
 
 *c1w_window
+@if seen_c1w_window c1w_window_again
 김전일: 객실 5호 바로 옆 화장실. 여기 창문도 조금밖에 안 열리네.
 김전일[serious]: 창틀에 끈이 세게 쓸린 자국이 있어. 창밖에서 뭔가를 끌어당긴 흔적이야.
 @get toilet
 김전일[serious]: 객실 창문과 이 창문은 벽 하나를 사이에 두고 바로 옆이야…
+@set seen_c1w_window
+@return
+*c1w_window_again
+김전일: 창틀의 끈 자국… 꽤 힘을 줘서 당긴 흔적이야.
+김전일[serious]: (창밖으로 뭔가를 끌어당겼다면, 그건 옆 객실 쪽에서 온 거야.)
 @return
 
 *c1w_sink
+@if seen_c1w_sink c1w_sink_again
 김전일: 세면대는 깨끗해. 너무 깨끗할 정도로.
 김전일: …별다른 건 없네.
+@set seen_c1w_sink
+@return
+*c1w_sink_again
+김전일: 세면대는 여전히 반짝반짝해. 누가 일부러 닦은 것처럼.
+미유키: 청소를 잘하는 열차일 수도 있잖아.
 @return
 
 *c1w_trash
+@if seen_c1w_trash c1w_trash_again
 김전일[surprised]: 쓰레기통엔 휴지랑… 빈 헬륨 캔? '파티용'이라고 적혀 있어.
 미유키: 마술 소품 아냐? 풍선 마술도 하잖아.
 김전일: 그랬나… 기억해 둘게.
+@set seen_c1w_trash
+@return
+*c1w_trash_again
+김전일: 쓰레기통엔 휴지뿐이야. 아까 그 헬륨 캔 말고는 별거 없어.
 @return
 
 *c1_corr
@@ -716,16 +774,27 @@
 @return
 
 *c1c_door
+@if seen_c1c_door c1c_door_again
 김전일: 연기가 나자마자 아저씨가 바로 닫은 문. 우리는 쭉 이 앞에 엎드려 있었지.
 켄모치[serious]: 그래. 그 사이 이 문으로 드나든 사람은 없었어. 내가 보증하지.
+@set seen_c1c_door
+@return
+*c1c_door_again
+김전일: 연기가 나고 문이 닫혀 있던 2, 3분 동안… 우리는 이 앞에서 한 발짝도 움직이지 않았어.
+켄모치[serious]: 그래. 그러니까 이건 완벽한 밀실이야.
 @return
 
 *c1c_alarm
+@if seen_c1c_alarm c1c_alarm_again
 김전일[serious]: 화재 경보기… 연기가 그렇게 났는데 왜 안 울렸지?
 @menu - "어떻게 할까?"
 @opt "시험 삼아 버튼을 눌러 본다" c1c_alarm_trap trap
 @opt "경보기 안쪽을 살펴본다" c1c_alarm_safe
 @end
+@set seen_c1c_alarm
+@return
+*c1c_alarm_again
+김전일: 경보기는 조용해. 연기가 그렇게 났는데도 끝내 울리지 않았어.
 @return
 
 *c1c_alarm_safe
@@ -742,8 +811,14 @@
 @return
 
 *c1c_window
+@if seen_c1c_window c1c_window_again
 김전일: 창밖은 끝없는 초원. 선로 옆으로 풀이 무성해.
 김전일: 창밖으로 뭘 던졌다면 흔적이 남았을 텐데… 경찰이 선로를 확인해 준다고 했지.
+@set seen_c1c_window
+@return
+*c1c_window_again
+김전일: 창밖은 여전히 끝없는 초원이야.
+미유키[sad]: 이런 풍경에서 살인 사건이라니…
 @return
 
 *c1_dining
@@ -1535,18 +1610,34 @@
 @return
 
 *c2s_body
+@if seen_c2s_body c2s_body_again
 김전일: 심장을 한 번에 찔렀어… 무대 조명 아래라 잘 안 보이지만, 상처 주변이 벌써 까맣게 굳어 가고 있어.
 김전일[serious]: (조명이 꺼진 건 불과 몇 초 전인데…?)
+@set seen_c2s_body
+@return
+*c2s_body_again
+김전일[sad]: …유라마 씨. 조금 전까지만 해도 무대 위에서 웃고 있었는데.
+미유키[sad]: 전일아, 너무 오래 보지 마.
 @return
 
 *c2s_chair
+@if seen_c2s_chair c2s_chair_again
 김전일: 원래 마리오네트가 앉아 있던 의자. 등받이에 묵직한 게 쓸린 자국이 있어.
 김전일[surprised]: 그리고 의자 위에… 붉은 장미 꽃잎 몇 장.
+@set seen_c2s_chair
+@return
+*c2s_chair_again
+김전일: 등받이에 쓸린 자국. 묵직한 게 여기 앉혀졌다가, 위로 끌려 올라간 거야.
 @return
 
 *c2s_floor
+@if seen_c2s_floor c2s_floor_again
 김전일: 무대 바닥엔 발자국이 잔뜩이야. 리허설 때 모두가 오갔으니 당연하지.
 김전일: 이걸로는 아무것도 알 수 없겠어.
+@set seen_c2s_floor
+@return
+*c2s_floor_again
+김전일: 발자국은 여전히 뒤죽박죽이야. 이걸로 범인을 가리는 건 무리야.
 @return
 
 *c2_ceiling
@@ -1560,22 +1651,39 @@
 @return
 
 *c2c_rope
+@if seen_c2c_rope c2c_rope_again
 김전일: 무대 천장의 도르래에 로프가 걸려 있어. 한쪽 끝은 아래로 늘어져 유라마 씨에게 묶여 있고…
 김전일: 반대쪽 끝에는 마리오네트가 매달려 있어.
 @get rope
+@set seen_c2c_rope
+@return
+*c2c_rope_again
+김전일: 도르래는 잘 돌아가. 한쪽이 무거우면 다른 쪽이 스르륵 올라가겠지.
+김전일[serious]: (시체와 인형… 그리고 또 하나의 무게가 있었다면?)
 @return
 
 *c2c_doll
+@if seen_c2c_doll c2c_doll_again
 사토미: 그 마리오네트, {70kg}이나 나가요. 전에 비행기로 옮길 때 무게를 쟀었거든요.
 김전일[serious]: 조명이 켜졌을 때 인형은 이미 천장에 있었지. 시체가 내려오면서, 그 무게로 인형이 올라간 거야. 시소처럼.
+@set seen_c2c_doll
+@return
+*c2c_doll_again
+김전일: 천장에 매달린 마리오네트가 무대를 내려다보고 있어. 기분 나쁘게.
+김전일[serious]: (조명이 켜졌을 땐, 저 인형은 이미 여기 올라와 있었어.)
 @return
 
 *c2c_plank
+@if seen_c2c_plank c2c_plank_again
 김전일: 천장으로 이어진 낡은 나무판자야. 저기 올라가면 로프를 가까이서 볼 수 있을 텐데.
 @menu - "어떻게 할까?"
 @opt "나무판자 위로 올라가 본다" c2c_plank_trap trap
 @opt "그만둔다" c2c_plank_safe
 @end
+@set seen_c2c_plank
+@return
+*c2c_plank_again
+김전일: 낡은 나무판자. 밟을 때마다 삐걱거려. 오래 버티진 못할 것 같아.
 @return
 
 *c2c_plank_trap
@@ -1602,19 +1710,34 @@
 @return
 
 *c2d_route
+@if seen_c2d_route c2d_route_again
 타카토[tense]: 분, 분장실에서 무대까지요? 정상적인 통로로는 아무리 뛰어도 1분은 걸려요.
 김전일[serious]: 조명이 꺼진 건 몇 초뿐. 무대 옆에서 달려와 시체를 앉힐 시간은 없었어.
+@set seen_c2d_route
+@return
+*c2d_route_again
+김전일: 통로는 길고 꼬불꼬불해. 몇 초 만에 무대로 가는 건 불가능해.
 @return
 
 *c2d_desk
+@if seen_c2d_desk c2d_desk_again
 김전일: 유라마 씨 화장대에 쪽지가 있어. '단장 자리는 네 것이 아니다'…
 김전일[serious]: 협박 편지? 필체를 숨기려고 삐뚤빼뚤하게 썼네.
 @get threat
+@set seen_c2d_desk
+@return
+*c2d_desk_again
+김전일: 유라마 씨 화장대엔 무대용 화장품이 잔뜩. 쪽지 말고는 특별한 건 없어.
 @return
 
 *c2d_hanger
+@if seen_c2d_hanger c2d_hanger_again
 김전일: 무대 의상이 잔뜩… 체크무늬 원피스도 있네. 미유키 옷이랑 비슷한데.
 미유키[surprised]: 진짜네. 나도 저거랑 똑같은 옷 갖고 있는데…
+@set seen_c2d_hanger
+@return
+*c2d_hanger_again
+김전일: 반짝이는 무대 의상들… 이걸 입고 오늘도 무대에 설 생각이었겠지.
 @return
 
 *c2_bridge
@@ -2661,16 +2784,27 @@
 @return
 
 *c3r_jade
+@if seen_c3r_jade c3r_jade_again
 김전일: 이 방에도 비취 원석 장식대가 있네. 그런데… 원석이 없어.
 김전일[serious]: 방마다 하나씩 놓여 있다고 했는데. 5kg짜리 돌이 어디로 간 거지?
+@set seen_c3r_jade
+@return
+*c3r_jade_again
+김전일: 텅 빈 장식대. 받침 위에 원석이 놓여 있던 자국만 남았어.
+김전일[serious]: (5kg짜리 돌이 저절로 걸어 나갔을 리는 없어.)
 @return
 
 *c3r_window
+@if seen_c3r_window c3r_window_again
 김전일[serious]: 창틀에 밧줄이 걸려 있던 자국이 있어. 창밖으로 뭘 끌어낸 거야.
 @menu - "어떻게 할까?"
 @opt "창밖으로 몸을 내밀어 본다" c3r_win_trap trap
 @opt "창틀만 살펴본다" c3r_win_safe
 @end
+@set seen_c3r_window
+@return
+*c3r_window_again
+김전일: 창틀의 밧줄 자국은 아래쪽으로 쓸려 있어. 몇 번을 봐도 그래.
 @return
 
 *c3r_win_trap
@@ -2687,9 +2821,14 @@
 @return
 
 *c3r_desk
+@if seen_c3r_desk c3r_desk_again
 김전일: 화장대 위엔 화장품과 수중 마술 대본. 특별한 건 없네.
 김전일[serious]: 대본 귀퉁이에 '5년 전 일, 경찰에 말할까'라는 낙서가…
 미유키[sad]: 유미 씨, 정말로 털어놓으려고 했구나…
+@set seen_c3r_desk
+@return
+*c3r_desk_again
+김전일: 수중 마술 대본… 유미 씨는 다음 공연도 준비하고 있었어.
 @return
 
 *c3_tree
@@ -2716,18 +2855,29 @@
 @return
 
 *c3b_jade
+@if seen_c3b_jade c3b_jade_again
 @inset ins_jade_two
 김전일[surprised]: 여긴 비어 있는 방인데… 비취 원석이 두 개나 있어. 원래 방마다 하나씩인데.
 @get jadebelow
 김전일[serious]: (위층에서 사라진 원석이, 아래층에 와 있어…! 역시 그렇군.)
+@set seen_c3b_jade
+@return
+*c3b_jade_again
+김전일: 원석 두 개가 나란히. 하나는 원래 이 방 것, 하나는…
+김전일[serious]: (위층에서 내려온 거야.)
 @return
 
 *c3b_window
+@if seen_c3b_window c3b_window_again
 김전일: 창문이 열려 있어. 바로 위가 유미 씨 방이야.
 @menu - "어떻게 할까?"
 @opt "창틀에 올라가 위를 본다" c3b_win_trap trap
 @opt "창틀만 살펴본다" c3b_win_safe
 @end
+@set seen_c3b_window
+@return
+*c3b_window_again
+김전일: 이 창문 바로 위가 유미 씨 방이야. 손을 뻗으면 닿을 거리지.
 @return
 
 *c3b_win_trap
@@ -2744,7 +2894,12 @@
 @return
 
 *c3b_bed
+@if seen_c3b_bed c3b_bed_again
 김전일: 침대는 깔끔해. 아무도 쓰지 않은 방이니까.
+@set seen_c3b_bed
+@return
+*c3b_bed_again
+김전일: 침대는 반듯해. 여긴 정말로 아무도 묵지 않은 방이야.
 @return
 
 *c3_hall
