@@ -1252,6 +1252,9 @@
 사콘지[playful]: 사건? 헤헤, 난 공연 끝나고 복도에서 사쿠라바가 객실 5호 쪽으로 가는 걸 봤는데?
 사콘지[playful]: 그 녀석 요즘 단장한테 불만이 많았거든. 저주가 어쩌고 하면서 말이야.
 @get sakonjiclaim
+@if !satomitalk c1t_sak_case_end
+김전일[serious]: (어? 사토미 씨는 사쿠라바 씨와 계속 같이 있었다고 했는데… 둘 중 하나는 틀렸어.)
+*c1t_sak_case_end
 @return
 
 *c1t_sak_joker
@@ -1291,7 +1294,11 @@
 *c1t_skr_where
 사쿠라바[tense]: 저, 저는 공연이 끝나고 곧장 짐 정리를 했어요… 단장님 방엔 안 갔어요!
 사쿠라바[tense]: 이건 저주예요… 5년 전에 돌아가신 선생님의…
+@if !sakonjiclaim c1t_skr_where_first
 김전일[serious]: (사콘지 씨 말과 다르네. 둘 중 하나는 거짓말을 하고 있어.)
+@return
+*c1t_skr_where_first
+김전일[serious]: (안 갔다고 묻지도 않았는데… 겁을 잔뜩 먹었네.)
 @return
 
 *c1t_skr_curse
@@ -1349,7 +1356,11 @@
 사토미: 로버트랑 공연 준비 때문에 정신이 없었어요. 풍선이요? 제 소품 풍선은 다 제대로 있는 것 같은데…
 사토미: 아, 사쿠라바 씨는 공연 끝나고 저랑 같이 소품 정리했어요. 폭탄 소동 때까지 계속 같이 있었는데요?
 @get satomitalk
+@if !sakonjiclaim c1t_sat_where_first
 김전일[serious]: (그럼 사콘지 씨의 목격담은…)
+@return
+*c1t_sat_where_first
+김전일[serious]: (사쿠라바 씨는 폭탄 소동 때까지 쭉 사토미 씨와 함께였다… 기억해 두자.)
 @return
 
 # ---------------- 종착역
