@@ -1062,12 +1062,20 @@ static int choose(int spk, int q, const u16 *texts, int n, u32 greyed, int extra
     int total = n + (extra != NONE);
     int sel = choose_start < total ? choose_start : 0, w = 120;
     choose_start = 0;
+    /* six or more options (the talk menus) are laid out in two columns */
+    int cols = total > 5 ? 2 : 1, rows = (total + cols - 1) / cols, colw = 0;
     for (int i = 0; i < total; i++) {
-        int tw = text_width(i < n ? texts[i] : extra, 1) + 30;
-        if (tw > w) w = tw;
+        int tw = text_width(i < n ? texts[i] : extra, 1) + 26;
+        if (tw > colw) colw = tw;
     }
-    int row = total > 6 ? 13 : 14; /* compact rows so 7 options still clear the text box */
-    int h = total * row + 8;
+    w = cols * colw + 8;
+    if (w < 120) w = colw = 120;
+    if (w > SCREEN_W - 8) {
+        w = SCREEN_W - 8;
+        colw = (w - 8) / cols;
+    }
+    int row = 14;
+    int h = rows * row + 8;
     int x = (SCREEN_W - w) / 2, y = (BOX_Y - 14 - h) / 2 + 4;
     if (y < 12) y = 12;
     if (y + h > BOX_Y - 2) y = BOX_Y - 2 - h;
@@ -1084,14 +1092,14 @@ static int choose(int spk, int q, const u16 *texts, int n, u32 greyed, int extra
         if (redraw) {
             restore_screen();
             for (int i = 0; i < total; i++) {
-                int oy = y + 4 + i * row;
+                int oy = y + 4 + (i % rows) * row, ox = x + 4 + (i / rows) * colw;
                 int t = i < n ? texts[i] : extra;
                 if (i == sel) {
-                    fill(x + 4, oy, w - 8, row, C_HILITE);
-                    draw_cursor(x + 8, oy + 3, C_GOLD);
+                    fill(ox, oy, cols > 1 ? colw : w - 8, row, C_HILITE);
+                    draw_cursor(ox + 4, oy + 3, C_GOLD);
                 }
                 u16 c = (i < n && (greyed & (1u << i))) ? C_GREY : (i == sel ? C_GOLD : C_WHITE);
-                draw_text(x + 18, oy, t, c);
+                draw_text(ox + 14, oy, t, c);
             }
             redraw = 0;
         }
@@ -1109,6 +1117,12 @@ static int choose(int spk, int q, const u16 *texts, int n, u32 greyed, int extra
             plat_sfx(SFX_MOVE);
         } else if (keys_new & KEY_DOWN) {
             sel = (sel + 1) % total;
+            redraw = 1;
+            plat_sfx(SFX_MOVE);
+        } else if ((keys_new & (KEY_LEFT | KEY_RIGHT)) && cols > 1) {
+            int r = sel % rows, c = sel / rows ^ 1; /* the same row in the other column */
+            if (c * rows + r < total) sel = c * rows + r;
+            else sel = total - 1;
             redraw = 1;
             plat_sfx(SFX_MOVE);
         } else if (keys_new & KEY_A) {
@@ -1544,6 +1558,131 @@ static int option_menu(int id, int spk, int q, int exit_text, u64 need, int n, c
     }
 }
 
+/* @examine: the board picture with a magnifier cursor. The D-pad moves it, A examines the spot
+ * under it (the smallest rectangle containing the cursor), B leaves, START opens the notebook.
+ * The top bar shows the question and keys, or the name of the spot under the cursor.
+ * opts: n entries of (name, label, cond, mark, x, y, w, h); mark bit 15 = trap (test harness),
+ * bit 14 = the spot ends the examination. */
+#define EX_BAR_H 15
+static int ex_x = SCREEN_W / 2, ex_y = SCREEN_H / 2;
+
+static void draw_magnifier(int x, int y, u16 c)
+{
+    for (int pass = 0; pass < 2; pass++) { /* dark shadow first, then the lens */
+        int o = pass ? 0 : 1;
+        u16 col = pass ? c : C_SHADOW;
+        for (int dy = -6; dy <= 6; dy++)
+            for (int dx = -6; dx <= 6; dx++) {
+                int r = dx * dx + dy * dy;
+                if (r >= 18 && r <= 32) px(x + dx + o, y + dy + o, col);
+            }
+        for (int k = 4; k <= 8; k++) {
+            px(x + k + o, y + k + o, col);
+            px(x + k + 1 + o, y + k + o, col);
+        }
+    }
+    mark(y - 7, y + 11);
+}
+
+static int ex_spot_at(int x, int y, int m, const u16 *idx, const u16 *opts)
+{
+    int best = -1, area = 1 << 30;
+    for (int k = 0; k < m; k++) {
+        const u16 *o = opts + idx[k] * 8;
+        if (x >= o[4] && x < o[4] + o[6] && y >= o[5] && y < o[5] + o[7] && o[6] * o[7] < area) {
+            best = k;
+            area = o[6] * o[7];
+        }
+    }
+    return best;
+}
+
+static int examine(int id, int q, int n, const u16 *opts)
+{
+    for (;;) {
+        u16 idx[12];
+        u32 traps = 0;
+        int m = 0;
+        for (int i = 0; i < n && m < 12; i++) {
+            const u16 *o = opts + i * 8;
+            if (!cond_true(o[2])) continue;
+            if (o[3] & 0x8000) traps |= 1u << m;
+            idx[m++] = i;
+        }
+        cur_portrait = NONE;
+        heart_y = EX_BAR_H + 4; /* under the question bar */
+        draw_scene();
+        heart_y = 3;
+        shade(0, 0, SCREEN_W, EX_BAR_H, 0);
+        shade(0, 0, SCREEN_W, EX_BAR_H, 0);
+        fill(0, EX_BAR_H, SCREEN_W, 1, C_BORDER);
+        save_screen();
+        int sel = -1, pick = -1, hover = -2, ox = ex_x, oy = ex_y;
+        for (int redraw = 1;;) {
+            int h = ex_spot_at(ex_x, ex_y, m, idx, opts);
+            if (redraw || h != hover || ox != ex_x || oy != ex_y) {
+                int rx = ox - 7 < 0 ? 0 : ox - 7, ry = oy - 7 < 0 ? 0 : oy - 7;
+                restore_rect(rx, ry, rx + 19 > SCREEN_W ? SCREEN_W - rx : 19, ry + 19 > SCREEN_H ? SCREEN_H - ry : 19);
+                restore_rect(0, 0, SCREEN_W, EX_BAR_H);
+                if (h >= 0) {
+                    const u16 *o = opts + idx[h] * 8;
+                    draw_text(6, 1, o[0], flag_get(o[3] & 0x3FFF) ? C_GREY : C_WHITE);
+                } else {
+                    draw_text(6, 1, q, C_GOLD);
+                    draw_hint_right(UI_EXAMINE_HINT, SCREEN_W - 6, 3);
+                }
+                draw_magnifier(ex_x, ex_y, h >= 0 ? C_GOLD : C_WHITE);
+                hover = h;
+                ox = ex_x;
+                oy = ex_y;
+                redraw = 0;
+            }
+            plat_debug_event("menu", h);
+            if (pick >= 0) {
+                sel = pick;
+                break;
+            }
+            int d = plat_debug_menu(id, m + 1, traps);
+            if (d >= 0) { /* test harness: point at the picked spot, then take it */
+                if (d >= m) return RET_RETURN;
+                const u16 *o = opts + idx[d] * 8;
+                ex_x = o[4] + o[6] / 2;
+                ex_y = o[5] + o[7] / 2;
+                pick = d;
+                continue;
+            }
+            frame();
+            int dx = (keys_held & KEY_RIGHT) ? 2 : (keys_held & KEY_LEFT) ? -2 : 0;
+            int dy = (keys_held & KEY_DOWN) ? 2 : (keys_held & KEY_UP) ? -2 : 0;
+            ex_x += dx;
+            ex_y += dy;
+            if (ex_x < 4) ex_x = 4;
+            if (ex_x > SCREEN_W - 12) ex_x = SCREEN_W - 12;
+            if (ex_y < EX_BAR_H + 8) ex_y = EX_BAR_H + 8;
+            if (ex_y > SCREEN_H - 4) ex_y = SCREEN_H - 4;
+            if (keys_new & KEY_A) {
+                if (hover >= 0) {
+                    plat_sfx(SFX_OK);
+                    sel = hover;
+                    break;
+                }
+                plat_sfx(SFX_CANCEL);
+            } else if (keys_new & KEY_B) {
+                plat_sfx(SFX_MOVE);
+                return RET_RETURN;
+            } else if (keys_new & KEY_START) {
+                record(0, NONE);
+                restore_screen();
+                redraw = 1;
+            }
+        }
+        const u16 *o = opts + idx[sel] * 8;
+        flag_set(o[3] & 0x3FFF);
+        if (run(o[1]) == RET_TITLE) return RET_TITLE;
+        if (o[3] & 0x4000) return RET_RETURN; /* the spot that answers it */
+    }
+}
+
 /* "조사 개시!" / "추리 개시!" / "추궁 개시!" / "추궁 성공!": the screen darkens and the two words
  * slam in one after the other, each with a boom and a jolt. */
 static void banner(int kind)
@@ -1875,6 +2014,13 @@ static int run_inner(u16 pc)
             if (option_menu(op_pc, NONE, UI_INVEST_Q, UI_INVEST_DONE, need, n, opts) == RET_TITLE) return RET_TITLE;
             break;
         }
+        case OP_EXAMINE: {
+            int q = S[pc], n = S[pc + 1];
+            const u16 *opts = &S[pc + 2];
+            pc += 2 + n * 8;
+            if (examine(op_pc, q, n, opts) == RET_TITLE) return RET_TITLE;
+            break;
+        }
         case OP_MENU: {
             int spk = S[pc], q = S[pc + 1], exit_text = S[pc + 2], n = S[pc + 3];
             const u16 *opts = &S[pc + 4];
@@ -1900,13 +2046,16 @@ static int run_inner(u16 pc)
             const u16 *frames = &S[pc + 5];
             pc += 5 + n * 3;
             /* a wrong stop comments on the frame, then the tape keeps playing from there (B = stop watching) */
+            int back = cur_scene; /* after a stop the talk (and @examine) happens over that frame */
             for (int cur = 0;;) {
                 int sel = video(title, n, frames, cur);
                 if (sel < 0) break;
+                cur_scene = frames[sel * 3];
                 if (run(sel == correct ? ok : wrong) == RET_TITLE) return RET_TITLE;
                 if (sel == correct) break;
                 cur = sel;
             }
+            cur_scene = back;
             break;
         }
         case OP_TIMER:

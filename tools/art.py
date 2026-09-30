@@ -521,6 +521,7 @@ BUILTIN_SCENES["bridge_up"] = lambda: scene_image("drawbridge")
 BUILTIN_SCENES["yumi_tree"] = lambda: scene_image("yumi_room")
 BUILTIN_SCENES["cabin_door"] = lambda: scene_image("corridor")
 BUILTIN_SCENES["freight_petals"] = lambda: scene_image("freight_yard")
+BUILTIN_SCENES["exam_cabin"] = lambda: scene_image("cabin_empty")
 BUILTIN_SCENES["dining_show"] = lambda: scene_image("dining")
 BUILTIN_SCENES["cabin_reenact"] = lambda: art_scenes2.polish(art_hd.scene_cabin_roses(), seed=5)
 
