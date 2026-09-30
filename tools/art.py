@@ -1389,11 +1389,43 @@ OUTLINE_RGB = (22, 14, 28)
 KEEP_SIDES = {"sakuraba_stage"}  # wide art shown whole (the arms reach the picture's edges)
 
 
-def ace_sprite(img, w, h, crop=1.0, trim=True):
+PORTRAIT_EXPRS = ("serious", "surprised", "shock", "angry", "sad", "tense", "playful", "happy")
+_group_box = {}
+
+
+def portrait_group(key):
+    """'kenmochi_angry_blink' -> 'kenmochi' (the character, with its outfit if any)."""
+    parts = key.split("_")
+    if parts[-1] == "blink":
+        parts.pop()
+    if len(parts) > 1 and parts[-1] in PORTRAIT_EXPRS:
+        parts.pop()
+    return "_".join(parts)
+
+
+def portrait_group_box(key):
+    """Union of the drawn areas of every picture of this character (same canvas), and the canvas size."""
+    g = portrait_group(key)
+    if g not in _group_box:
+        size, box = Image.open(USER_PORTRAITS[key]).size, None
+        for k, path in USER_PORTRAITS.items():
+            if portrait_group(k) != g:
+                continue
+            im = Image.open(path).convert("RGBA")
+            if im.size != size:
+                continue
+            bb = im.getchannel("A").point(lambda a: 255 if a >= 128 else 0).getbbox()
+            if bb:
+                box = bb if box is None else (min(box[0], bb[0]), min(box[1], bb[1]), max(box[2], bb[2]), max(box[3], bb[3]))
+        _group_box[g] = (box or (0, 0) + size, size)
+    return _group_box[g]
+
+
+def ace_sprite(img, w, h, crop=1.0, trim=True, keep_box=False):
     """Cut-out drawing -> Ace-Attorney-style bust: cropped head to waist, scaled with
     premultiplied supersampling so the edges follow the drawing's own line art (no extra
     outline or shadow); partly covered edge pixels are pulled toward the line colour."""
-    bb = img.getchannel("A").getbbox()
+    bb = None if keep_box else img.getchannel("A").getbbox()
     img = img.crop(bb) if bb else img
     img = img.crop((0, 0, img.width, max(1, int(img.height * crop))))
     max_w = int(img.height * w / h * 1.1)  # wide art (capes, props): trim the sides to keep the bust big
@@ -1403,7 +1435,7 @@ def ace_sprite(img, w, h, crop=1.0, trim=True):
     # bust about 1.2x the fitted size: the head stays near the top, the waist goes under the text box
     sc = min(w * 0.86 / img.width, h * 0.84 / img.height) * BUST_SCALE
     if not trim:
-        sc = min(sc, w / img.width)  # art kept whole never runs off the sides
+        sc = min(sc, (w - 2 * OUTLINE_PX - 1) / img.width)  # art kept whole never runs off the sides
     tw, th = max(1, round(img.width * sc)), max(1, round(img.height * sc))
     K = 4
     big = img.resize((tw * K, th * K), Image.LANCZOS)
@@ -1485,8 +1517,17 @@ def portrait_image(key):
             canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
             canvas.paste(framed(img.resize((CAPTURE_W, CAPTURE_H), Image.LANCZOS)), ((PORTRAIT_W - CAPTURE_W) // 2, 0))
             return canvas
-        keep = any(key == k or key.startswith(k + "_") for k in KEEP_SIDES)  # every expression of it too
-        return ace_sprite(img, PORTRAIT_W, PORTRAIT_H, trim=not keep)
+        # every expression (and blink) of a character is cut with the same box, so the figure keeps
+        # one size and position whatever the face does; the sides are never trimmed
+        box, size = portrait_group_box(key)
+        src = Image.open(USER_PORTRAITS[key]).convert("RGBA")
+        if src.size == size:
+            img = src.crop(box)
+            scale = min(1.0, PORTRAIT_W * 3 / img.width, PORTRAIT_H * 3 / img.height)
+            if scale < 1.0:
+                img = img.resize((max(1, int(img.width * scale)), max(1, int(img.height * scale))), Image.LANCZOS)
+            return ace_sprite(img, PORTRAIT_W, PORTRAIT_H, trim=False, keep_box=True)
+        return ace_sprite(img, PORTRAIT_W, PORTRAIT_H, trim=False)
     small = _procedural_portrait(key).resize((96, 120), Image.NEAREST)
     canvas = Image.new("RGBA", (PORTRAIT_W, PORTRAIT_H), (0, 0, 0, 0))
     canvas.paste(small, ((PORTRAIT_W - 96) // 2, 0))  # keep the face above the text box
