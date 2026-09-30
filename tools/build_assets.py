@@ -886,8 +886,8 @@ def build(story_path, font_path, out_dir):
     c.append(c_array("blink_rect", "u8", blink_rect or [0]))
     c.append("const u16 *const blink_img[] = {" + ",".join(blink_ptr or ["0"]) + "};")
     c.append("const u16 *const portrait_img[] = {" + ",".join(f"portrait_{k}" for k in portrait_keys) + ("" if portrait_keys else "0") + "};")
-    # idle breathing (test: Kindaichi only)
-    c.append(c_array("portrait_breathe", "u8", [1 if k == "kin" or k.startswith("kin_") else 0 for k in portrait_keys] or [0]))
+    # idle breathing: every character's bust rises and falls a little
+    c.append(c_array("portrait_breathe", "u8", [1 for k in portrait_keys] or [0]))
     inset_keys = sorted(comp.insets, key=comp.insets.get)
     for k in inset_keys:
         c.append(c_array(f"inset_{k}", "u16", art.render_inset(k), fmt="0x{:04X}"))
