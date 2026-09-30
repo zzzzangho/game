@@ -1601,8 +1601,24 @@ def render_inset(key):
     return to15(img, dither=False)
 
 
+def on_backdrop(img):
+    """Composite a cut-out onto the dark backdrop of its box (a soft top-lit gradient), so its
+    anti-aliased edges blend in instead of being cut hard against black in the game."""
+    img = img.convert("RGBA")
+    w, h = img.size
+    bg = Image.new("RGBA", (w, h))
+    px = bg.load()
+    for y in range(h):
+        for x in range(w):
+            t = y / max(1, h - 1)
+            dx = (x - w / 2) / (w / 2)
+            v = max(0.0, 1 - 0.35 * dx * dx)                  # a little lighter in the middle
+            px[x, y] = (int((26 - 16 * t) * v + 6), int((26 - 16 * t) * v + 6), int((52 - 30 * t) * v + 14), 255)
+    return Image.alpha_composite(bg, img)
+
+
 def render_thumb(key):
-    return to15(thumb_image(key), dither=False)
+    return to15(on_backdrop(thumb_image(key)), dither=False)
 
 
 def icon_image(key):
@@ -1631,7 +1647,7 @@ def icon_image(key):
 
 
 def render_icon(key):
-    return to15(icon_image(key), dither=False)
+    return to15(on_backdrop(icon_image(key)), dither=False)
 
 
 def write_previews(out):
