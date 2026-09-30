@@ -1982,7 +1982,7 @@ static void title_draw(int t, int menu, int has_save)
 {
     int blink = ((t - title_blink0) >> 2) & 1; /* on/off about every half second */
     title_fog_draw(t, -(t * 2 / 3), t / 3);
-    draw_disp(UI_TITLE_MAIN, SCREEN_W / 2, 6 + disp_height(UI_TITLE_MAIN) / 2);
+    draw_disp(UI_TITLE_MAIN, SCREEN_W / 2, 18 + disp_height(UI_TITLE_MAIN) / 2);
     if (menu < 0) {
         if (!blink) draw_disp(UI_PRESS_START, SCREEN_W / 2, 124);
     } else {
