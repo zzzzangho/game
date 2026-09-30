@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Import closed-eye versions of Kindaichi's expressions for the idle blink.
+"""Import a character's expressions with their closed-eye versions (for the idle blink).
 
-    python3 tools/import_blink.py <folder with pairs/<표정>/closed.png> [...more folders]
+    python3 tools/import_blink.py [--key kin|miyuki|...] <folder with pairs/<표정>/open.png, closed.png> [...]
 
-Each closed.png has the same canvas as its open.png (only the eyes differ), so it gets the
-same crop as the portrait and is saved as assets/portraits/<portrait>_blink.png (kept out of
-git like the other personal images). build_assets.py stores only the changed eye rectangle.
+Each pair shares one canvas (only the eyes differ). open.png becomes the expression portrait
+assets/portraits/<key>[_<expr>].png, closed.png becomes the same name + _blink; both get the
+crop of the open picture, so they line up. build_assets.py stores only the changed eye
+rectangle of the blink. The images stay out of git like the other personal pictures.
 """
 import glob
 import os
@@ -16,25 +17,32 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "assets", "portraits")
 
-EXPR = {"기본": "kin", "화남": "kin_serious", "놀람": "kin_surprised", "매우 놀람": "kin_shock",
-        "매우 화남": "kin_angry", "슬픔": "kin_sad", "긴장": "kin_tense", "장난": "kin_playful",
-        "즐거움": "kin_happy"}
+# expression folder name -> portrait suffix (기본 = the base portrait)
+EXPR = {"기본": "", "화남": "_serious", "놀람": "_surprised", "매우 놀람": "_shock", "매우 화남": "_angry",
+        "슬픔": "_sad", "긴장": "_tense", "장난": "_playful", "즐거움": "_happy"}
 
 
 def main():
-    for src in sys.argv[1:]:
+    args = sys.argv[1:]
+    key = "kin"
+    if "--key" in args:
+        i = args.index("--key")
+        key = args[i + 1]
+        del args[i:i + 2]
+    for src in args:
         for d in sorted(glob.glob(os.path.join(src, "pairs", "*"))):
             name = os.path.basename(d)
             if name not in EXPR:
                 print(f"skip {name} (unknown expression)")
                 continue
+            out = key + EXPR[name]
             opened = Image.open(os.path.join(d, "open.png")).convert("RGBA")
-            closed = Image.open(os.path.join(d, "closed.png")).convert("RGBA")
-            box = opened.getchannel("A").getbbox()   # crop both like the open portrait
-            img = closed.crop(box)
-            img.thumbnail((512, 640), Image.LANCZOS)
-            img.save(os.path.join(OUT, EXPR[name] + "_blink.png"))
-            print(f"{name} -> portraits/{EXPR[name]}_blink.png {img.size}")
+            box = opened.getchannel("A").getbbox()  # crop both like the open portrait
+            for fn, suffix in (("open.png", ""), ("closed.png", "_blink")):
+                img = Image.open(os.path.join(d, fn)).convert("RGBA").crop(box)
+                img.thumbnail((512, 640), Image.LANCZOS)
+                img.save(os.path.join(OUT, out + suffix + ".png"))
+            print(f"{name} -> portraits/{out}.png, {out}_blink.png {img.size}")
 
 
 if __name__ == "__main__":
