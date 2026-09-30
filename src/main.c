@@ -124,8 +124,15 @@ static inline void px(int x, int y, u16 c)
 
 static void fill(int x, int y, int w, int h, u16 c)
 {
-    for (int j = y; j < y + h; j++)
-        for (int i = x; i < x + w; i++) px(i, j, c);
+    if (x < 0) w += x, x = 0;
+    if (y < 0) h += y, y = 0;
+    if (x + w > SCREEN_W) w = SCREEN_W - x;
+    if (y + h > SCREEN_H) h = SCREEN_H - y;
+    if (w <= 0 || h <= 0) return;
+    for (int j = y; j < y + h; j++) {
+        u16 *p = fb + j * SCREEN_W + x;
+        for (int i = 0; i < w; i++) p[i] = c;
+    }
     mark(y, y + h);
 }
 
@@ -1179,6 +1186,12 @@ static void draw_tab(int x, int label, int active)
 
 /* present = 1: pick evidence to present (returns evidence id). Otherwise browse; returns -1.
  * The caller's screen is saved and restored here. */
+/* the notebook's striped backdrop over a rectangle */
+static void rec_bg(int x, int y, int w, int h)
+{
+    for (int j = y; j < y + h; j++) fill(x, j, w, 1, (j & 3) ? RGB(3, 3, 7) : RGB(4, 4, 9));
+}
+
 static int record(int present, int question)
 {
     u16 *saved_screen = scratch;
@@ -1190,9 +1203,9 @@ static int record(int present, int question)
     plat_copy32(saved_screen, fb, SCREEN_W * SCREEN_H / 2);
     plat_sfx(SFX_OK);
     if (present) tab = 0;
-    /* animation: the notebook opens from the middle, the highlight bar glides, the picture
-     * slides in and the description is uncovered left to right when the selection changes */
-    int open_t = 0, bar_y = -1, pic_dx = 24, wipe_x = 0;
+    /* animation: the notebook opens from the middle, the highlight bar glides and the picture
+     * slides in when the selection changes; only the moving parts are redrawn meanwhile */
+    int open_t = 0, bar_y = -1, pic_dx = 16, full = 1;
 
     for (int redraw = 1;;) {
         int n = collect(tab, list);
@@ -1201,8 +1214,8 @@ static int record(int present, int question)
         if (sel[tab] >= top + REC_ROWS) top = sel[tab] - REC_ROWS + 1;
 
         if (redraw) {
-            fill(0, 0, SCREEN_W, SCREEN_H, RGB(3, 3, 7));
-            for (int y = 0; y < SCREEN_H; y += 4) fill(0, y, SCREEN_W, 1, RGB(4, 4, 9));
+          if (full) {
+            rec_bg(0, 0, SCREEN_W, SCREEN_H);
             if (present) {
                 fill(0, 0, SCREEN_W, 19, C_RED);
                 draw_text(8, 3, question, C_WHITE);
@@ -1219,6 +1232,10 @@ static int record(int present, int question)
             draw_hint_right(hint, 146, 88);
             if (!present && in_game) draw_hint_right(UI_RECORD_SAVE, SCREEN_W - 6 - max_lives * 10, 6);
 
+          } else {
+            rec_bg(0, REC_LIST_Y, 164, REC_ROWS * 13);   /* the list */
+            rec_bg(164, 18, SCREEN_W - 164, REC_DESC_Y - 18); /* the picture */
+          }
             if (n == 0) {
                 draw_text(12, REC_LIST_Y + 4, UI_EMPTY, C_GREY);
             }
@@ -1248,7 +1265,7 @@ static int record(int present, int question)
                     fill(170, 24, ICON_SIZE, ICON_SIZE, RGB(1, 1, 3));
                     blit_keyed(170 + pic_dx, 24, ICON_SIZE, ICON_SIZE, icon_img + ev_icon[item] * ICON_SIZE * ICON_SIZE);
                     fill(170 + ICON_SIZE, 22, 2, ICON_SIZE + 4, edge);
-                    fill(172 + ICON_SIZE, 22, SCREEN_W - 172 - ICON_SIZE, ICON_SIZE + 4, RGB(3, 3, 7));
+                    rec_bg(172 + ICON_SIZE, 22, SCREEN_W - 172 - ICON_SIZE, ICON_SIZE + 4);
                     draw_text(8, REC_DESC_Y + 3, ev_desc[item], C_WHITE);
                 } else {
                     fill(168, 18, THUMB_W + 4, THUMB_H + 2, edge);
@@ -1256,33 +1273,29 @@ static int record(int present, int question)
                     if (char_portrait[item] != NONE)
                         blit_keyed(170 + pic_dx, 20, THUMB_W, THUMB_H, portrait_thumb[char_portrait[item]]);
                     fill(170 + THUMB_W, 18, 2, THUMB_H + 2, edge);
-                    fill(172 + THUMB_W, 18, SCREEN_W - 172 - THUMB_W, THUMB_H + 2, RGB(3, 3, 7));
+                    rec_bg(172 + THUMB_W, 18, SCREEN_W - 172 - THUMB_W, THUMB_H + 2);
                     draw_text(8, REC_DESC_Y + 3, prof_text[item], C_WHITE);
                 }
-                if (wipe_x < SCREEN_W) fill(wipe_x, REC_DESC_Y + 1, SCREEN_W - wipe_x, SCREEN_H - REC_DESC_Y - 1, C_BOX);
             }
             redraw = 0;
+            full = 0;
             /* step the animations; anything still moving redraws next frame */
-            if (open_t < 8) { /* opening: only a band around the middle shows the notebook yet */
-                int half = (open_t + 1) * SCREEN_H / 16;
+            if (open_t < 5) { /* opening: only a band around the middle shows the notebook yet */
+                int half = (open_t + 1) * SCREEN_H / 10;
                 for (int y = 0; y < SCREEN_H; y++)
                     if (y < SCREEN_H / 2 - half || y >= SCREEN_H / 2 + half)
                         plat_copy32(fb + y * SCREEN_W, saved_screen + y * SCREEN_W, SCREEN_W / 2);
                 mark(0, SCREEN_H);
                 open_t++;
-                redraw = 1;
+                redraw = full = 1;
             }
             if (bar_y != target_y) {
-                int d = (target_y - bar_y) / 2;
+                int d = (target_y - bar_y) * 2 / 3;
                 bar_y += d ? d : (target_y > bar_y ? 1 : -1);
                 redraw = 1;
             }
             if (pic_dx > 0) {
-                pic_dx = pic_dx * 5 / 8;
-                redraw = 1;
-            }
-            if (wipe_x < SCREEN_W) {
-                wipe_x += 30;
+                pic_dx = pic_dx / 2;
                 redraw = 1;
             }
         }
@@ -1308,14 +1321,14 @@ static int record(int present, int question)
                 if (sel[tab] < top) top = sel[tab];
                 if (sel[tab] >= top + REC_ROWS) top = sel[tab] - REC_ROWS + 1;
                 if (top != old_top) bar_y = -1; /* the list scrolled: the bar jumps */
-                pic_dx = 24, wipe_x = 0;
+                pic_dx = 16;
                 plat_sfx(SFX_MOVE);
                 redraw = 1;
             }
         } else if (!present && (keys_new & (KEY_L | KEY_R | KEY_LEFT | KEY_RIGHT))) {
             tab ^= 1;
             top = 0;
-            bar_y = -1, pic_dx = 24, wipe_x = 0;
+            bar_y = -1, pic_dx = 16, full = 1;
             plat_sfx(SFX_MOVE);
             redraw = 1;
         } else if (present && (keys_new & KEY_A) && n) {
@@ -1337,7 +1350,7 @@ static int record(int present, int question)
             break;
         } else if (!present && in_game && (keys_new & KEY_SELECT)) {
             save_prompt();
-            redraw = 1;
+            redraw = full = 1;
         }
     }
     plat_copy32(fb, saved_screen, SCREEN_W * SCREEN_H / 2);
