@@ -72,16 +72,10 @@ CUT_FRAMES = {
 }
 
 
-# Investigation boards (@examine): anime frames laid out as panels, each panel a place to click.
+# Panel boards: anime frames laid out as panels (the @examine views are made by tools/exam_scenes.py).
 # key -> [(frame, crop box in the 640x480 frame, panel (x, y, w, h) on the 240x160 screen, extra)]
 BOARD_GAP = 1
 BOARDS = {
-    "exam_cabin": [
-        ("p1/348", (0, 0, 540, 480), (0, 16, 150, 144), None),      # the rose carpet, rubber scraps in it
-        ("p3/159", (60, 20, 620, 350), (151, 16, 89, 47), None),     # the window
-        ("p3/151", (0, 190, 400, 455), (151, 64, 89, 47), None),    # the bed, roses up to its edge
-        ("p3/151", (0, 0, 300, 176), (151, 112, 89, 48), "vent"),   # ceiling corner: the vent
-    ],
 }
 
 

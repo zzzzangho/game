@@ -521,7 +521,11 @@ BUILTIN_SCENES["bridge_up"] = lambda: scene_image("drawbridge")
 BUILTIN_SCENES["yumi_tree"] = lambda: scene_image("yumi_room")
 BUILTIN_SCENES["cabin_door"] = lambda: scene_image("corridor")
 BUILTIN_SCENES["freight_petals"] = lambda: scene_image("freight_yard")
-BUILTIN_SCENES["exam_cabin"] = lambda: scene_image("cabin_empty")
+# investigation views (tools/exam_scenes.py) fall back to the plain location
+for _k, _base in (("exam_cabin", "cabin_empty"), ("exam_toilet", "train_toilet"), ("exam_corridor", "corridor"),
+                  ("exam_stage", "theater"), ("exam_catwalk", "catwalk"), ("exam_dress", "dressing_room"),
+                  ("exam_yumi", "yumi_room"), ("exam_below", "room_below")):
+    BUILTIN_SCENES[_k] = (lambda b=_base: scene_image(b))
 BUILTIN_SCENES["dining_show"] = lambda: scene_image("dining")
 BUILTIN_SCENES["cabin_reenact"] = lambda: art_scenes2.polish(art_hd.scene_cabin_roses(), seed=5)
 

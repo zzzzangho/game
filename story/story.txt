@@ -579,12 +579,12 @@
 
 *c1_room
 @scene exam_cabin
-@examine "객실의 어디를 살펴볼까?"
-@at 0 16 150 144 "바닥의 장미" c1r_roses
-@at 20 40 50 50 "장미 사이의 조각" c1r_rubber if=roses
-@at 151 16 89 47 "창문" c1r_window
-@at 151 64 89 47 "침대 밑" c1r_bed
-@at 151 112 89 48 "천장의 통풍구" c1r_vent
+@examine "어디를 살펴볼까?"
+@at 0 114 240 46 "바닥의 장미" c1r_roses
+@at 111 131 83 24 "장미 사이의 조각" c1r_rubber if=roses
+@at 36 35 48 43 "창문" c1r_window
+@at 0 84 36 56 "침대 밑" c1r_bed
+@at 33 15 49 20 "천장의 통풍구" c1r_vent
 @end
 @scene corridor
 @return
@@ -644,11 +644,11 @@
 @return
 
 *c1_toilet
-@scene train_toilet
-@menu - "화장실의 어디를 살펴볼까?"
-@opt "창문" c1w_window
-@opt "세면대" c1w_sink
-@opt "쓰레기통" c1w_trash
+@scene exam_toilet
+@examine "어디를 살펴볼까?"
+@at 15 5 113 109 "창문" c1w_window
+@at 145 35 85 106 "세면대" c1w_sink
+@at 32 108 36 52 "쓰레기통" c1w_trash
 @end
 @scene corridor
 @return
@@ -672,11 +672,13 @@
 @return
 
 *c1_corr
-@menu - "복도의 어디를 살펴볼까?"
-@opt "객실 문" c1c_door
-@opt "화재 경보기" c1c_alarm
-@opt "창밖" c1c_window
+@scene exam_corridor
+@examine "어디를 살펴볼까?"
+@at 18 55 59 105 "객실 문" c1c_door
+@at 78 65 19 25 "화재 경보기" c1c_alarm
+@at 157 51 83 109 "창밖" c1c_window
 @end
+@scene corridor
 @return
 
 *c1c_door
@@ -729,7 +731,8 @@
 @opt "타카토" c1t_takato
 @opt "유미" c1t_yumi
 @opt "사콘지" c1t_sakonji
-@opt "사쿠라바와 사토미" c1t_others if=joker
+@opt "사쿠라바" c1t_sakuraba if=joker
+@opt "사토미" c1t_satomi if=joker
 @end
 @return
 
@@ -944,13 +947,6 @@
 *c1t_sak_joker
 사콘지[playful]: 조커? 헤헤, 내 카드는 늘 세어 두거든. 한 장도 안 비는데?
 사콘지[playful]: 누가 날 범인으로 만들고 싶은가 보지. 인기가 많아서 곤란하다니까.
-@return
-
-*c1t_others
-@menu - "누구에게 물어볼까?"
-@opt "사쿠라바" c1t_sakuraba
-@opt "사토미" c1t_satomi
-@end
 @return
 
 *c1t_sakuraba
@@ -1223,12 +1219,13 @@
 @return
 
 *c2_stage
-@scene theater
-@menu - "무대의 어디를 살펴볼까?"
-@opt "유라마의 시체" c2s_body
-@opt "마리오네트의 의자" c2s_chair
-@opt "무대 바닥" c2s_floor
+@scene exam_stage
+@examine "어디를 살펴볼까?"
+@at 45 16 195 40 "유라마의 시체" c2s_body
+@at 124 56 94 84 "마리오네트의 의자" c2s_chair
+@at 0 140 240 20 "무대 바닥" c2s_floor
 @end
+@scene theater
 @return
 
 *c2s_body
@@ -1247,12 +1244,13 @@
 @return
 
 *c2_ceiling
-@scene catwalk
-@menu - "천장 무대장치의 어디를 살펴볼까?"
-@opt "도르래와 로프" c2c_rope
-@opt "천장 위의 마리오네트" c2c_doll
-@opt "낡은 나무판자" c2c_plank
+@scene exam_catwalk
+@examine "어디를 살펴볼까?"
+@at 158 1 37 159 "도르래와 로프" c2c_rope
+@at 193 80 34 76 "천장 위의 마리오네트" c2c_doll
+@at 10 96 112 42 "낡은 나무판자" c2c_plank
 @end
+@scene theater
 @return
 
 *c2c_rope
@@ -1288,12 +1286,13 @@
 @return
 
 *c2_dress
-@scene dressing_room
-@menu - "분장실의 어디를 살펴볼까?"
-@opt "무대로 가는 통로" c2d_route
-@opt "유라마의 화장대" c2d_desk
-@opt "옷걸이" c2d_hanger
+@scene exam_dress
+@examine "어디를 살펴볼까?"
+@at 202 7 38 68 "무대로 가는 통로" c2d_route
+@at 60 15 139 49 "유라마의 화장대" c2d_desk
+@at 0 26 45 68 "옷걸이" c2d_hanger
 @end
+@scene theater
 @return
 
 *c2d_route
@@ -2077,12 +2076,13 @@
 @return
 
 *c3_room
-@scene yumi_room
-@menu - "유미의 방에서 어디를 살펴볼까?"
-@opt "비취 장식대" c3r_jade
-@opt "창문" c3r_window
-@opt "화장대" c3r_desk
+@scene exam_yumi
+@examine "어디를 살펴볼까?"
+@at 135 67 64 23 "비취 장식대" c3r_jade
+@at 68 0 67 78 "창문" c3r_window
+@at 3 39 65 117 "화장대" c3r_desk
 @end
+@scene yumi_room
 @return
 
 *c3r_jade
@@ -2131,12 +2131,13 @@
 @return
 
 *c3_below
-@scene room_below
-@menu - "아래층 빈 방의 어디를 살펴볼까?"
-@opt "비취 장식대" c3b_jade
-@opt "창문" c3b_window
-@opt "침대" c3b_bed
+@scene exam_below
+@examine "어디를 살펴볼까?"
+@at 158 65 77 52 "비취 장식대" c3b_jade
+@at 150 0 90 63 "창문" c3b_window
+@at 104 117 136 43 "침대" c3b_bed
 @end
+@scene yumi_room
 @return
 
 *c3b_jade

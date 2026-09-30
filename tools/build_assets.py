@@ -70,7 +70,6 @@ UI_STRINGS = [
     ("UI_GOT", "증거물 입수!"),
     ("UI_MEET", "인물 파일 추가!"),
     ("UI_PROFILE_UPDATED", "인물 파일 갱신!"),
-    ("UI_UPDATED", "갱신!"),
     ("UI_INVEST_Q", "어디를 조사할까?"),
     ("UI_INVEST_DONE", "조사를 마친다"),
     ("UI_BACK", "돌아간다"),

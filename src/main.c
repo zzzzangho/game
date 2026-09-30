@@ -707,19 +707,20 @@ static void meet(int c, int title)
 {
     prof_flags |= 1u << c;
     if (char_portrait[c] == NONE) return;
-    /* a small card in the middle: the face, the name under it (plus "갱신!" for an update) */
-    int name = char_name[c], upd = title == UI_PROFILE_UPDATED;
-    int tw = text_width(name, 1), uw = upd ? text_width(UI_UPDATED, 1) + 4 : 0;
-    int w = (tw + uw > THUMB_W ? tw + uw : THUMB_W) + 16, h = THUMB_H + 29;
+    /* a small card in the middle: "인물 파일 추가!/갱신!" on top, the face, the name under it */
+    int name = char_name[c];
+    int tw = text_width(name, 1), hw = text_width(title, 1);
+    int w = (tw > THUMB_W ? tw : THUMB_W), h = THUMB_H + 43;
+    if (hw > w) w = hw;
+    w += 16;
     int x = (SCREEN_W - w) / 2, y = (SCREEN_H - h) / 2;
     save_screen();
     plat_sfx(SFX_GET);
     popup_window(x, y, w, h);
-    fill(SCREEN_W / 2 - THUMB_W / 2, y + 8, THUMB_W, THUMB_H, RGB(1, 1, 3));
-    blit_keyed(SCREEN_W / 2 - THUMB_W / 2, y + 8, THUMB_W, THUMB_H, portrait_thumb[char_portrait[c]]);
-    int nx = SCREEN_W / 2 - (tw + uw) / 2;
-    draw_text(nx, y + THUMB_H + 11, name, C_WHITE);
-    if (upd) draw_text(nx + tw + 4, y + THUMB_H + 11, UI_UPDATED, C_GOLD);
+    draw_text(SCREEN_W / 2 - hw / 2, y + 5, title, C_GOLD);
+    fill(SCREEN_W / 2 - THUMB_W / 2, y + 22, THUMB_W, THUMB_H, RGB(1, 1, 3));
+    blit_keyed(SCREEN_W / 2 - THUMB_W / 2, y + 22, THUMB_W, THUMB_H, portrait_thumb[char_portrait[c]]);
+    draw_text(SCREEN_W / 2 - tw / 2, y + THUMB_H + 25, name, C_WHITE);
     plat_debug_event("get", 0);
     wait_a(10);
     plat_sfx(SFX_OK);
@@ -1530,10 +1531,10 @@ static int menu_mem_slot(int id, int create)
 static int option_menu(int id, int spk, int q, int exit_text, u64 need, int n, const u16 *opts)
 {
     for (;;) {
-        u16 texts[8], idx[8];
+        u16 texts[12], idx[12];
         u32 grey = 0, traps = 0;
         int m = 0;
-        for (int i = 0; i < n && m < 7; i++) {
+        for (int i = 0; i < n && m < 11; i++) {
             const u16 *o = opts + i * 4;
             if (!cond_true(o[2])) continue;
             if (flag_get(o[3] & 0x7FFF)) grey |= 1u << m;
@@ -1629,7 +1630,8 @@ static int examine(int id, int q, int n, const u16 *opts)
                     draw_text(6, 1, o[0], flag_get(o[3] & 0x3FFF) ? C_GREY : C_WHITE);
                 } else {
                     draw_text(6, 1, q, C_GOLD);
-                    draw_hint_right(UI_EXAMINE_HINT, SCREEN_W - 6, 3);
+                    if (6 + text_width(q, 1) + 8 < SCREEN_W - 6 - disp_width(UI_EXAMINE_HINT) / 2)
+                        draw_hint_right(UI_EXAMINE_HINT, SCREEN_W - 6, 3);
                 }
                 draw_magnifier(ex_x, ex_y, h >= 0 ? C_GOLD : C_WHITE);
                 hover = h;
