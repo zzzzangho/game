@@ -1348,6 +1348,8 @@ def _procedural_portrait(key):
     return outline(img)
 
 
+OUTLINE_PX = 1.5             # dark outline round the characters so they stand out from the scene
+OUTLINE_RGB = (22, 14, 28)
 KEEP_SIDES = {"sakuraba_stage"}  # wide art shown whole (the arms reach the picture's edges)
 
 
@@ -1366,6 +1368,17 @@ def ace_sprite(img, w, h, crop=1.0, trim=True):
     tw, th = max(1, round(img.width * sc)), max(1, round(img.height * sc))
     K = 4
     big = img.resize((tw * K, th * K), Image.LANCZOS)
+    ow = OUTLINE_PX
+    if ow:  # a dark outline all round (not along the bottom), drawn at 4x so its edge stays soft
+        pad = round(ow * K)
+        padded = Image.new("RGBA", (big.width + 2 * pad, big.height + pad), (0, 0, 0, 0))
+        padded.paste(big, (pad, pad))
+        ring = padded.getchannel("A").filter(ImageFilter.MaxFilter(2 * pad + 1))
+        line = Image.new("RGBA", padded.size, OUTLINE_RGB + (0,))
+        line.putalpha(ring)
+        big = Image.alpha_composite(line, padded)
+        tw, th = big.width // K, big.height // K
+        big = big.crop((0, 0, tw * K, th * K))
     a = big.getchannel("A")
     pm = Image.composite(big.convert("RGB"), Image.new("RGB", big.size, (0, 0, 0)), a).resize((tw, th), Image.BOX)
     cov = a.resize((tw, th), Image.BOX)
