@@ -544,6 +544,8 @@ BUILTIN_CUTS = {
     "cut_fire": art_hd.card_final,
     "cut_burst": lambda: scene_image("freight_yard"),
     "cut_petals": lambda: scene_image("freight_yard"),
+    "cut_akechi_feet": lambda: scene_image("freight_yard"),
+    "cut_akechi": lambda: scene_image("freight_yard"),
 }
 BUILTIN_SCENES.update(BUILTIN_CUTS)
 

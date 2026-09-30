@@ -63,6 +63,8 @@ CUTS = os.path.join(HERE, "..", "assets", "cuts")
 CUT_FRAMES = {
     "cut_burst": ("p1/288", C32),         # the fake bomb bursts on the train roof
     "cut_petals": ("p1/292", C32),        # red rose petals raining from the sky
+    "cut_akechi_feet": ("p1/259", C32),   # Akechi's shoes crunching over the gravel
+    "cut_akechi": ("p1/278", C32),        # Akechi's face, smiling, the sky behind
 }
 
 

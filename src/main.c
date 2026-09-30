@@ -791,6 +791,12 @@ static void do_fx(int kind)
         restore_screen();
         frame();
         break;
+    case FX_DUN: /* a dramatic entrance: "du-dun!" like the chapter eyecatch */
+        plat_sfx(SFX_DUN);
+        wait_frames(7);
+        plat_sfx(SFX_DUN);
+        wait_frames(10);
+        break;
     case FX_BOOM: /* the explosion on the train roof: blinding flash, then a long rumble */
         plat_sfx(SFX_SHOCK);
         flash(C_WHITE, 4);
