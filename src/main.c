@@ -1070,8 +1070,8 @@ static int choose(int spk, int q, const u16 *texts, int n, u32 greyed, int extra
     int total = n + (extra != NONE);
     int sel = choose_start < total ? choose_start : 0, w = 120;
     choose_start = 0;
-    /* six or more options (the talk menus) are laid out in two columns */
-    int cols = total > 5 ? 2 : 1, rows = (total + cols - 1) / cols, colw = 0;
+    /* up to six options fit in one column above the text box; more (the talk menus) take two */
+    int cols = total > 6 ? 2 : 1, rows = (total + cols - 1) / cols, colw = 0;
     for (int i = 0; i < total; i++) {
         int tw = text_width(i < n ? texts[i] : extra, 1) + 26;
         if (tw > colw) colw = tw;
