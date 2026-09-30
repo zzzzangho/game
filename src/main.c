@@ -345,11 +345,16 @@ static void draw_heart(int x, int y, u16 c)
     mark(y, y + 9);
 }
 
+/* Hearts are shown only while a mistake can cost one (deductions, presenting, cross-examinations,
+ * the court record) and when one is lost. heart_y drops them below a title bar. */
+static int hearts_shown, hearts_depth, heart_y = 3;
+static int run_depth; /* script call depth: 1 = the main script, deeper = a called label */
+
 static void draw_hearts(void)
 {
-    if (!in_game || !max_lives) return;
+    if (!in_game || !max_lives || !hearts_shown) return;
     for (int i = 0; i < max_lives; i++)
-        draw_heart(SCREEN_W - 4 - (max_lives - i) * 10, 3, i < lives ? C_RED : RGB(8, 6, 8));
+        draw_heart(SCREEN_W - 4 - (max_lives - i) * 10, heart_y, i < lives ? C_RED : RGB(8, 6, 8));
 }
 
 /* ---- looping background animation (snow, the view past the train windows) ----
@@ -831,12 +836,15 @@ static int lose_life(void)
 {
     plat_sfx(SFX_WRONG);
     if (lives > 0) lives--;
+    if (!hearts_shown) hearts_depth = run_depth; /* hidden again after this part of the script */
+    hearts_shown = 1;
     save_screen();
     for (int i = 0; i < 3; i++) shade(0, 0, SCREEN_W, SCREEN_H, RGB(20, 0, 0));
     draw_disp(UI_WRONG, SCREEN_W / 2, 72);
+    draw_hearts();
     for (int i = 0; i < 24; i++) {
         /* blink the heart that was lost */
-        draw_heart(SCREEN_W - 4 - (max_lives - lives) * 10, 3, (i & 4) ? C_RED : RGB(8, 6, 8));
+        draw_heart(SCREEN_W - 4 - (max_lives - lives) * 10, heart_y, (i & 4) ? C_RED : RGB(8, 6, 8));
         plat_offset((i & 1) ? 3 : -3, 0);
         frame();
     }
@@ -1125,7 +1133,10 @@ static int record(int present, int question)
                 fill(0, 18, SCREEN_W, 1, C_BORDER);
                 draw_tab(6, UI_TAB_EVIDENCE, tab == 0);
                 draw_tab(6 + text_width(UI_TAB_EVIDENCE, 1) + 18, UI_TAB_PROFILE, tab == 1);
+                int shown = hearts_shown;
+                hearts_shown = 1; /* the notebook always shows how many are left */
                 draw_hearts();
+                hearts_shown = shown;
             }
             int hint = present ? UI_PRESENT_HINT : UI_RECORD_HINT;
             draw_hint_right(hint, 146, 88);
@@ -1230,7 +1241,6 @@ typedef struct {
 /* where a save made right now resumes: the top-level statement being executed (a dialogue line,
  * or the investigation / menu / deduction that the player is inside) */
 static u16 cur_chapter = NONE, cur_place = NONE;
-static int run_depth;
 
 static u32 save_sum(const SaveData *s)
 {
@@ -1606,7 +1616,9 @@ static int testimony(int spk, int title, int n, const u16 *stmts, int wrong)
             fill(0, 0, SCREEN_W, 19, RGB(2, 10, 4));
             fill(0, 19, SCREEN_W, 1, RGB(10, 31, 12));
             draw_text(8, 3, title, RGB(16, 31, 16));
+            heart_y = 23; /* under the title bar */
             draw_hearts();
+            heart_y = 3;
             draw_box(spk);
             draw_text(TEXT_X, TEXT_Y, st[0], RGB(20, 31, 20));
             draw_hint_right(UI_TESTI_HINT, SCREEN_W - 6, 149);
@@ -1704,6 +1716,14 @@ static int run_inner(u16 pc)
         u16 op_pc = pc;
         if (run_depth == 1) top_pc = op_pc;
         u16 op = S[pc++];
+        int risky = op == OP_ASK || op == OP_PRESENT || op == OP_PRESENT_CHOICE || op == OP_ACCUSE ||
+                    op == OP_TESTIMONY || op == OP_VIDEO || op == OP_MASH;
+        if (risky) {
+            if (!hearts_shown || run_depth < hearts_depth) hearts_depth = run_depth;
+            hearts_shown = 1;
+        } else if (hearts_shown && run_depth <= hearts_depth) {
+            hearts_shown = 0; /* the risky part is over (its wrong-answer talks run deeper) */
+        }
         switch (op) {
         case OP_SAY: {
             int spk = S[pc], t = S[pc + 1], por = S[pc + 2];
