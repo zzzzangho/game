@@ -308,12 +308,17 @@ class Compiler:
         if name not in self.chars:
             self.err(f"undeclared speaker {name!r} (use @char)")
         ch = self.chars[name]
-        if not expr or ch["pkey"] is None:
+        if ch["pkey"] is None:
             return ch["idx"], ch["portrait"]
-        key = f"{ch['pkey']}_{expr.strip()}"
+        base = ch["pkey"] + (f"_{ch['outfit']}" if ch.get("outfit") else "")
+        if base not in art.PORTRAITS:
+            base = ch["pkey"]
+        if not expr:
+            return ch["idx"], self.portrait(base)
+        key = f"{base}_{expr.strip()}"
         if key not in art.PORTRAITS:
             self.missing_expr.add(key)
-            return ch["idx"], ch["portrait"]
+            return ch["idx"], self.portrait(base)
         return ch["idx"], self.portrait(key)
 
     def ev(self, eid):
@@ -446,6 +451,11 @@ class Compiler:
             self.chars[name] = dict(idx=len(self.chars), portrait=NONE if a[1] == "-" else self.portrait(a[1]),
                                     pkey=None if a[1] == "-" else a[1], color=art.rgb15(a[2]), profile=None)
             self.char_order.append(name)
+        elif cmd == "outfit":  # @outfit NAME SUFFIX|-: portraits <key>_SUFFIX[_표정] from here on (file order)
+            self.need_args(a, 2, "@outfit NAME SUFFIX|-")
+            if a[0] not in self.chars:
+                self.err(f"undeclared speaker {a[0]!r}")
+            self.chars[a[0]]["outfit"] = None if a[1] == "-" else a[1]
         elif cmd == "profile":
             self.need_args(a, 2, "@profile NAME \"description\"")
             if a[0] not in self.chars:
