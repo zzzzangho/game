@@ -144,6 +144,8 @@ int plat_debug_choice(int kind, int n)
         c = video_pos < video_len ? video_route[video_pos++] : n;
         printf("video -> %d\n", c);
         return c;
+    case DBG_SHOW: /* showing evidence to someone is optional: the tests always put it away */
+        return n;
     case DBG_PRESENT:
         c = next_route("present");
         if (c == 9999) {

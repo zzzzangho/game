@@ -35,8 +35,8 @@ LIST_W = 150          # court record list width
 OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PRESENT=9,
            ACCUSE=10, GOTO=11, ENDING=12, LIVES=13, GAMEOVER=14, MEET=15, WAIT=16, SHOUT=17,
            PROFILE=18, MENU=19, SET=20, IF=21, PENALTY=22, BANNER=23, VIDEO=24, TIMER=25, MASH=26,
-           TESTIMONY=27, PRESENT_CHOICE=28, PLACE=29, INTRO=30, INSET=31, EXAMINE=32)
-BLOCKS = ("investigate", "ask", "accuse", "choice", "menu", "video", "testimony", "examine")
+           TESTIMONY=27, PRESENT_CHOICE=28, PLACE=29, INTRO=30, INSET=31, EXAMINE=32, SHOW=33)
+BLOCKS = ("investigate", "ask", "accuse", "choice", "menu", "video", "testimony", "examine", "show")
 MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
 FX = dict(flash=0, shock=1, shake=2, red=3, boom=4, dun=5)
@@ -66,6 +66,7 @@ UI_STRINGS = [
     ("UI_SLOT_EMPTY", "비어 있음"),
     ("UI_SLOT_SEP", " · "),
     ("UI_PRESENT_HINT", "A: 제시하기"),
+    ("UI_SHOW_HINT", "A: 보여 준다  B: 그만둔다"),
     ("UI_EMPTY", "아직 아무것도 없다."),
     ("UI_GOT", "증거물 입수!"),
     ("UI_MEET", "인물 파일 추가!"),
@@ -643,6 +644,25 @@ class Compiler:
             for sc, tc, cap, _ in items:
                 self.emit(sc, tc, cap)
             return None
+        if kind == "show":  # @show SPEAKER "question" DEFAULT_LABEL / @ev EVIDENCE LABEL ... / @end
+            if cmd == "ev":
+                self.need_args(a, 2, "@ev EVIDENCE LABEL")
+                items.append((self.ev(a[0]), a[1], self.lineno))
+                return block
+            if cmd != "end":
+                self.err("only @ev / @end inside @show")
+            self.need_args(head, 3, "@show SPEAKER \"question\" DEFAULT_LABEL")
+            if self.font.width(head[1]) > HEADER_W:
+                self.err("show question must fit on one line in the court record header")
+            self.emit(OPS["SHOW"], self.speaker(head[0]), self.text(head[1]))
+            self.label_ref(head[2])
+            self.emit(len(items))
+            for ev, lbl, lineno in items:
+                self.emit(ev)
+                saved, self.lineno = self.lineno, lineno
+                self.label_ref(lbl)
+                self.lineno = saved
+            return None
         if kind == "examine":
             if cmd == "at":
                 self.need_args(a, 6, "@at X Y W H \"name\" LABEL [if=[!]FLAG] [trap] [end]")
@@ -771,7 +791,7 @@ def build(story_path, font_path, out_dir):
                     UI_TRUE_END="end_label", UI_GOOD_END="end_label", UI_BEST_END="end_label",
                     UI_NORMAL_END="end_label", UI_WRONG="banner",
                     # small key hints in Galmuri9
-                    UI_RECORD_HINT="hint", UI_RECORD_SAVE="hint", UI_PRESENT_HINT="hint", UI_VIDEO_HINT="hint",
+                    UI_RECORD_HINT="hint", UI_RECORD_SAVE="hint", UI_PRESENT_HINT="hint", UI_SHOW_HINT="hint", UI_VIDEO_HINT="hint",
                     UI_TESTI_HINT="hint", UI_PRESS_A="hint", UI_TITLE_FAN="hint", UI_SAVED="hint",
                     UI_EXAMINE_HINT="hint")
     for k, tid in ui_ids:

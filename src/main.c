@@ -1250,7 +1250,7 @@ static int record(int present, int question)
                 draw_hearts();
                 hearts_shown = shown;
             }
-            int hint = present ? UI_PRESENT_HINT : UI_RECORD_HINT;
+            int hint = present == 2 ? UI_SHOW_HINT : present ? UI_PRESENT_HINT : UI_RECORD_HINT;
             draw_hint_right(hint, 146, 88);
             if (!present && in_game) draw_hint_right(UI_RECORD_SAVE, SCREEN_W - 6 - max_lives * 10, 6);
 
@@ -1316,7 +1316,7 @@ static int record(int present, int question)
 
         plat_debug_event("record", tab);
         if (present) {
-            int d = plat_debug_choice(DBG_PRESENT, EVIDENCE_COUNT);
+            int d = plat_debug_choice(present == 2 ? DBG_SHOW : DBG_PRESENT, EVIDENCE_COUNT);
             if (d >= 0) {
                 /* only evidence in the record can be presented; anything else stands for "the wrong item" */
                 result = d < EVIDENCE_COUNT && (ev_flags & EV_BIT(d)) ? d : NONE;
@@ -1356,6 +1356,10 @@ static int record(int present, int question)
                            icon_img + ev_icon[result] * ICON_SIZE * ICON_SIZE);
                 frame();
             }
+            break;
+        } else if (present == 2 && (keys_new & KEY_B)) { /* showing is optional */
+            plat_sfx(SFX_CANCEL);
+            result = NONE;
             break;
         } else if (!present && (keys_new & (KEY_B | KEY_START))) {
             plat_sfx(SFX_CANCEL);
@@ -2097,6 +2101,21 @@ static int run_inner(u16 pc)
             pc += 5 + n * 4;
             banner(0);
             if (option_menu(op_pc, NONE, UI_INVEST_Q, UI_INVEST_DONE, need, n, opts) == RET_TITLE) return RET_TITLE;
+            break;
+        }
+        case OP_SHOW: { /* show a piece of evidence to someone: their reaction, or a shrug */
+            int spk = S[pc], q = S[pc + 1], def = S[pc + 2], n = S[pc + 3];
+            const u16 *items = &S[pc + 4];
+            pc += 4 + n * 2;
+            set_speaker_portrait(spk);
+            say(spk, q, cur_portrait);
+            int chosen = record(2, q);
+            if (chosen != NONE && chosen >= 0) {
+                int lbl = def;
+                for (int i = 0; i < n; i++)
+                    if (items[i * 2] == chosen) lbl = items[i * 2 + 1];
+                if (run(lbl) == RET_TITLE) return RET_TITLE;
+            }
             break;
         }
         case OP_EXAMINE: {
