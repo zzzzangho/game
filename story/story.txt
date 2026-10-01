@@ -734,9 +734,9 @@
 *c1_toilet
 @scene exam_toilet
 @examine "어디를 살펴볼까?"
-@at 15 5 113 109 "창문" c1w_window
-@at 145 35 85 106 "세면대" c1w_sink
-@at 32 108 36 52 "쓰레기통" c1w_trash
+@at 46 10 64 54 "창문" c1w_window
+@at 140 22 83 114 "세면대" c1w_sink
+@at 32 86 35 55 "쓰레기통" c1w_trash
 @end
 @scene corridor
 @return
