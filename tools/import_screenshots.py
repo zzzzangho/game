@@ -88,8 +88,9 @@ CUTS = {
     "cut_balloons": ("p1/332", S(20)),    # Saki's video: the hand held up by balloons
     "cut_mario": ("p2/027", S(20)),       # the masked guest checking out
     "cut_body": ("p1/407", S(20)),        # Yamagami hanging from strings like a twisted marionette
-    "cut_marionette": ("p2/188", S(20)),  # the living marionette dancing
-    "cut_yurama": ("p3/062", S(20)),      # Yurama on the marionette chair
+    "cut_satomi": ("p2/144", S(20)),      # Satomi as the living marionette, hanging from strings
+    "cut_marionette": ("p2/152", S(20)),  # the living marionette dancing
+    "cut_yurama": ("p2/188", S(20)),      # Yurama on the marionette chair under the red light
     "cut_fog": ("p1/392", S(20)),         # a figure walking in the fog
     "cut_sinking": ("p2/366", S(20)),     # Kindaichi sinking in the swamp
     "cut_jade": ("p4/013", S(20)),        # the heavy jade stone
