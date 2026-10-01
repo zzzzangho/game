@@ -237,6 +237,7 @@
 야마가미[happy]: 자, 그럼 여러분. 저희 환상 마술단이 준비한 신나는 마술 쇼 여행을 함께 떠나 보실까요?
 야마가미[happy]: 감사합니다.
 단장은 손끝에서 작은 불꽃을 피워 올리며 인사를 마치고, 객차 뒤로 모습을 감췄다.
+@scene dining_show_empty quick
 유미가 물이 든 유리병 속 반지를 순식간에 꺼내 보이자, 박수가 터졌다.
 유미[happy]: …….
 @intro 유미 "수중 마술의 인어 공주" "머메이드 유미"
@@ -326,7 +327,7 @@
 펑!
 @cut cut_salad_blast
 켄모치[shock]: 으아아악! 뭐야! 펑 하는 소린! 폭탄 아냐!
-@scene dining_show
+@scene dining_show_empty
 미유키[shock]: 장미 샐러드가 폭발했어…!
 @get phone
 @get rosesalad

@@ -532,6 +532,7 @@ for _k, _base in (("exam_cabin", "cabin_empty"), ("exam_toilet", "train_toilet")
                   ("exam_yumi", "yumi_room"), ("exam_below", "room_below")):
     BUILTIN_SCENES[_k] = (lambda b=_base: scene_image(b))
 BUILTIN_SCENES["dining_show"] = lambda: scene_image("dining")
+BUILTIN_SCENES["dining_show_empty"] = lambda: scene_image("dining_show")
 BUILTIN_SCENES["cabin_reenact"] = lambda: art_scenes2.polish(art_hd.scene_cabin_roses(), seed=5)
 
 # Anime captures shown with @cut at key moments (assets/cuts/cut_*.png, made by tools/import_screenshots.py).
