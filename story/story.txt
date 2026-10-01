@@ -856,6 +856,12 @@
 
 # ---------------- 대화
 *c1_talk
+@if joker c1_talk_menu
+@if c1_talk_hint c1_talk_menu
+김전일[serious]: (마술단 사람들 얘기도 들어 봐야 하는데… 아직 뭘 물어봐야 할지 감이 안 와.)
+김전일[serious]: (객실 5호를 좀 더 꼼꼼히 살펴보자. 뭔가 놓친 게 있을지도 몰라.)
+@set c1_talk_hint
+*c1_talk_menu
 @menu - "누구와 이야기할까?"
 @opt "미유키" c1t_miyuki
 @opt "사키" c1t_saki
@@ -864,8 +870,8 @@
 @opt "타카토" c1t_takato
 @opt "유미" c1t_yumi
 @opt "사콘지" c1t_sakonji
-@opt "사쿠라바" c1t_sakuraba
-@opt "사토미" c1t_satomi
+@opt "사쿠라바" c1t_sakuraba if=joker
+@opt "사토미" c1t_satomi if=joker
 @end
 @return
 
