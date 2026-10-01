@@ -1896,9 +1896,14 @@ static int testimony(int spk, int title, int n, const u16 *stmts, int wrong)
 {
     int cur = 0;
     for (int redraw = 1;;) {
-        const u16 *st = stmts + cur * 3;
+        const u16 *st = stmts + cur * 4;
         if (redraw) {
             set_speaker_portrait(spk);
+            if (st[3] != NONE && st[3] != cur_portrait) { /* this statement's expression */
+                cur_portrait = st[3];
+                breath_t = blink_shut = 0, blink_wait = 90;
+                breath_lift = portrait_breathe[cur_portrait] ? -2 : 0;
+            }
             draw_scene();
             fill(0, 0, SCREEN_W, 19, RGB(2, 10, 4));
             fill(0, 19, SCREEN_W, 1, RGB(10, 31, 12));
@@ -1918,13 +1923,24 @@ static int testimony(int spk, int title, int n, const u16 *stmts, int wrong)
         int press = -1, present = 0;
         if (d >= 1000) {
             cur = (d - 1000) / 100 % n;
-            st = stmts + cur * 3;
+            st = stmts + cur * 4;
             present = 1;
         } else if (d >= 0) {
             cur = d % n;
-            st = stmts + cur * 3;
+            st = stmts + cur * 4;
             press = cur;
         } else {
+            int lift = breath_lift;
+            breathe_tick(); /* the witness keeps breathing and blinking while you read */
+            blink_tick();
+            if (lift != breath_lift) { /* the breath redrew the top of the screen: put the title back */
+                fill(0, 0, SCREEN_W, 19, RGB(2, 10, 4));
+                fill(0, 19, SCREEN_W, 1, RGB(10, 31, 12));
+                draw_text(8, 3, title, RGB(16, 31, 16));
+                heart_y = 23;
+                draw_hearts();
+                heart_y = 3;
+            }
             frame();
             if (keys_new & KEY_RIGHT) {
                 cur = (cur + 1) % n;
@@ -2177,7 +2193,7 @@ static int run_inner(u16 pc)
         case OP_TESTIMONY: {
             int spk = S[pc], title = S[pc + 1], n = S[pc + 2], wrong = S[pc + 3];
             const u16 *stmts = &S[pc + 4];
-            pc += 4 + n * 3;
+            pc += 4 + n * 4;
             int r = testimony(spk, title, n, stmts, wrong);
             if (r == RET_TITLE) return RET_TITLE;
             if (r == 2) pc = gameover_pc;

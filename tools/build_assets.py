@@ -609,10 +609,14 @@ class Compiler:
     def block_cmd(self, block, cmd, a):
         kind, head, items, need = block
         if kind == "testimony":
-            if cmd == "stmt":
-                self.need_args(a, 2, "@stmt \"statement\" PRESS_LABEL [CONTRADICTING_EVIDENCE]")
+            if cmd == "stmt":  # @stmt "statement" PRESS_LABEL [CONTRADICTING_EVIDENCE] [face=표정]
+                self.need_args(a, 2, "@stmt \"statement\" PRESS_LABEL [CONTRADICTING_EVIDENCE] [face=EXPR]")
+                face = [x[5:] for x in a[2:] if x.startswith("face=")]
+                rest = [x for x in a[2:] if not x.startswith("face=")]
+                spk = head[0].split("[")[0]
+                por = self.speaker_portrait(f"{spk}[{face[0]}]" if face else head[0])[1]
                 items.append((self.wrapped(a[0], TEXT_W, 2, "testimony statement"), a[1],
-                              self.ev(a[2]) if len(a) > 2 else NONE, self.lineno))
+                              self.ev(rest[0]) if rest else NONE, self.lineno, por))
                 return block
             if cmd != "end":
                 self.err("only @stmt / @end inside @testimony")
@@ -623,12 +627,12 @@ class Compiler:
                 self.err("testimony title must fit on one line")
             self.emit(OPS["TESTIMONY"], self.speaker(head[0]), self.text(head[1]), len(items))
             self.label_ref(head[2])
-            for tid, lbl, ev, lineno in items:
+            for tid, lbl, ev, lineno, por in items:
                 self.emit(tid)
                 saved, self.lineno = self.lineno, lineno
                 self.label_ref(lbl)
                 self.lineno = saved
-                self.emit(ev)
+                self.emit(ev, por)
             return None
         if kind == "video":
             if cmd == "frame":
