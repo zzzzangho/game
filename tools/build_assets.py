@@ -39,7 +39,7 @@ OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PR
 BLOCKS = ("investigate", "ask", "accuse", "choice", "menu", "video", "testimony", "examine", "show")
 MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
-FX = dict(flash=0, shock=1, shake=2, red=3, boom=4, dun=5)
+FX = dict(flash=0, shock=1, shake=2, red=3, boom=4, dun=5, horror=6)
 NL = 0xFFFE
 EMPH_ON, EMPH_OFF = 0xFFFD, 0xFFFC  # {강조} markup in the script
 END = 0xFFFF

@@ -849,6 +849,30 @@ static void do_fx(int kind)
         restore_screen();
         frame();
         break;
+    case FX_HORROR: /* a body is found: blackout and heartbeat, then the picture strobes in red */
+        save_screen();
+        fill(0, 0, SCREEN_W, SCREEN_H, 0);
+        frame();
+        plat_sfx(SFX_DUN);
+        wait_frames(10);
+        plat_sfx(SFX_DUN);
+        wait_frames(16);
+        for (int k = 0; k < 4; k++) {
+            restore_screen();
+            if (k & 1) for (int i = 0; i < 3; i++) shade(0, 0, SCREEN_W, SCREEN_H, RGB(28, 0, 2));
+            plat_sfx(SFX_SHOCK);
+            shake(5 + k * 2, 10 - k * 2);
+            fill(0, 0, SCREEN_W, SCREEN_H, k == 2 ? C_WHITE : 0);
+            wait_frames(2);
+        }
+        restore_screen();
+        for (int i = 0; i < 2; i++) shade(0, 0, SCREEN_W, SCREEN_H, RGB(28, 0, 2));
+        plat_sfx(SFX_SHOCK);
+        shake(40, 7);
+        wait_frames(24);
+        restore_screen();
+        frame();
+        break;
     case FX_DUN: /* a dramatic entrance: "du-dun!" like the chapter eyecatch */
         plat_sfx(SFX_DUN);
         wait_frames(7);
