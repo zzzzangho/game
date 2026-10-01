@@ -180,7 +180,11 @@ def wrap(font, text, width):
     out = []
     for para in text.split("\n"):
         line = ""
-        for word in para.split(" "):
+        words = para.split(" ")
+        for i in range(len(words) - 1, 0, -1):  # "2, 3분" stays together (no break inside a number range)
+            if re.search(r"\d,$", words[i - 1]) and re.match(r"\d", words[i]):
+                words[i - 1:i + 1] = [words[i - 1] + "\u00a0" + words[i]]
+        for word in words:
             cand = word if not line else line + " " + word
             if font.width(cand) <= width:
                 line = cand
@@ -204,7 +208,7 @@ def wrap(font, text, width):
             if ch in "{}":
                 open_ = ch == "{"
         res.append(pre + ln + ("}" if open_ else ""))
-    return [ln.replace("{}", "") for ln in res]
+    return [ln.replace("{}", "").replace("\u00a0", " ") for ln in res]
 
 
 def wrap_balanced(font, text, width):
@@ -877,8 +881,6 @@ def build(story_path, font_path, out_dir):
     name_font = Font(os.path.join(os.path.dirname(font_path), "Galmuri9.bdf"))
     for n in comp.char_order:  # name tags use the small Galmuri9
         comp.disp(comp.text_index[n], "name")
-    for e in comp.evidence.values():  # ...and so do the evidence / profile popups
-        comp.disp(e["name"], "name")
     for k in ("UI_GOT", "UI_MEET", "UI_PROFILE_UPDATED"):
         comp.disp(dict(ui_ids)[k], "name_gold")
     for tid, style in sorted(comp.display.items()):
