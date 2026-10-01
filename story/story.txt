@@ -779,9 +779,9 @@
 *c1_corr
 @scene exam_corridor
 @examine "어디를 살펴볼까?"
-@at 18 55 59 105 "객실 문" c1c_door
-@at 78 65 19 25 "화재 경보기" c1c_alarm
-@at 157 51 83 109 "창밖" c1c_window
+@at 0 40 50 120 "객실 문" c1c_door
+@at 50 26 15 30 "화재 경보기" c1c_alarm
+@at 156 38 84 122 "창밖" c1c_window
 @end
 @scene corridor
 @return
