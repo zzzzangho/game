@@ -716,18 +716,18 @@ static void meet(int c, int title)
     if (char_portrait[c] == NONE) return;
     /* a small card in the middle: "인물 파일 추가!/갱신!" on top, the face, the name under it */
     int name = char_name[c];
-    int tw = text_width(name, 1), hw = text_width(title, 1);
-    int w = (tw > THUMB_W ? tw : THUMB_W), h = THUMB_H + 43;
+    int tw = disp_width(name), hw = disp_width(title);
+    int w = (tw > THUMB_W ? tw : THUMB_W), h = THUMB_H + 34;
     if (hw > w) w = hw;
     w += 16;
     int x = (SCREEN_W - w) / 2, y = (SCREEN_H - h) / 2;
     save_screen();
     plat_sfx(SFX_GET);
     popup_window(x, y, w, h);
-    draw_text(SCREEN_W / 2 - hw / 2, y + 5, title, C_GOLD);
-    fill(SCREEN_W / 2 - THUMB_W / 2, y + 22, THUMB_W, THUMB_H, RGB(1, 1, 3));
-    blit_keyed(SCREEN_W / 2 - THUMB_W / 2, y + 22, THUMB_W, THUMB_H, portrait_thumb[char_portrait[c]]);
-    draw_text(SCREEN_W / 2 - tw / 2, y + THUMB_H + 25, name, C_WHITE);
+    draw_disp(title, SCREEN_W / 2, y + 10); /* small Galmuri9, like the name tags */
+    fill(SCREEN_W / 2 - THUMB_W / 2, y + 18, THUMB_W, THUMB_H, RGB(1, 1, 3));
+    blit_keyed(SCREEN_W / 2 - THUMB_W / 2, y + 18, THUMB_W, THUMB_H, portrait_thumb[char_portrait[c]]);
+    draw_disp(name, SCREEN_W / 2, y + THUMB_H + 26);
     plat_debug_event("get", 0);
     wait_a(10);
     plat_sfx(SFX_OK);
@@ -799,8 +799,8 @@ static void got_item(int title, int name, const u16 *img, int w, int h)
     popup_window(10, wy, 220, wh);
     fill(18, wy + 8, w, h, RGB(1, 1, 3));
     blit_keyed(18, wy + 8, w, h, img);
-    draw_text(92, wy + 14, title, C_GOLD);
-    draw_text(92, wy + 34, name, C_WHITE);
+    draw_disp(title, 92 + disp_width(title) / 2, wy + 22); /* small Galmuri9 */
+    draw_disp(name, 92 + disp_width(name) / 2, wy + 40);
     plat_debug_event("get", 0);
     wait_a(10);
     plat_sfx(SFX_OK);

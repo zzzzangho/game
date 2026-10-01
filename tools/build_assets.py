@@ -877,9 +877,15 @@ def build(story_path, font_path, out_dir):
     name_font = Font(os.path.join(os.path.dirname(font_path), "Galmuri9.bdf"))
     for n in comp.char_order:  # name tags use the small Galmuri9
         comp.disp(comp.text_index[n], "name")
+    for e in comp.evidence.values():  # ...and so do the evidence / profile popups
+        comp.disp(e["name"], "name")
+    for k in ("UI_GOT", "UI_MEET", "UI_PROFILE_UPDATED"):
+        comp.disp(dict(ui_ids)[k], "name_gold")
     for tid, style in sorted(comp.display.items()):
         if style == "name":
             im = render_bdf(name_font, comp.texts[tid])
+        elif style == "name_gold":
+            im = render_bdf(name_font, comp.texts[tid], colour=(248, 208, 96))
         elif style == "logo_img":
             im = logo.render()
         elif style == "hint":
