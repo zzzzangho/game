@@ -87,7 +87,36 @@ CUTS = {
     "cut_roses": ("p1/335", S(20)),       # Yamagami among the roses
     "cut_balloons": ("p1/332", S(20)),    # Saki's video: the hand held up by balloons
     "cut_mario": ("p2/027", S(20)),       # the masked guest checking out
-    "cut_body": ("p1/407", S(20)),        # Yamagami hanging from strings like a twisted marionette
+    "cut_body": ("p1/407", S(20)),        # Yamagami hanging from strings (the shipped image is the user-supplied capture)
+    "cut_vase": ("p2/109", S(20)),      # Yumi smashes the vase
+    "cut_fall": ("p2/120", S(20)),      # Kindaichi trips on the drawbridge
+    "cut_lever": ("p2/126", S(20)),     # the broken switch lever in Kindaichi's hand
+    "cut_psychic": ("p2/130", S(20)),   # Sakuraba raises a drum by telekinesis
+    "cut_drum": ("p2/131", S(20)),      # the drum floats over Sakuraba's head
+    "cut_drumsticks": ("p2/132", S(20)), # the drumsticks beat by themselves
+    "cut_cuffs": ("p2/133", S(20)),     # Yumi handcuffed under water
+    "cut_tank": ("p2/134", S(20)),      # the mermaid locked in the water tank
+    "cut_cloth": ("p2/135", S(20)),     # the tank under a black cloth
+    "cut_empty": ("p2/136", S(20)),     # the empty tank
+    "cut_dress": ("p2/137", S(20)),     # Yumi appears on the tank in a blue dress
+    "cut_crowd": ("p2/138", S(20)),     # the cheering audience
+    "cut_wink": ("p2/140", S(20)),      # Satomi winks at the audience
+    "cut_filming": ("p2/141", S(20)),   # Saki filming, Kindaichi blushing
+    "cut_glare": ("p2/142", S(20)),     # Miyuki glares at Kindaichi
+    "cut_curtain": ("p2/129", S(20)),  # the curtain rises on the stage
+    "cut_satomi_stage": ("p2/139", S(20)),  # Satomi alone on the stage
+    "cut_mari_face": ("p2/145", S(20)),  # the marionette's painted face
+    "cut_mari_scissors": ("p2/149", S(20)),  # the marionette raises the scissors
+    "cut_mari_snip": ("p2/150", S(20)),  # the strings snipped
+    "cut_mari_fall": ("p2/151", S(20)),  # the marionette collapses
+    "cut_audience": ("p2/154", S(20)),  # Saki, Kindaichi and Miyuki watching
+    "cut_bike": ("p2/158", S(20)),  # the marionette rides a bicycle
+    "cut_tumble": ("p2/161", S(20)),  # the marionette tumbles about
+    "cut_mari_worry": ("p2/162", S(20)),  # the marionette, worried
+    "cut_mari_look": ("p2/165", S(20)),  # the marionette looks up
+    "cut_mari_tired": ("p2/170", S(20)),  # the marionette back on its strings
+    "cut_lights": ("p2/175", S(20)),  # the stage lights
+    "cut_flash_petals": ("p2/180", S(20)),  # rose petals in the flash
     "cut_satomi": ("p2/144", S(20)),      # Satomi as the living marionette, hanging from strings
     "cut_marionette": ("p2/152", S(20)),  # the living marionette dancing
     "cut_yurama": ("p2/188", S(20)),      # Yurama on the marionette chair under the red light
