@@ -533,6 +533,10 @@ for _k, _base in (("exam_cabin", "cabin_empty"), ("exam_toilet", "train_toilet")
     BUILTIN_SCENES[_k] = (lambda b=_base: scene_image(b))
 BUILTIN_SCENES["dining_show"] = lambda: scene_image("dining")
 BUILTIN_SCENES["dining_show_empty"] = lambda: scene_image("dining_show")
+# Yamagami fading out of the dining car (shown one after another, then dining_show_empty)
+for _k in range(1, 6):
+    BUILTIN_SCENES[f"dining_show_fade{_k}"] = (lambda t=_k / 6: Image.blend(
+        scene_image("dining_show").convert("RGB"), scene_image("dining_show_empty").convert("RGB"), t))
 BUILTIN_SCENES["cabin_reenact"] = lambda: art_scenes2.polish(art_hd.scene_cabin_roses(), seed=5)
 
 # Anime captures shown with @cut at key moments (assets/cuts/cut_*.png, made by tools/import_screenshots.py).
