@@ -875,7 +875,7 @@ def build(story_path, font_path, out_dir):
     h += ["extern const u16 script[];", "extern const u16 text_data[];", "extern const u32 text_ofs[];",
           "extern const u16 glyph_bits[];", "extern const u8 glyph_adv[];",
           "extern const u16 anim_data[];", "extern const u32 anim_ofs[];", "extern const u8 anim_count[];",
-          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u8 portrait_breathe[];", "extern const u8 blink_rect[];", "extern const u16 mark_rgb[];", "extern const u8 mark_alpha[];", "extern const u16 mark_tab[];", "extern const u8 mark_first[];", "extern const u16 *const inset_img[];", "extern const u16 *const blink_img[];", "extern const u16 *const portrait_thumb[];",
+          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u8 portrait_breathe[];", "extern const u8 blink_rect[];", "extern const u8 eye_pos[];", "extern const u16 mark_rgb[];", "extern const u8 mark_alpha[];", "extern const u16 mark_tab[];", "extern const u8 mark_first[];", "extern const u16 *const inset_img[];", "extern const u16 *const blink_img[];", "extern const u16 *const portrait_thumb[];",
           "extern const u16 icon_img[];",
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
           "extern const u16 char_profile[];",
@@ -956,7 +956,7 @@ def build(story_path, font_path, out_dir):
     c.append(c_array("anim_data", "u16", anim_data, fmt="0x{:04X}"))
     c.append(c_array("anim_ofs", "u32", anim_ofs or [0]))
     c.append(c_array("anim_count", "u8", anim_n or [0]))
-    blink_rect, blink_ptr = [], []
+    blink_rect, blink_ptr, eye_pos = [], [], []
     for k in portrait_keys:
         pix = art.render_portrait(k)
         c.append(c_array(f"portrait_{k}", "u16", pix, fmt="0x{:04X}"))
@@ -964,6 +964,7 @@ def build(story_path, font_path, out_dir):
         shut = art.render_portrait(k + "_blink") if k + "_blink" in art.USER_PORTRAITS else None
         diff = [i for i in range(len(pix)) if shut and shut[i] != pix[i]]
         if not diff:
+            eye_pos += [0, 0, 0]
             blink_rect += [0, 0, 0, 0]
             blink_ptr.append("0")
             continue
@@ -971,10 +972,22 @@ def build(story_path, font_path, out_dir):
         ys = [i // W for i in diff]
         xs = [i % W for i in diff]
         x0, y0, x1, y1 = min(xs), min(ys), max(xs) + 1, max(ys) + 1
+        # the eyes themselves: the row that changes most when they close, and the centre of each eye
+        # on that line (the rectangle can be taller and wider than the eyes)
+        rows = {}
+        for y in ys:
+            rows[y] = rows.get(y, 0) + 1
+        eye_y = max(rows, key=rows.get)
+        near = [x for x, y in zip(xs, ys) if abs(y - eye_y) <= 3]
+        mid = (x0 + x1) // 2
+        lx = [x for x in near if x < mid] or [x0]
+        rx = [x for x in near if x >= mid] or [x1]
+        eye_pos += [sum(lx) // len(lx), sum(rx) // len(rx), eye_y]
         blink_rect += [x0, y0, x1 - x0, y1 - y0]
         c.append(c_array(f"blink_{k}", "u16", [shut[y * W + x] for y in range(y0, y1) for x in range(x0, x1)], fmt="0x{:04X}"))
         blink_ptr.append(f"blink_{k}")
     c.append(c_array("blink_rect", "u8", blink_rect or [0]))
+    c.append(c_array("eye_pos", "u8", eye_pos or [0]))
     # manga marks (tools/marks.py): frames of colour + 0..16 alpha, blended over the face
     import marks
     m_rgb, m_a, m_tab, m_first = [], [], [], []

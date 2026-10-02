@@ -507,11 +507,14 @@ static void mark_draw(int y0, int y1)
     int ex = PORTRAIT_X + portrait_dx + r[0], ey = PORTRAIT_Y + r[1] - breath_lift, ew = r[2], eh = r[3];
     int t = mark_t, m = cur_mark, k;
     switch (m) {
-    case MARK_BLUSH: /* both cheeks glow, a little stronger now and then */
+    case MARK_BLUSH: { /* both cheeks glow, a little stronger now and then: under each eye */
+        const u8 *e = eye_pos + cur_portrait * 3;
+        int ox = PORTRAIT_X + portrait_dx, cy = PORTRAIT_Y + e[2] - breath_lift + 14;
         k = (t / 24) & 1;
-        mark_blit(m, k, ex + ew * 16 / 100 - mark_w(m, k) / 2, ey + eh + 1, y0, y1);
-        mark_blit(m, k, ex + ew * 84 / 100 - mark_w(m, k) / 2, ey + eh + 1, y0, y1);
+        mark_blit(m, k, ox + e[0] - 2 - mark_w(m, k) / 2, cy - mark_h(m, k) / 2, y0, y1);
+        mark_blit(m, k, ox + e[1] + 2 - mark_w(m, k) / 2, cy - mark_h(m, k) / 2, y0, y1);
         break;
+    }
     case MARK_SWEAT: /* the drop slides down by the temple, then appears again */
         mark_blit(m, 0, ex + ew + 4, ey - 18 + (t / 4) % 14, y0, y1);
         break;
