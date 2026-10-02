@@ -875,7 +875,7 @@ def build(story_path, font_path, out_dir):
     h += ["extern const u16 script[];", "extern const u16 text_data[];", "extern const u32 text_ofs[];",
           "extern const u16 glyph_bits[];", "extern const u8 glyph_adv[];",
           "extern const u16 anim_data[];", "extern const u32 anim_ofs[];", "extern const u8 anim_count[];",
-          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u8 portrait_breathe[];", "extern const u8 blink_rect[];", "extern const u16 *const inset_img[];", "extern const u16 *const blink_img[];", "extern const u16 *const portrait_thumb[];",
+          "extern const u16 *const scene_img[];", "extern const u16 *const portrait_img[];", "extern const u8 portrait_breathe[];", "extern const u8 blink_rect[];", "extern const u16 mark_rgb[];", "extern const u8 mark_alpha[];", "extern const u16 mark_tab[];", "extern const u8 mark_first[];", "extern const u16 *const inset_img[];", "extern const u16 *const blink_img[];", "extern const u16 *const portrait_thumb[];",
           "extern const u16 icon_img[];",
           "extern const u16 char_name[];", "extern const u16 char_portrait[];", "extern const u16 char_color[];",
           "extern const u16 char_profile[];",
@@ -975,6 +975,24 @@ def build(story_path, font_path, out_dir):
         c.append(c_array(f"blink_{k}", "u16", [shut[y * W + x] for y in range(y0, y1) for x in range(x0, x1)], fmt="0x{:04X}"))
         blink_ptr.append(f"blink_{k}")
     c.append(c_array("blink_rect", "u8", blink_rect or [0]))
+    # manga marks (tools/marks.py): frames of colour + 0..16 alpha, blended over the face
+    import marks
+    m_rgb, m_a, m_tab, m_first = [], [], [], []
+    for name, frames in marks.build():
+        m_first.append(len(m_tab) // 3)
+        for fr in frames:
+            fr = fr.convert("RGBA")
+            m_tab += [fr.width, fr.height, len(m_rgb)]
+            px = fr.tobytes()
+            for i in range(0, len(px), 4):
+                r, g, b, a = px[i:i + 4]
+                m_rgb.append((r >> 3) | (g >> 3) << 5 | (b >> 3) << 10)
+                m_a.append((a * 16 + 127) // 255)
+    m_first.append(len(m_tab) // 3)
+    c.append(c_array("mark_rgb", "u16", m_rgb, fmt="0x{:04X}"))
+    c.append(c_array("mark_alpha", "u8", m_a))
+    c.append(c_array("mark_tab", "u16", m_tab))
+    c.append(c_array("mark_first", "u8", m_first))
     c.append("const u16 *const blink_img[] = {" + ",".join(blink_ptr or ["0"]) + "};")
     c.append("const u16 *const portrait_img[] = {" + ",".join(f"portrait_{k}" for k in portrait_keys) + ("" if portrait_keys else "0") + "};")
     # idle breathing: every character's bust rises and falls a little

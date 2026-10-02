@@ -1703,6 +1703,7 @@
 김전일[shock]: 뭐라고?
 @scene theater
 @fx flash
+@scene theater_dark quick
 그 순간, 공연장의 조명이 모두 꺼졌다.
 켄모치[surprised]: 어떻게 된 거야?
 김전일[serious]: 지옥의 인형술사예요…! 녀석이…!

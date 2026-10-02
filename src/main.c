@@ -457,24 +457,44 @@ FAST static void blit_portrait_rows(int y0, int y1);
 /* ---- manga marks drawn over the face, anchored on the eye rectangle of the portrait */
 enum { MARK_NONE, MARK_BLUSH, MARK_SWEAT, MARK_GLOOM, MARK_ANGER, MARK_TEAR };
 
-static inline void mark_px(int x, int y, int y0, int y1, u16 c, int blend)
-{
-    if (y < y0 || y >= y1 || (unsigned)x >= SCREEN_W || (unsigned)y >= SCREEN_H) return;
-    u16 *d = &fb[y * SCREEN_W + x];
-    *d = blend ? (u16)(((*d >> 1) & 0x3DEF) + ((c >> 1) & 0x3DEF)) : c;
-}
-
 /* The rows a mark may touch, in screen coordinates (0 if the portrait has no eye rectangle). */
 static int mark_rows(int *y0, int *y1)
 {
     if (cur_mark == MARK_NONE || cur_portrait == NONE || cut_mode) return 0;
     const u8 *r = blink_rect + cur_portrait * 4;
     if (!r[2]) return 0;
-    int top = PORTRAIT_Y + r[1] - breath_lift - 34, bot = PORTRAIT_Y + r[1] + r[3] - breath_lift + 30;
+    int top = PORTRAIT_Y + r[1] - breath_lift - 46, bot = PORTRAIT_Y + r[1] + r[3] - breath_lift + 26;
     *y0 = top < 0 ? 0 : top;
     *y1 = bot > BOX_Y - 14 ? BOX_Y - 14 : bot;
     return *y1 > *y0;
 }
+
+/* Blends frame `k` of mark `m` (tools/marks.py) with its top-left at (x, y), rows y0..y1 only. */
+static void mark_blit(int m, int k, int x, int y, int y0, int y1)
+{
+    const u16 *t = mark_tab + (mark_first[m - 1] + k) * 3;
+    int w = t[0], h = t[1];
+    const u16 *c = mark_rgb + t[2];
+    const u8 *al = mark_alpha + t[2];
+    for (int j = 0; j < h; j++) {
+        int sy = y + j;
+        if (sy < y0 || sy >= y1 || (unsigned)sy >= SCREEN_H) continue;
+        for (int i = 0; i < w; i++) {
+            int a = al[j * w + i], sx = x + i;
+            if (!a || (unsigned)sx >= SCREEN_W) continue;
+            u16 *d = &fb[sy * SCREEN_W + sx], s = c[j * w + i];
+            if (a >= 16) { *d = s; continue; }
+            int dr = *d & 31, dg = (*d >> 5) & 31, db = (*d >> 10) & 31;
+            dr += (((s & 31) - dr) * a) >> 4;
+            dg += ((((s >> 5) & 31) - dg) * a) >> 4;
+            db += ((((s >> 10) & 31) - db) * a) >> 4;
+            *d = (u16)(dr | dg << 5 | db << 10);
+        }
+    }
+}
+
+static int mark_w(int m, int k) { return mark_tab[(mark_first[m - 1] + k) * 3]; }
+static int mark_h(int m, int k) { return mark_tab[(mark_first[m - 1] + k) * 3 + 1]; }
 
 static void mark_draw(int y0, int y1)
 {
@@ -485,72 +505,30 @@ static void mark_draw(int y0, int y1)
     if (y1 <= y0) return;
     const u8 *r = blink_rect + cur_portrait * 4;
     int ex = PORTRAIT_X + portrait_dx + r[0], ey = PORTRAIT_Y + r[1] - breath_lift, ew = r[2], eh = r[3];
-    int t = mark_t;
-    switch (cur_mark) {
-    case MARK_BLUSH: { /* pink cheeks with hatching; they glow a little brighter now and then */
-        int strong = (t / 20) & 1;
-        for (int side = 0; side < 2; side++) {
-            int cx = side ? ex + ew - ew / 6 : ex + ew / 6, cy = ey + eh + 5;
-            for (int dy = -3; dy <= 3; dy++)
-                for (int dx = -8; dx <= 8; dx++)
-                    if (dx * dx * 9 + dy * dy * 64 <= 576 + strong * 160) mark_px(cx + dx, cy + dy, y0, y1, RGB(31, 12, 14), 1);
-            for (int k = -1; k <= 1; k++)
-                for (int s = 0; s < 4; s++) mark_px(cx + k * 4 + 2 - s, cy - 2 + s, y0, y1, strong ? RGB(31, 6, 10) : RGB(28, 8, 12), 0);
-        }
+    int t = mark_t, m = cur_mark, k;
+    switch (m) {
+    case MARK_BLUSH: /* both cheeks glow, a little stronger now and then */
+        k = (t / 24) & 1;
+        mark_blit(m, k, ex + ew * 16 / 100 - mark_w(m, k) / 2, ey + eh + 1, y0, y1);
+        mark_blit(m, k, ex + ew * 84 / 100 - mark_w(m, k) / 2, ey + eh + 1, y0, y1);
         break;
-    }
-    case MARK_SWEAT: { /* a drop slides down beside the face, then starts again */
-        static const u8 wid[14] = {1, 1, 2, 2, 3, 4, 5, 6, 7, 7, 7, 6, 5, 3};
-        int x = ex + ew + 8, y = ey - 18 + (t / 3) % 16;
-        for (int dy = 0; dy < 14; dy++) {
-            int h = wid[dy] / 2 + (wid[dy] & 1);
-            for (int dx = -h - 1; dx <= h; dx++) {
-                int edge = dx == -h - 1 || dx == h || dy == 13;
-                u16 c = edge ? RGB(4, 12, 24) : (dx == -h && dy >= 6 && dy <= 10) ? RGB(31, 31, 31) : RGB(18, 26, 31);
-                mark_px(x + dx, y + dy, y0, y1, c, 0);
-            }
-        }
+    case MARK_SWEAT: /* the drop slides down by the temple, then appears again */
+        mark_blit(m, 0, ex + ew + 4, ey - 18 + (t / 4) % 14, y0, y1);
         break;
-    }
-    case MARK_GLOOM: { /* the forehead darkens and blue lines hang down over it */
-        for (int y = ey - 30; y < ey + 2; y++)
-            for (int x = ex - 4; x < ex + ew + 4; x++)
-                if (((x ^ y) & 1) == 0) mark_px(x, y, y0, y1, RGB(4, 3, 14), 1);
-        for (int k = 0; k <= 5; k++) {
-            int x = ex - 2 + k * (ew + 4) / 5, len = 18 + ((k * 7) % 3) * 5;
-            for (int y = ey - 30; y < ey - 30 + len; y++)
-                if (((y + t / 2) % 7) < 5) {
-                    mark_px(x, y, y0, y1, RGB(10, 8, 26), 0);
-                    mark_px(x + 1, y, y0, y1, RGB(6, 4, 18), 0);
-                }
-        }
+    case MARK_GLOOM: /* the lines hanging over the forehead creep down */
+        k = (t / 8) & 3;
+        mark_blit(m, k, ex + ew / 2 - mark_w(m, k) / 2, ey - mark_h(m, k) + 4, y0, y1);
         break;
-    }
-    case MARK_ANGER: { /* the throbbing vein mark at the temple */
-        int big = (t / 10) & 1, s = big ? 8 : 6, cx = ex + ew + 8, cy = ey - 18;
-        for (int q = 0; q < 4; q++) {
-            int sx = (q & 1) ? 1 : -1, sy = (q & 2) ? 1 : -1;
-            for (int i = 1; i <= s; i++) {
-                for (int w = 0; w < 3; w++) {
-                    mark_px(cx + sx * (1 + w), cy + sy * i, y0, y1, RGB(29, 2, 4), 0);
-                    mark_px(cx + sx * i, cy + sy * (1 + w), y0, y1, RGB(29, 2, 4), 0);
-                }
-            }
-        }
+    case MARK_ANGER: /* the vein mark throbs */
+        k = (t / 10) & 1;
+        mark_blit(m, k, ex + ew + 8 - mark_w(m, k) / 2, ey - 16 - mark_h(m, k) / 2, y0, y1);
         break;
-    }
-    case MARK_TEAR: { /* tears well up under the eyes and run down */
-        for (int side = 0; side < 2; side++) {
-            int x = side ? ex + ew - ew / 5 : ex + ew / 5, y = ey + eh;
-            int len = 2 + (t / 4) % 12;
-            for (int k = 0; k < len; k++) {
-                mark_px(x, y + k, y0, y1, RGB(20, 28, 31), 0);
-                mark_px(x + 1, y + k, y0, y1, RGB(12, 22, 31), 0);
-            }
-            mark_px(x, y + len, y0, y1, RGB(31, 31, 31), 0);
-        }
+    case MARK_TEAR: /* the lids shimmer, tears run down, rest, and run again */
+        k = (t / 6) % 14;
+        if (k > 5) k = 5;
+        mark_blit(m, k, ex + ew * 16 / 100 - mark_w(m, k) + 3, ey + eh - 4, y0, y1);
+        mark_blit(m, k + 6, ex + ew * 84 / 100 - 3, ey + eh - 4, y0, y1);
         break;
-    }
     }
 }
 
