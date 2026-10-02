@@ -509,7 +509,7 @@ BUILTIN_SCENES = {
     "cabin_roses_hand": scene_cabin_roses_hand,
     "cabin_smoke": lambda: art_hd.smoke_over(scene_image("cut_roses")),
     # white smoke pouring from the ceiling vent and filling compartment 5 (shown one after another)
-    **{f"cabin_smoke{k}": (lambda st=st: smoke_wisps(scene_image("cabin_balloons"), st))
+    **{f"cabin_smoke{k}": (lambda st=st: smoke_rise(scene_image("cabin_balloons"), st))
        for k, st in enumerate((0.08, 0.18, 0.3, 0.45, 0.65, 1.0), 1)},
     **art_hd.CARDS,
     **art_hd.LOCATIONS,
@@ -544,6 +544,7 @@ BUILTIN_SCENES["cabin_reenact"] = lambda: art_scenes2.polish(art_hd.scene_cabin_
 BUILTIN_CUTS = {
     "cut_parcel": art_hd.scene_police,
     "cut_roses": art_hd.scene_cabin_roses,
+    "cut_roses_hand": art_hd.scene_cabin_roses,
     "cut_balloons": scene_cabin_roses_hand,
     "cut_mario": art_hd.scene_hotel,
     "cut_body": art_hd.card_prologue,

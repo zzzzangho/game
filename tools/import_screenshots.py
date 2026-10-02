@@ -84,7 +84,7 @@ def S(y0):  # full-width 3:2 scene box starting at y0
 # Captures shown with @cut at key moments of the story (the regular backgrounds are drawn art).
 CUTS = {
     "cut_parcel": ("p1/076", S(20)),      # the parcel opened at police HQ
-    "cut_roses": ("p1/335", S(20)),       # Yamagami among the roses
+    "cut_roses_hand": ("p1/335", S(20)),  # Yamagami's hand among the roses (cut_roses itself is the user's roses-only picture)
     "cut_balloons": ("p1/332", S(20)),    # Saki's video: the hand held up by balloons
     "cut_mario": ("p2/027", S(20)),       # the masked guest checking out
     "cut_body": ("p1/407", S(20)),        # Yamagami hanging from strings (the shipped image is the user-supplied capture)

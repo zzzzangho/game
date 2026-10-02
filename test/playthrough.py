@@ -47,7 +47,7 @@ def load_ids():
     return ids
 
 
-def run(exe, route, ids, title=0, sram=None, shots=None, video="3", traps=False, mash="win", slot=0, save_at=None,
+def run(exe, route, ids, title=0, sram=None, shots=None, video="2", traps=False, mash="win", slot=0, save_at=None,
         chsave=0):
     env = dict(os.environ)
     env["SLOT"] = str(slot)
@@ -135,7 +135,7 @@ def main():
                          out[-500:] + err))
 
     # stopping on the wrong video frames first costs nothing
-    code, out, err = run(args.exe, CH1 + CH2 + CH3 + FINAL_TRUE, ids, video="0,5,3")
+    code, out, err = run(args.exe, CH1 + CH2 + CH3 + FINAL_TRUE, ids, video="0,4,2")
     results.append(check("wrong video frames, then the right one", code == 0 and "EVENT true_end" in out,
                          out[-500:] + err))
 
