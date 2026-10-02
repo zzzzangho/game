@@ -139,7 +139,6 @@ CUTS = {
     "cut_rocket": ("p1/291", S(20)),  # something shoots into the sky
     "cut_lobby_bag": ("p1/378", S(20)),  # a big bundle tied with straps in the hotel lobby
     "cut_bag_slip": ("p1/379", S(20)),  # the train-delivery slip on the bundle
-    "cut_key": ("p1/385", S(20)),  # the room key thrown on the front desk
     "cut_mario_bag": ("p1/390", S(20)),  # the masked guest's bundle in the fog
     "cut_mario_fog2": ("p1/391", S(20)),  # the masked guest walks off into the fog
     "cut_run_up": ("p3/301", S(20)),  # running up the hotel stairs

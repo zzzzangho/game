@@ -39,7 +39,7 @@ OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PR
 BLOCKS = ("investigate", "ask", "accuse", "choice", "menu", "video", "testimony", "examine", "show")
 MAX_FLAGS = 1024
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
-FX = dict(flash=0, shock=1, shake=2, red=3, boom=4, dun=5, horror=6)
+FX = dict(flash=0, shock=1, shake=2, red=3, boom=4, dun=5, horror=6, crash=7)
 NL = 0xFFFE
 EMPH_ON, EMPH_OFF = 0xFFFD, 0xFFFC  # {강조} markup in the script
 END = 0xFFFF
@@ -67,6 +67,7 @@ UI_STRINGS = [
     ("UI_SLOT_SEP", " · "),
     ("UI_PRESENT_HINT", "A: 제시하기"),
     ("UI_SHOW_HINT", "A: 보여 준다  B: 그만둔다"),
+    ("UI_PRESENT_BACK_HINT", "A: 제시하기  B: 돌아간다"),
     ("UI_EMPTY", "아직 아무것도 없다."),
     ("UI_GOT", "증거물 입수!"),
     ("UI_MEET", "인물 파일 추가!"),
@@ -799,7 +800,7 @@ def build(story_path, font_path, out_dir):
                     UI_TRUE_END="end_label", UI_GOOD_END="end_label", UI_BEST_END="end_label",
                     UI_NORMAL_END="end_label", UI_WRONG="banner",
                     # small key hints in Galmuri9
-                    UI_RECORD_HINT="hint", UI_RECORD_SAVE="hint", UI_PRESENT_HINT="hint", UI_SHOW_HINT="hint", UI_VIDEO_HINT="hint",
+                    UI_RECORD_HINT="hint", UI_RECORD_SAVE="hint", UI_PRESENT_HINT="hint", UI_PRESENT_BACK_HINT="hint", UI_SHOW_HINT="hint", UI_VIDEO_HINT="hint",
                     UI_TESTI_HINT="hint", UI_PRESS_A="hint", UI_TITLE_FAN="hint", UI_SAVED="hint",
                     UI_EXAMINE_HINT="hint")
     for k, tid in ui_ids:

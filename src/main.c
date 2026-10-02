@@ -849,6 +849,11 @@ static void do_fx(int kind)
         restore_screen();
         frame();
         break;
+    case FX_CRASH: /* something breaks: a bang, a white flash and a hard jolt */
+        plat_sfx(SFX_SHOCK);
+        flash(C_WHITE, 2);
+        shake(30, 7);
+        break;
     case FX_HORROR: /* a body is found: blackout and heartbeat, then the picture strobes in red */
         save_screen();
         fill(0, 0, SCREEN_W, SCREEN_H, 0);
@@ -1274,7 +1279,7 @@ static int record(int present, int question)
                 draw_hearts();
                 hearts_shown = shown;
             }
-            int hint = present == 2 ? UI_SHOW_HINT : present ? UI_PRESENT_HINT : UI_RECORD_HINT;
+            int hint = present == 2 ? UI_SHOW_HINT : present == 3 ? UI_PRESENT_BACK_HINT : present ? UI_PRESENT_HINT : UI_RECORD_HINT;
             draw_hint_right(hint, 146, 88);
             if (!present && in_game) draw_hint_right(UI_RECORD_SAVE, SCREEN_W - 6 - max_lives * 10, 6);
 
@@ -1384,6 +1389,10 @@ static int record(int present, int question)
         } else if (present == 2 && (keys_new & KEY_B)) { /* showing is optional */
             plat_sfx(SFX_CANCEL);
             result = NONE;
+            break;
+        } else if (present == 3 && (keys_new & KEY_B)) { /* testimony: back to the statements */
+            plat_sfx(SFX_CANCEL);
+            result = -2;
             break;
         } else if (!present && (keys_new & (KEY_B | KEY_START))) {
             plat_sfx(SFX_CANCEL);
@@ -1989,7 +1998,11 @@ static int testimony(int spk, int title, int n, const u16 *stmts, int wrong)
             redraw = 1;
             continue;
         }
-        int ev = d >= 1000 ? d % 100 : record(1, title);
+        int ev = d >= 1000 ? d % 100 : record(3, title);
+        if (ev == -2) { /* changed their mind: back to the statements */
+            redraw = 1;
+            continue;
+        }
         if (st[2] != NONE && ev == st[2]) {
             do_shout(NONE, UI_OBJECTION, char_portrait[0]);
             plat_debug_event("contradiction", cur);

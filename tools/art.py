@@ -598,7 +598,6 @@ BUILTIN_CUTS = {
     "cut_rocket": art_hd.scene_police,
     "cut_lobby_bag": art_hd.scene_hotel,
     "cut_bag_slip": art_hd.scene_hotel,
-    "cut_key": art_hd.scene_hotel,
     "cut_mario_bag": art_hd.scene_hotel,
     "cut_mario_fog2": art_hd.scene_hotel,
     "cut_run_up": art_hd.scene_hotel,

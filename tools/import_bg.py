@@ -52,6 +52,7 @@ FRAMES = {
 
 # Small pictures shown in a frame over the middle of the screen (@inset): key -> (frame, crop)
 INSETS = {
+    "ins_key": ("p1/385", C32),           # the room key thrown on the front desk
     "ins_rose": ("p1/037", C32),          # the gloved hand through the berth curtain, holding a rose
     "ins_salad_served": ("p1/099", C32),  # the waitress brings Kenmochi the rose salad
     "ins_salad": ("p1/100", C32),         # the rose salad
