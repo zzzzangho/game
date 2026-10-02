@@ -111,6 +111,25 @@ def render(max_w=232, max_h=78):
         out[ink] = src[ink]
         out[ink, 3] = 255
         img = Image.fromarray(out, "RGBA")
+        # open a gap between the title and the "~마술열차 살인사건~" line: cut at the emptiest row
+        # in the lower part (where the two meet) and move the subtitle down
+        img = img.crop(img.getbbox())
+        rows = (np.asarray(img)[..., 3] > 0).sum(1)
+        lo, hi = int(img.height * 0.62), int(img.height * 0.9)
+        cut = lo + int(np.argmin(rows[lo:hi]))
+        gap = img.height // 14
+        spaced = Image.new("RGBA", (img.width, img.height + gap), (0, 0, 0, 0))
+        spaced.paste(img.crop((0, 0, img.width, cut)), (0, 0))
+        bottom = np.asarray(img.crop((0, cut, img.width, img.height))).copy()
+        from scipy import ndimage
+        lab, n = ndimage.label(bottom[..., 3] > 0)
+        if n:
+            sizes = ndimage.sum(bottom[..., 3] > 0, lab, range(1, n + 1))
+            for i, sz in enumerate(sizes, 1):
+                if sz < sizes.max() * 0.05:  # slivers of the title cut off with the subtitle
+                    bottom[lab == i] = 0
+        spaced.paste(Image.fromarray(bottom, "RGBA"), (0, cut + gap))
+        img = spaced
     else:
         shonen = _rough(_text_mask("소년\n탐정", 26, spacing=-4), 0.5 * K, 1)
         kin = _rough(_text_mask("김전일", 52), 0.8 * K, 2)
