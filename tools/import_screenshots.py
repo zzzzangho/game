@@ -99,7 +99,6 @@ CUTS = {
     "cut_dress": ("p2/137", S(20)),     # Yumi appears on the tank in a blue dress
     "cut_crowd": ("p2/138", S(20)),     # the cheering audience
     "cut_wink": ("p2/140", S(20)),      # Satomi winks at the audience
-    "cut_filming": ("p2/141", S(20)),   # Saki filming, Kindaichi blushing
     "cut_glare": ("p2/142", S(20)),     # Miyuki glares at Kindaichi
     "cut_curtain": ("p2/129", S(20)),  # the curtain rises on the stage
     "cut_satomi_stage": ("p2/139", S(20)),  # Satomi alone on the stage
@@ -107,7 +106,6 @@ CUTS = {
     "cut_mari_scissors": ("p2/149", S(20)),  # the marionette raises the scissors
     "cut_mari_snip": ("p2/150", S(20)),  # the strings snipped
     "cut_mari_fall": ("p2/151", S(20)),  # the marionette collapses
-    "cut_audience": ("p2/154", S(20)),  # Saki, Kindaichi and Miyuki watching
     "cut_bike": ("p2/158", S(20)),  # the marionette rides a bicycle
     "cut_tumble": ("p2/161", S(20)),  # the marionette tumbles about
     "cut_mari_worry": ("p2/162", S(20)),  # the marionette, worried
