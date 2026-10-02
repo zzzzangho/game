@@ -1395,7 +1395,7 @@ static int record(int present, int question)
             }
             int bar_y = REC_LIST_Y + (sel[tab] - top) * 13;
             if (n) {
-                fill(4, bar_y, 156, 13, C_HILITE);
+                fill(4, bar_y, 152, 13, C_HILITE);
                 draw_cursor(7, bar_y + 3, C_GOLD);
             }
             for (int r = 0; r < REC_ROWS && top + r < n; r++) {
@@ -1403,10 +1403,11 @@ static int record(int present, int question)
                 int name = tab == 0 ? ev_name[list[i]] : char_name[list[i]];
                 draw_text(16, y, name, i == sel[tab] ? C_GOLD : C_WHITE);
             }
-            if (top > 0) draw_arrow(150, REC_LIST_Y - 2, C_GOLD);
-            if (top + REC_ROWS < n) {
-                for (int r = 0; r < 4; r++) fill(150 + r, REC_LIST_Y + REC_ROWS * 13 + 3 - r, 7 - 2 * r, 1, C_GOLD);
-            }
+            /* more above / below: small triangles in the gap right of the list, clear of the bar */
+            if (top > 0)
+                for (int r = 0; r < 4; r++) fill(160 - r, REC_LIST_Y + 2 + r, 1 + 2 * r, 1, C_GOLD);
+            if (top + REC_ROWS < n)
+                for (int r = 0; r < 4; r++) fill(160 - r, REC_LIST_Y + REC_ROWS * 13 - 3 - r, 1 + 2 * r, 1, C_GOLD);
 
             fill(0, REC_DESC_Y, SCREEN_W, SCREEN_H - REC_DESC_Y, C_BOX);
             fill(0, REC_DESC_Y, SCREEN_W, 1, C_BORDER);
@@ -1480,7 +1481,7 @@ static int record(int present, int question)
             plat_sfx(SFX_OK);
             for (int k = 0; k < 12; k++) { /* the chosen row flashes, the picture shakes */
                 int y = REC_LIST_Y + (sel[tab] - top) * 13;
-                fill(4, y, 156, 13, (k & 2) ? C_WHITE : C_HILITE);
+                fill(4, y, 152, 13, (k & 2) ? C_WHITE : C_HILITE);
                 draw_text(16, y, ev_name[result], (k & 2) ? C_BOX : C_GOLD);
                 fill(168, 22, ICON_SIZE + 4, ICON_SIZE + 4, (k & 2) ? C_WHITE : C_GOLD);
                 fill(170, 24, ICON_SIZE, ICON_SIZE, RGB(1, 1, 3));
