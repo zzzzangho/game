@@ -1177,10 +1177,7 @@ static void chapter_card(int t, int card)
     }
     fade_in();
     plat_debug_event("chapter", 0);
-    for (int i = 0; i < 240; i++) {
-        frame();
-        if (i > 60 && (keys_new & (KEY_A | KEY_START))) break;
-    }
+    wait_frames(240); /* the card stays its full 4 seconds: no key skips it */
     chapter_save_ask();
     fade_out();
     cur_scene = SCENE_BLACK;
