@@ -117,7 +117,7 @@ def render(max_w=232, max_h=78):
         rows = (np.asarray(img)[..., 3] > 0).sum(1)
         lo, hi = int(img.height * 0.62), int(img.height * 0.9)
         cut = lo + int(np.argmin(rows[lo:hi]))
-        gap = img.height // 14
+        gap = img.height // 6
         spaced = Image.new("RGBA", (img.width, img.height + gap), (0, 0, 0, 0))
         spaced.paste(img.crop((0, 0, img.width, cut)), (0, 0))
         bottom = np.asarray(img.crop((0, cut, img.width, img.height))).copy()
@@ -130,6 +130,7 @@ def render(max_w=232, max_h=78):
                     bottom[lab == i] = 0
         spaced.paste(Image.fromarray(bottom, "RGBA"), (0, cut + gap))
         img = spaced
+        max_h = max_h * img.height / (img.height - gap)  # the letters keep their size; only the gap is added
     else:
         shonen = _rough(_text_mask("소년\n탐정", 26, spacing=-4), 0.5 * K, 1)
         kin = _rough(_text_mask("김전일", 52), 0.8 * K, 2)

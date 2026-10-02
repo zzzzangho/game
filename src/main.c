@@ -1152,6 +1152,22 @@ static void eyecatch(void)
 }
 
 static void chapter_save_ask(void);
+static int chapter_ask; /* a chapter card that may offer to save (not the very first) */
+
+/* The screen crumbles into black through a 4x4 ordered pattern ("스스스…"), `speed` frames a step. */
+static void dissolve_black(int speed)
+{
+    static const u8 bayer[16] = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5};
+    for (int step = 0; step < 16; step++) {
+        for (int y = 0; y < SCREEN_H; y++) {
+            u16 *row = fb + y * SCREEN_W;
+            for (int x = 0; x < SCREEN_W; x++)
+                if (bayer[(y & 3) * 4 + (x & 3)] == step) row[x] = 0;
+        }
+        mark(0, SCREEN_H);
+        wait_frames(speed);
+    }
+}
 
 static void chapter_card(int t, int card)
 {
@@ -1178,7 +1194,16 @@ static void chapter_card(int t, int card)
     fade_in();
     plat_debug_event("chapter", 0);
     wait_frames(240); /* the card stays its full 4 seconds: no key skips it */
-    chapter_save_ask();
+    if (chapter_ask) { /* the card goes away first; the save question comes up on its own, on black */
+        fade_out();
+        fill(0, 0, SCREEN_W, SCREEN_H, 0);
+        mark(0, SCREEN_H);
+        fade_in();
+        wait_frames(20);
+        chapter_save_ask();
+        dissolve_black(3);
+        wait_frames(30);
+    }
     fade_out();
     cur_scene = SCENE_BLACK;
     cut_mode = 0;
@@ -1384,7 +1409,10 @@ static int record(int present, int question)
             }
             int hint = present == 2 ? UI_SHOW_HINT : present == 3 ? UI_PRESENT_BACK_HINT : present ? UI_PRESENT_HINT : UI_RECORD_HINT;
             draw_hint_right(hint, 146, 88);
-            if (!present && in_game) draw_hint_right(UI_RECORD_SAVE, SCREEN_W - 6 - max_lives * 10, 6);
+            if (!present && in_game) { /* right after the 인물 tab */
+                int tx = 6 + text_width(UI_TAB_EVIDENCE, 1) + 18 + text_width(UI_TAB_PROFILE, 1) + 14 + 8;
+                draw_disp(UI_RECORD_SAVE, tx + disp_width(UI_RECORD_SAVE) / 2, 6 + disp_height(UI_RECORD_SAVE) / 2);
+            }
 
           } else {
             rec_bg(0, REC_LIST_Y, 164, REC_ROWS * 13);   /* the list */
@@ -1652,7 +1680,7 @@ static int slot_menu(int saving)
 
 /* Chapter start: "저장하시겠습니까?" 예 / 아니오, then the slot list. Saves resume after the card. */
 static u16 chapter_save_pc;
-static int chapter_ask;
+/* chapter_ask is declared before chapter_card */
 static void chapter_save(int slot)
 {
     int scene = cur_scene, cut = cut_mode;
@@ -2498,8 +2526,48 @@ static void title_draw(int t, int menu, int has_save)
     draw_disp(UI_TITLE_FAN, SCREEN_W / 2, 151);
 }
 
+/* Debug: chapter select (title screen, hold L and tap R 5 times). Returns a chapter or -1. */
+static int debug_menu(void)
+{
+    int sel = 0;
+    plat_sfx(SFX_OBJECTION);
+    for (int redraw = 1;;) {
+        if (redraw) {
+            fill(0, 0, SCREEN_W, SCREEN_H, RGB(2, 2, 6));
+            frame_rect(4, 4, SCREEN_W - 8, SCREEN_H - 8, C_RED);
+            draw_text_ex(SCREEN_W / 2, 10, UI_DEBUG_TITLE, C_RED, 1, 1);
+            for (int i = 0; i < CHAPTER_COUNT; i++) {
+                int y = 30 + i * 16;
+                if (i == sel) {
+                    fill(12, y - 1, SCREEN_W - 24, 15, C_HILITE);
+                    draw_cursor(16, y + 3, C_GOLD);
+                }
+                draw_text(28, y, chapter_title[i], i == sel ? C_GOLD : C_WHITE);
+            }
+            draw_disp(UI_DEBUG_HINT, SCREEN_W / 2, 150);
+            mark(0, SCREEN_H);
+            redraw = 0;
+        }
+        frame();
+        if (keys_new & (KEY_UP | KEY_DOWN)) {
+            sel = (sel + ((keys_new & KEY_UP) ? CHAPTER_COUNT - 1 : 1)) % CHAPTER_COUNT;
+            plat_sfx(SFX_MOVE);
+            redraw = 1;
+        } else if (keys_new & (KEY_A | KEY_START)) {
+            plat_sfx(SFX_OK);
+            return sel;
+        } else if (keys_new & KEY_B) {
+            plat_sfx(SFX_CANCEL);
+            return -1;
+        }
+    }
+}
+
+static int debug_chapter = -1;
+
 static int title_screen(int has_save)
 {
+    int r_taps = 0;
     int sel = has_save ? 1 : 0, t = 0, menu = -1;
     title_blink0 = 0;
     in_game = 0;
@@ -2515,6 +2583,20 @@ static int title_screen(int has_save)
             break;
         }
         frame();
+        if (keys_held & KEY_L) {
+            if ((keys_new & KEY_R) && ++r_taps >= 5) {
+                r_taps = 0;
+                debug_chapter = debug_menu();
+                if (debug_chapter >= 0) {
+                    fade_out();
+                    return 2;
+                }
+                title_draw(t, menu, has_save);
+                continue;
+            }
+        } else {
+            r_taps = 0;
+        }
         int redraw = (f & 3) == 0; /* the fog moves one step every 4 frames */
         if (redraw) t++;
         if (menu < 0) {
@@ -2581,6 +2663,12 @@ int main(void)
             cur_chapter = s.chapter;
             cur_place = s.place;
             pc = s.pc;
+        }
+        if (choice == 2 && debug_chapter >= 0) { /* debug start: the chapter, every piece of evidence */
+            pc = chapter_pc[debug_chapter];
+            for (int i = 0; i < EVIDENCE_COUNT; i++) ev_flags |= EV_BIT(i);
+            prof_flags = 0xFFFFFFFFu;
+            debug_chapter = -1;
         }
         in_game = 1;
         cur_portrait = NONE;
