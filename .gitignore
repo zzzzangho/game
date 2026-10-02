@@ -13,3 +13,4 @@ assets/cuts/*
 # 이미지가 들어간 롬도 로컬에만
 *.gba
 assets/music/*
+!assets/music/.gitkeep
