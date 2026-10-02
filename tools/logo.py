@@ -117,7 +117,7 @@ def render(max_w=232, max_h=78):
         rows = (np.asarray(img)[..., 3] > 0).sum(1)
         lo, hi = int(img.height * 0.62), int(img.height * 0.9)
         cut = lo + int(np.argmin(rows[lo:hi]))
-        gap = img.height // 6
+        gap = img.height // 10
         spaced = Image.new("RGBA", (img.width, img.height + gap), (0, 0, 0, 0))
         spaced.paste(img.crop((0, 0, img.width, cut)), (0, 0))
         bottom = np.asarray(img.crop((0, cut, img.width, img.height))).copy()
