@@ -1801,8 +1801,8 @@
 *c2_ceiling
 @scene exam_catwalk
 @examine "어디를 살펴볼까?"
-@at 58 36 70 46 "천장의 밧줄" c2c_rope
-@at 130 56 92 84 "천장 위의 마리오네트" c2c_doll
+@at 52 30 84 42 "천장의 밧줄" c2c_rope
+@at 140 40 100 110 "천장 위의 마리오네트" c2c_doll
 @at 0 40 56 62 "낡은 나무판자" c2c_plank
 @end
 @scene theater
