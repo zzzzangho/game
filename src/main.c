@@ -1377,7 +1377,9 @@ static int record(int present, int question)
                 draw_tab(6 + text_width(UI_TAB_EVIDENCE, 1) + 18, UI_TAB_PROFILE, tab == 1);
                 int shown = hearts_shown;
                 hearts_shown = 1; /* the notebook always shows how many are left */
+                heart_y = 7;      /* on the line of the tabs and the save hint */
                 draw_hearts();
+                heart_y = 3;
                 hearts_shown = shown;
             }
             int hint = present == 2 ? UI_SHOW_HINT : present == 3 ? UI_PRESENT_BACK_HINT : present ? UI_PRESENT_HINT : UI_RECORD_HINT;
