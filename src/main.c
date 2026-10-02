@@ -523,12 +523,13 @@ static void mark_draw(int y0, int y1)
         k = (t / 10) & 1;
         mark_blit(m, k, ex + ew + 8 - mark_w(m, k) / 2, ey - 16 - mark_h(m, k) / 2, y0, y1);
         break;
-    case MARK_TEAR: /* the lids shimmer, tears run down, rest, and run again */
-        k = (t / 6) % 14;
-        if (k > 5) k = 5;
-        mark_blit(m, k, ex + ew * 16 / 100 - mark_w(m, k) + 3, ey + eh - 4, y0, y1);
-        mark_blit(m, k + 6, ex + ew * 84 / 100 - 3, ey + eh - 4, y0, y1);
+    case MARK_TEAR: { /* the lids well up; a drop rolls down one cheek, then the other */
+        static const u8 seq[24] = {0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        int kl = seq[(t / 5) % 24], kr = seq[(t / 5 + 9) % 24];
+        mark_blit(m, kl, ex + ew * 22 / 100 - mark_w(m, 0) / 2, ey + eh - 5, y0, y1);
+        mark_blit(m, kr + 10, ex + ew * 78 / 100 - mark_w(m, 0) / 2, ey + eh - 5, y0, y1);
         break;
+    }
     }
 }
 

@@ -64,10 +64,10 @@ def sweat():
 
 
 def blush():
-    """One cheek: a soft, wide pink glow with three fine hatch strokes; frame 2 glows stronger."""
-    w, h = 24, 11
+    """One cheek: just a soft rise of warm colour, no lines; frame 2 is a touch warmer."""
+    w, h = 26, 13
     frames = []
-    for strength in (0.42, 0.58):
+    for strength in (0.30, 0.40):
         glow = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
         px = glow.load()
         for y in range(h * SS):
@@ -76,13 +76,8 @@ def blush():
                 dy = (y - h * SS / 2) / (h * SS / 2)
                 q = 1 - (dx * dx + dy * dy)
                 if q > 0:
-                    px[x, y] = (255, 105, 120, int(255 * strength * q ** 0.9))
-        glow = glow.filter(ImageFilter.GaussianBlur(3))
-        d = ImageDraw.Draw(glow)
-        for k in range(3):
-            x0 = w * SS * (0.33 + k * 0.15)
-            d.line([(x0 + 5, h * SS * 0.30), (x0 - 5, h * SS * 0.70)], fill=(215, 55, 80, int(255 * (strength + 0.25))), width=2)
-        frames.append(_down(glow, w, h))
+                    px[x, y] = (255, 110, 120, int(255 * strength * q ** 1.4))
+        frames.append(_down(glow.filter(ImageFilter.GaussianBlur(4)), w, h))
     return frames
 
 
@@ -138,30 +133,38 @@ def gloom(w=60, h=42):
 
 
 def tears():
-    """Tears from the outer corners of the eyes: the lower lid shimmers, then a thin glossy streak
-    runs down along the cheek, curving outward, with a small drop at its end.
-    Frames 0-5 are the left eye (curving left), 6-11 the right eye (mirrored)."""
-    w, h = 10, 22
+    """One eye, as the series draws it: the lower lid wells up with a glossy shine, then a single
+    clear drop rolls down to the middle of the cheek, leaving a faint trail that fades.
+    Frames 0-9 are the left eye, 10-19 the same mirrored for the right eye.
+    0: welling; 1-7: the drop rolls down; 8-9: the trail dries."""
+    w, h = 9, 18
+    cx = w * SS / 2
     left = []
-    for f in range(6):
+    for f in range(10):
         img = _canvas(w, h)
         d = ImageDraw.Draw(img)
-        cx = w * SS - 10
-        # shimmer on the lower lid
-        d.ellipse([cx - 22, 0, cx + 6, 8], fill=(220, 245, 255, 150))
-        d.ellipse([cx - 10, 1, cx - 5, 6], fill=(255, 255, 255, 230))
-        if f:
-            L = (3 + f * 3.2) * SS
-            pts = []
-            for k in range(25):
-                t = k / 24
-                pts.append((cx - 4 - (t ** 1.6) * 14, 4 + t * (L - 4)))
-            d.line(pts, fill=(140, 200, 245, 170), width=9, joint="curve")
-            d.line(pts, fill=(205, 238, 255, 220), width=5, joint="curve")
-            d.line([(x + 1, y) for x, y in pts[2:-4]], fill=(255, 255, 255, 235), width=2)
-            ex, ey = pts[-1]
-            d.ellipse([ex - 6, ey - 3, ex + 6, ey + 10], fill=(150, 205, 245, 220))
-            d.ellipse([ex - 3, ey - 1, ex + 1, ey + 3], fill=(255, 255, 255, 240))
+        # the wet lower lid: a thin bright crescent and a sparkle
+        d.arc([cx - 13, -10, cx + 13, 7], 35, 145, fill=(235, 248, 255, 120), width=2)
+        d.ellipse([cx + 3, 1, cx + 6, 4], fill=(255, 255, 255, 170))
+        if 1 <= f <= 9:
+            p = min(f, 7) / 7  # how far the drop has rolled
+            yd = 6 + p * (h * SS - 16)
+            fade = 1.0 if f <= 7 else (0.55 if f == 8 else 0.25)
+            # the trail: a thin clear line that is a bit stronger near the drop
+            n = 20
+            for k in range(n):
+                y0 = 6 + (yd - 6) * k / n
+                y1 = 6 + (yd - 6) * (k + 1) / n
+                x0 = cx - 1 + 2.5 * (y0 / (h * SS)) ** 2
+                x1 = cx - 1 + 2.5 * (y1 / (h * SS)) ** 2
+                a = int((50 + 80 * (k / n)) * fade)
+                d.line([(x0, y0), (x1, y1)], fill=(215, 240, 255, a), width=4)
+                d.line([(x0 - 1, y0), (x1 - 1, y1)], fill=(255, 255, 255, int(a * 1.2)), width=1)
+            if f <= 7:
+                xd = cx - 1 + 2.5 * (yd / (h * SS)) ** 2
+                d.ellipse([xd - 6, yd - 6, xd + 6, yd + 8], fill=(175, 220, 250, 175))
+                d.ellipse([xd - 6, yd - 6, xd + 6, yd + 8], outline=(120, 175, 225, 150), width=1)
+                d.ellipse([xd - 4, yd - 4, xd - 1, yd - 1], fill=(255, 255, 255, 240))
         left.append(_down(img, w, h))
     return left + [fr.transpose(Image.FLIP_LEFT_RIGHT) for fr in left]
 
