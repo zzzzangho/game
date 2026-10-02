@@ -197,6 +197,7 @@ CUTS = {
     "cut_note_pages": ("p4/388", S(20)),  # comparing the notebook pages
     "cut_takato_flames": ("p4/398", S(20)),  # Takato's silhouette in the flames
     "cut_kin_eye": ("p4/401", S(20)),  # Kindaichi's resolute eye
+    "cut_door_knock": ("p1/346", S(20)),  # a hand knocking on the door of A-5 (Saki's video)
     "cut_satomi": ("p2/144", S(20)),      # Satomi as the living marionette, hanging from strings
     "cut_marionette": ("p2/152", S(20)),  # the living marionette dancing
     "cut_yurama": ("p2/188", S(20)),      # Yurama on the marionette chair under the red light

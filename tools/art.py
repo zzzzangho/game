@@ -657,6 +657,7 @@ BUILTIN_CUTS = {
     "cut_note_pages": art_hd.card_final,
     "cut_takato_flames": art_hd.card_final,
     "cut_kin_eye": art_hd.card_final,
+    "cut_door_knock": art_hd.scene_police,
     "cut_satomi": art_hd.scene_theater,
     "cut_marionette": art_hd.scene_theater,
     "cut_yurama": art_hd.scene_theater,
