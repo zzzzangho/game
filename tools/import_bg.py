@@ -62,6 +62,7 @@ INSETS = {
     "ins_bag_slip": ("p1/379", C32),  # the train delivery slip on the bundle
     "ins_lever": ("p2/126", C32),  # the broken drawbridge lever in Kindaichi's hand
     "ins_two_notes": ("p4/381", C32),  # the two trick notebooks side by side
+    "ins_petals": ("p1/292", C32),        # red rose petals raining from the sky
     "ins_key": ("p1/385", C32),           # the room key thrown on the front desk
     "ins_rose": ("p1/037", C32),          # the gloved hand through the berth curtain, holding a rose
     "ins_salad_served": ("p1/099", C32),  # the waitress brings Kenmochi the rose salad

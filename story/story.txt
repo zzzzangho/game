@@ -456,7 +456,7 @@
 다들 저도 모르게 몸을 움츠렸다.
 @cut cut_rocket
 하얀 연기 꼬리를 그리며, 무언가가 하늘 높이 솟구쳐 올랐다.
-@cut cut_petals
+@inset ins_petals
 그리고… 붉은 장미 꽃잎이 하늘 가득 흩날렸다.
 @scene freight_petals
 사키[happy]: 우와… 꽃잎이…
