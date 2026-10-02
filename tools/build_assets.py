@@ -38,6 +38,7 @@ OPS = dict(SAY=1, SCENE=2, GET=3, FX=4, CHAPTER=5, INVEST=6, RETURN=7, ASK=8, PR
            TESTIMONY=27, PRESENT_CHOICE=28, PLACE=29, INTRO=30, INSET=31, EXAMINE=32, SHOW=33)
 BLOCKS = ("investigate", "ask", "accuse", "choice", "menu", "video", "testimony", "examine", "show")
 MAX_FLAGS = 1024
+MARKS = {"볼터치": 1, "땀": 2, "우울": 3, "분노": 4, "눈물": 5}  # 이름[표정+땀] (main.c MARK_*)
 SPEAKER_RE = re.compile(r"^(.+?)(?:\[([^\]]+)\])?$")  # 이름 or 이름[표정]
 FX = dict(flash=0, shock=1, shake=2, red=3, boom=4, dun=5, horror=6, crash=7)
 NL = 0xFFFE
@@ -311,6 +312,13 @@ class Compiler:
             return NONE, NONE
         m = SPEAKER_RE.match(token.strip())
         name, expr = m.group(1).strip(), m.group(2)
+        self.last_mark = 0
+        if expr and "+" in expr:  # 이름[표정+땀]: a manga mark over the face for this line
+            expr, _, mk = expr.partition("+")
+            if mk.strip() not in MARKS:
+                self.err(f"unknown mark {mk!r} (use {', '.join(MARKS)})")
+            self.last_mark = MARKS[mk.strip()]
+            expr = expr.strip() or None
         if name not in self.chars:
             self.err(f"undeclared speaker {name!r} (use @char)")
         ch = self.chars[name]
@@ -429,6 +437,8 @@ class Compiler:
         m = SPEAKER_RE.match(name) if sep else None
         if m and m.group(1).strip() in self.chars:
             spk, por = self.speaker_portrait(name)
+            if self.last_mark and por != NONE:
+                por |= self.last_mark << 12
             self.say(spk, rest.strip(), por)
         else:
             self.say(NONE, ln)

@@ -41,6 +41,7 @@ static u16 keys_held, keys_new;
 static u32 frame_count;
 
 static int cur_scene, cur_portrait = NONE;
+static int cur_mark, mark_t; /* a manga mark on the speaker's face (MARK_*), animated by mark_tick */
 static int cut_mode; /* an anime capture is on screen: no portraits over it */
 static int lives, max_lives, in_game;
 static u64 ev_flags; /* evidence owned (up to 64 items) */
@@ -451,6 +452,120 @@ static void draw_inset(int y0, int y1)
     if (y1 > y0) mark(y0, y1);
 }
 
+FAST static void blit_portrait_rows(int y0, int y1);
+
+/* ---- manga marks drawn over the face, anchored on the eye rectangle of the portrait */
+enum { MARK_NONE, MARK_BLUSH, MARK_SWEAT, MARK_GLOOM, MARK_ANGER, MARK_TEAR };
+
+static inline void mark_px(int x, int y, int y0, int y1, u16 c, int blend)
+{
+    if (y < y0 || y >= y1 || (unsigned)x >= SCREEN_W || (unsigned)y >= SCREEN_H) return;
+    u16 *d = &fb[y * SCREEN_W + x];
+    *d = blend ? (u16)(((*d >> 1) & 0x3DEF) + ((c >> 1) & 0x3DEF)) : c;
+}
+
+/* The rows a mark may touch, in screen coordinates (0 if the portrait has no eye rectangle). */
+static int mark_rows(int *y0, int *y1)
+{
+    if (cur_mark == MARK_NONE || cur_portrait == NONE || cut_mode) return 0;
+    const u8 *r = blink_rect + cur_portrait * 4;
+    if (!r[2]) return 0;
+    int top = PORTRAIT_Y + r[1] - breath_lift - 34, bot = PORTRAIT_Y + r[1] + r[3] - breath_lift + 30;
+    *y0 = top < 0 ? 0 : top;
+    *y1 = bot > BOX_Y - 14 ? BOX_Y - 14 : bot;
+    return *y1 > *y0;
+}
+
+static void mark_draw(int y0, int y1)
+{
+    int my0, my1;
+    if (!mark_rows(&my0, &my1)) return;
+    if (y0 < my0) y0 = my0;
+    if (y1 > my1) y1 = my1;
+    if (y1 <= y0) return;
+    const u8 *r = blink_rect + cur_portrait * 4;
+    int ex = PORTRAIT_X + portrait_dx + r[0], ey = PORTRAIT_Y + r[1] - breath_lift, ew = r[2], eh = r[3];
+    int t = mark_t;
+    switch (cur_mark) {
+    case MARK_BLUSH: { /* pink cheeks with hatching; they glow a little brighter now and then */
+        int strong = (t / 20) & 1;
+        for (int side = 0; side < 2; side++) {
+            int cx = side ? ex + ew - ew / 6 : ex + ew / 6, cy = ey + eh + 5;
+            for (int dy = -3; dy <= 3; dy++)
+                for (int dx = -8; dx <= 8; dx++)
+                    if (dx * dx * 9 + dy * dy * 64 <= 576 + strong * 160) mark_px(cx + dx, cy + dy, y0, y1, RGB(31, 12, 14), 1);
+            for (int k = -1; k <= 1; k++)
+                for (int s = 0; s < 4; s++) mark_px(cx + k * 4 + 2 - s, cy - 2 + s, y0, y1, strong ? RGB(31, 6, 10) : RGB(28, 8, 12), 0);
+        }
+        break;
+    }
+    case MARK_SWEAT: { /* a drop slides down beside the face, then starts again */
+        static const u8 wid[14] = {1, 1, 2, 2, 3, 4, 5, 6, 7, 7, 7, 6, 5, 3};
+        int x = ex + ew + 8, y = ey - 18 + (t / 3) % 16;
+        for (int dy = 0; dy < 14; dy++) {
+            int h = wid[dy] / 2 + (wid[dy] & 1);
+            for (int dx = -h - 1; dx <= h; dx++) {
+                int edge = dx == -h - 1 || dx == h || dy == 13;
+                u16 c = edge ? RGB(4, 12, 24) : (dx == -h && dy >= 6 && dy <= 10) ? RGB(31, 31, 31) : RGB(18, 26, 31);
+                mark_px(x + dx, y + dy, y0, y1, c, 0);
+            }
+        }
+        break;
+    }
+    case MARK_GLOOM: { /* the forehead darkens and blue lines hang down over it */
+        for (int y = ey - 30; y < ey + 2; y++)
+            for (int x = ex - 4; x < ex + ew + 4; x++)
+                if (((x ^ y) & 1) == 0) mark_px(x, y, y0, y1, RGB(4, 3, 14), 1);
+        for (int k = 0; k <= 5; k++) {
+            int x = ex - 2 + k * (ew + 4) / 5, len = 18 + ((k * 7) % 3) * 5;
+            for (int y = ey - 30; y < ey - 30 + len; y++)
+                if (((y + t / 2) % 7) < 5) {
+                    mark_px(x, y, y0, y1, RGB(10, 8, 26), 0);
+                    mark_px(x + 1, y, y0, y1, RGB(6, 4, 18), 0);
+                }
+        }
+        break;
+    }
+    case MARK_ANGER: { /* the throbbing vein mark at the temple */
+        int big = (t / 10) & 1, s = big ? 8 : 6, cx = ex + ew + 8, cy = ey - 18;
+        for (int q = 0; q < 4; q++) {
+            int sx = (q & 1) ? 1 : -1, sy = (q & 2) ? 1 : -1;
+            for (int i = 1; i <= s; i++) {
+                for (int w = 0; w < 3; w++) {
+                    mark_px(cx + sx * (1 + w), cy + sy * i, y0, y1, RGB(29, 2, 4), 0);
+                    mark_px(cx + sx * i, cy + sy * (1 + w), y0, y1, RGB(29, 2, 4), 0);
+                }
+            }
+        }
+        break;
+    }
+    case MARK_TEAR: { /* tears well up under the eyes and run down */
+        for (int side = 0; side < 2; side++) {
+            int x = side ? ex + ew - ew / 5 : ex + ew / 5, y = ey + eh;
+            int len = 2 + (t / 4) % 12;
+            for (int k = 0; k < len; k++) {
+                mark_px(x, y + k, y0, y1, RGB(20, 28, 31), 0);
+                mark_px(x + 1, y + k, y0, y1, RGB(12, 22, 31), 0);
+            }
+            mark_px(x, y + len, y0, y1, RGB(31, 31, 31), 0);
+        }
+        break;
+    }
+    }
+}
+
+/* Called every frame while the line is up: the mark moves a step every few frames. */
+static void mark_tick(void)
+{
+    int y0, y1;
+    if (!mark_rows(&y0, &y1) || portrait_dx || anim_count[cur_scene] || cur_inset != NONE) return;
+    mark_t++;
+    if (mark_t % 2) return;
+    plat_copy32(fb + y0 * SCREEN_W, scene_img[cur_scene] + y0 * SCREEN_W, (y1 - y0) * SCREEN_W / 2);
+    blit_portrait_rows(y0, y1);
+    if (y0 < 12) draw_hearts();
+}
+
 FAST static void blit_portrait_rows(int y0, int y1)
 {
     if (cur_portrait == NONE || cut_mode) {
@@ -472,6 +587,7 @@ FAST static void blit_portrait_rows(int y0, int y1)
         }
     }
     if (blink_shut && blink_img[cur_portrait]) blink_draw(y0, y1);
+    mark_draw(y0, y1);
     draw_inset(y0, y1);
     mark(y0, y1);
 }
@@ -586,6 +702,7 @@ static void ambient_tick(void)
     if (!anim_on) return;
     breathe_tick();
     blink_tick();
+    mark_tick();
     if (cut_mode || !anim_count[cur_scene] || anim_scene != cur_scene || (frame_count & 1)) return;
     int y0, y1;
     anim_t = (anim_t + 1) % ANIM_FRAMES;
@@ -738,6 +855,10 @@ static int last_spk = NONE;
 
 static void say(int spk, int t, int portrait)
 {
+    int mark = portrait == NONE ? 0 : portrait >> 12; /* [표정+땀] etc.: a mark over the face */
+    if (portrait != NONE) portrait &= 0x0FFF;
+    cur_mark = mark;
+    mark_t = 0;
     /* a new speaker slides in from the right, fading in (dithered) over the first steps */
     int slide = portrait != NONE && spk != last_spk && !cut_mode &&
                 !anim_count[cur_scene]; /* over falling petals the speaker just appears: they keep falling */
@@ -771,6 +892,7 @@ static void say(int spk, int t, int portrait)
     wait_advance();
     anim_on = 0;
     if (cur_inset != NONE) inset_close();
+    cur_mark = 0;
     if (spk != NONE && prof_text[spk] != NONE && !(prof_flags & (1u << spk))) meet(spk, UI_MEET);
 }
 
