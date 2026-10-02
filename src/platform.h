@@ -43,6 +43,7 @@ void plat_fade(int level);              /* 0 = normal, 16 = black */
 void plat_offset(int dx, int dy);       /* screen shake */
 void plat_hscale(int pa);               /* horizontal scale around the centre (8.8 inverse; 256 = off) */
 void plat_sfx(int id);
+void plat_bgm(const signed char *pcm, u32 len); /* loop 8-bit PCM at 13379 Hz; len 0 stops */
 void plat_sram_read(void *dst, int ofs, int n);
 void plat_sram_write(const void *src, int ofs, int n);
 void plat_copy32(void *dst, const void *src, int words);

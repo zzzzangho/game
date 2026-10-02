@@ -81,6 +81,7 @@ void plat_fade(int level) { (void)level; }
 void plat_offset(int dx, int dy) { (void)dx; (void)dy; }
 void plat_hscale(int pa) { (void)pa; }
 void plat_sfx(int id) { (void)id; }
+void plat_bgm(const signed char *pcm, u32 len) { (void)pcm; (void)len; }
 
 void plat_sram_read(void *dst, int ofs, int n) { memcpy(dst, sram + ofs, n); }
 

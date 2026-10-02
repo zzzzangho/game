@@ -26,6 +26,11 @@
 #define REG_SNDDSCNT  REG16(0x04000082)
 #define REG_SNDSTAT   REG16(0x04000084)
 
+#define REG_DMA1SAD  REG32(0x040000BC)
+#define REG_DMA1DAD  REG32(0x040000C0)
+#define REG_DMA1CNT  REG32(0x040000C4)
+#define REG_TM0CNT   REG32(0x04000100)
+#define REG_FIFO_A   0x040000A0
 #define REG_DMA3SAD  REG32(0x040000D4)
 #define REG_DMA3DAD  REG32(0x040000D8)
 #define REG_DMA3CNT  REG32(0x040000DC)
@@ -78,10 +83,40 @@ void plat_present(int y0, int y1)
     plat_copy32(VRAM + y0 * SCREEN_W, backbuf + y0 * SCREEN_W, (y1 - y0) * SCREEN_W / 2);
 }
 
+/* Background music: DirectSound A fed from ROM by DMA1 on timer 0 (13379 Hz). The DMA runs by itself;
+ * each frame counts the samples played and restarts the stream at the end, so it loops. */
+static const signed char *bgm_pcm;
+static u32 bgm_len, bgm_pos;
+
+static void bgm_start(void)
+{
+    REG_DMA1CNT = 0;
+    REG_SNDDSCNT = 2 | (1 << 2) | (3 << 8) | (1 << 11); /* PSG 100%, DS A 100% both sides, reset FIFO */
+    REG_DMA1SAD = (u32)bgm_pcm;
+    REG_DMA1DAD = REG_FIFO_A;
+    REG_DMA1CNT = 0xB6400000u; /* enable, sound FIFO timing, 32-bit, repeat, fixed destination */
+    REG_TM0CNT = (1u << 23) | (65536 - 1254);
+    bgm_pos = 0;
+}
+
+void plat_bgm(const signed char *pcm, u32 len)
+{
+    REG_TM0CNT = 0;
+    REG_DMA1CNT = 0;
+    REG_SNDDSCNT = 2;
+    bgm_pcm = pcm;
+    bgm_len = len;
+    if (len) bgm_start();
+}
+
 void plat_vsync(void)
 {
     while (REG_VCOUNT >= 160) {}
     while (REG_VCOUNT < 160) {}
+    if (bgm_len) {
+        bgm_pos += 224; /* 13379 Hz / 59.73 frames per second */
+        if (bgm_pos >= bgm_len) bgm_start();
+    }
 }
 
 u16 plat_keys(void) { return (~REG_KEYINPUT) & 0x3FF; }

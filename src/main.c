@@ -2574,6 +2574,7 @@ static int title_screen(int has_save)
     cur_scene = SCENE_TITLE;
     cur_portrait = NONE;
     title_draw(t, menu, has_save);
+    plat_bgm(bgm_title, bgm_title_len);
     fade_in();
     for (int f = 1;; f++) {
         plat_debug_event("title", has_save);
@@ -2589,6 +2590,7 @@ static int title_screen(int has_save)
                 debug_chapter = debug_menu();
                 if (debug_chapter >= 0) {
                     fade_out();
+                    plat_bgm(0, 0);
                     return 2;
                 }
                 title_draw(t, menu, has_save);
@@ -2620,6 +2622,7 @@ static int title_screen(int has_save)
     }
     plat_sfx(SFX_OK);
     fade_out();
+    plat_bgm(0, 0);
     return sel;
 }
 

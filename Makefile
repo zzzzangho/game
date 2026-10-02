@@ -27,7 +27,7 @@ OBJS := $(BUILD)/crt0.o $(BUILD)/main.o $(BUILD)/plat_gba.o $(BUILD)/gen_data.o
 
 all: $(TARGET).gba
 
-ASSETS  := $(wildcard assets/portraits/* assets/scenes/* assets/icons/* assets/cuts/*)
+ASSETS  := $(wildcard assets/portraits/* assets/scenes/* assets/icons/* assets/cuts/* assets/music/*.s8)
 TOOLS   := tools/build_assets.py tools/art.py tools/art_hd.py tools/art_scenes2.py tools/display_font.py tools/eyecatch.py tools/logo.py tools/title_fog.py assets/fonts/NanumMyeongjo-ExtraBold.ttf
 KMT_PIXEL ?= off
 export KMT_PIXEL
