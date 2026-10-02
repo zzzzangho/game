@@ -112,7 +112,6 @@ CUTS = {
     "cut_mari_look": ("p2/165", S(20)),  # the marionette looks up
     "cut_mari_tired": ("p2/170", S(20)),  # the marionette back on its strings
     "cut_lights": ("p2/175", S(20)),  # the stage lights
-    "cut_flash_petals": ("p2/180", S(20)),  # rose petals in the flash
     "cut_window_rose": ("p2/318", S(20)),  # the puppeteer at the hotel window, roses blowing in
     "cut_night_flight": ("p2/321", S(20)),  # the puppeteer floats in the night sky carrying 'Miyuki'
     "cut_carried": ("p2/323", S(20)),  # 'Miyuki' in the puppeteer's arms

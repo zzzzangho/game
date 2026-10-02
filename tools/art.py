@@ -572,7 +572,6 @@ BUILTIN_CUTS = {
     "cut_mari_look": art_hd.scene_theater,
     "cut_mari_tired": art_hd.scene_theater,
     "cut_lights": art_hd.scene_theater,
-    "cut_flash_petals": art_hd.scene_theater,
     "cut_window_rose": art_hd.scene_swamp,
     "cut_night_flight": art_hd.scene_swamp,
     "cut_carried": art_hd.scene_swamp,

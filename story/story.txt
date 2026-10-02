@@ -1712,7 +1712,7 @@
 켄모치[surprised]: 어떻게 된 거야?
 김전일[serious]: 지옥의 인형술사예요…! 녀석이…!
 몇 초 뒤, 다시 불이 켜졌을 때…
-@cut cut_flash_petals
+@inset ins_flash_petals
 눈부신 빛 속으로, 붉은 장미 꽃잎이 흩날렸다.
 @cut cut_yurama
 @fx horror
