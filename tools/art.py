@@ -509,7 +509,7 @@ BUILTIN_SCENES = {
     "cabin_roses_hand": scene_cabin_roses_hand,
     "cabin_smoke": lambda: art_hd.smoke_over(scene_image("cut_roses")),
     # white smoke pouring from the ceiling vent and filling compartment 5 (shown one after another)
-    **{f"cabin_smoke{k}": (lambda st=st: smoke_rise(scene_image("cabin_roses"), st))
+    **{f"cabin_smoke{k}": (lambda st=st: smoke_wisps(scene_image("cabin_balloons"), st))
        for k, st in enumerate((0.08, 0.18, 0.3, 0.45, 0.65, 1.0), 1)},
     **art_hd.CARDS,
     **art_hd.LOCATIONS,
@@ -1343,6 +1343,46 @@ def pixelize(img, w, h, colors, scale):
     if alpha.getextrema()[0] == 0:
         small = outline_rgba(small)
     return small.resize((w * scale, h * scale), Image.NEAREST)
+
+
+def smoke_wisps(base, stage):
+    """base with thin, curling ribbons of white smoke drifting over everything (as in the anime
+    frame where the balloons fill with smoke); stage 0..1 grows the ribbons and the haze."""
+    import random, math
+    from PIL import ImageFilter
+    rng = random.Random(7)
+    K = 4
+    img = base.convert("RGBA").resize((base.width * K, base.height * K), Image.LANCZOS)
+    W2, H2 = img.size
+    haze = Image.new("RGBA", img.size, (235, 238, 245, int(70 * stage)))
+    img = Image.alpha_composite(img, haze)
+    for layer, (n, wmin, wmax, amin, amax, blur) in enumerate(((14, 10, 22, 70, 120, 6), (26, 3, 9, 110, 190, 2.5))):
+        lay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(lay)
+        for _ in range(n):
+            t0 = rng.random() * 0.6
+            x0, y0 = rng.uniform(-0.1, 1.1) * W2, rng.uniform(0.35, 1.15) * H2
+            amp, freq, ph = rng.uniform(0.04, 0.12) * W2, rng.uniform(0.8, 2.0), rng.uniform(0, 6.3)
+            drift = rng.uniform(-0.25, 0.25) * W2
+            length = rng.uniform(0.35, 0.8) * H2
+            w, a = rng.uniform(wmin, wmax) * K, rng.uniform(amin, amax)
+            if stage <= t0:
+                continue
+            p = min(1.0, (stage - t0) / 0.5)
+            L = length * (0.25 + 0.75 * p)
+            pts = []
+            for k in range(40):
+                t = k / 39
+                y = y0 - L * t
+                x = x0 + drift * t + amp * math.sin(freq * t * 3.14 + ph) * (0.4 + t)
+                pts.append((x, y))
+            for k in range(39):
+                t = k / 39
+                taper = math.sin(3.14 * t) ** 0.6
+                al = int(a * taper * (0.4 + 0.6 * p))
+                d.line([pts[k], pts[k + 1]], fill=(250, 250, 255, al), width=max(1, int(w * (0.5 + taper))))
+        img = Image.alpha_composite(img, lay.filter(ImageFilter.GaussianBlur(blur * K)))
+    return img.resize(base.size, Image.LANCZOS).convert("RGB")
 
 
 def smoke_rise(base, stage):
