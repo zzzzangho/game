@@ -52,6 +52,16 @@ FRAMES = {
 
 # Small pictures shown in a frame over the middle of the screen (@inset): key -> (frame, crop)
 INSETS = {
+    "ins_troupe_photos": ("p1/309", C32),  # the troupe photos in the pamphlet
+    "ins_reiko_photo": ("p1/311", C32),  # Reiko Chikamiya's photo in the pamphlet
+    "ins_schedule": ("p1/367", C32),  # Takato shoves his schedule at Kenmochi
+    "ins_small_bag": ("p1/368", C32),  # Takato opens the small bag
+    "ins_receipt": ("p4/080", C32),  # the train post receipt held up
+    "ins_reiko_note": ("p3/255", C32),  # Reiko writes in her leather notebook
+    "ins_watch": ("p1/287", C32),  # Kenmochi's wristwatch
+    "ins_bag_slip": ("p1/379", C32),  # the train delivery slip on the bundle
+    "ins_lever": ("p2/126", C32),  # the broken drawbridge lever in Kindaichi's hand
+    "ins_two_notes": ("p4/381", C32),  # the two trick notebooks side by side
     "ins_key": ("p1/385", C32),           # the room key thrown on the front desk
     "ins_rose": ("p1/037", C32),          # the gloved hand through the berth curtain, holding a rose
     "ins_salad_served": ("p1/099", C32),  # the waitress brings Kenmochi the rose salad

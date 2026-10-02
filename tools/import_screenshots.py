@@ -90,7 +90,6 @@ CUTS = {
     "cut_body": ("p1/407", S(20)),        # Yamagami hanging from strings (the shipped image is the user-supplied capture)
     "cut_vase": ("p2/109", S(20)),      # Yumi smashes the vase
     "cut_fall": ("p2/120", S(20)),      # Kindaichi trips on the drawbridge
-    "cut_lever": ("p2/126", S(20)),     # the broken switch lever in Kindaichi's hand
     "cut_psychic": ("p2/130", S(20)),   # Sakuraba raises a drum by telekinesis
     "cut_drum": ("p2/131", S(20)),      # the drum floats over Sakuraba's head
     "cut_drumsticks": ("p2/132", S(20)), # the drumsticks beat by themselves
@@ -134,11 +133,9 @@ CUTS = {
     "cut_freight_stop": ("p1/231", S(20)),  # the train stops at the freight yard
     "cut_evacuate": ("p1/233", S(20)),  # passengers hurry off the train
     "cut_crowd_watch": ("p1/279", S(20)),  # everyone watches the train from afar
-    "cut_watch": ("p1/287", S(20)),  # Kenmochi's wristwatch
     "cut_flinch": ("p1/289", S(20)),  # Akechi and Kenmochi flinch at the blast
     "cut_rocket": ("p1/291", S(20)),  # something shoots into the sky
     "cut_lobby_bag": ("p1/378", S(20)),  # a big bundle tied with straps in the hotel lobby
-    "cut_bag_slip": ("p1/379", S(20)),  # the train-delivery slip on the bundle
     "cut_mario_bag": ("p1/390", S(20)),  # the masked guest's bundle in the fog
     "cut_mario_fog2": ("p1/391", S(20)),  # the masked guest walks off into the fog
     "cut_run_up": ("p3/301", S(20)),  # running up the hotel stairs
@@ -197,7 +194,6 @@ CUTS = {
     "cut_rock_burnt": ("p4/353", S(20)),  # the burning box on the stage
     "cut_stage_police": ("p4/357", S(20)),  # police around the body on the stage
     "cut_cell_smile": ("p4/356", S(20)),  # Takato smiles in his cell
-    "cut_two_notes": ("p4/381", S(20)),  # the two trick notebooks side by side
     "cut_note_pages": ("p4/388", S(20)),  # comparing the notebook pages
     "cut_takato_flames": ("p4/398", S(20)),  # Takato's silhouette in the flames
     "cut_kin_eye": ("p4/401", S(20)),  # Kindaichi's resolute eye

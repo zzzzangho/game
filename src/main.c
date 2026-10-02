@@ -430,7 +430,7 @@ static int cur_inset = NONE;
 #define INSET_Y 14
 static void draw_inset(int y0, int y1)
 {
-    if (cur_inset == NONE || cut_mode) return;
+    if (cur_inset == NONE) return;
     int top = INSET_Y - 2, bot = INSET_Y + INSET_H + 2;
     if (y0 < top) y0 = top;
     if (y1 > bot) y1 = bot;
