@@ -88,7 +88,6 @@ CUTS = {
     "cut_balloons": ("p1/332", S(20)),    # Saki's video: the hand held up by balloons
     "cut_mario": ("p2/027", S(20)),       # the masked guest checking out
     "cut_body": ("p1/407", S(20)),        # Yamagami hanging from strings (the shipped image is the user-supplied capture)
-    "cut_vase": ("p2/109", S(20)),      # Yumi smashes the vase
     "cut_fall": ("p2/120", S(20)),      # Kindaichi trips on the drawbridge
     "cut_psychic": ("p2/130", S(20)),   # Sakuraba raises a drum by telekinesis
     "cut_drum": ("p2/131", S(20)),      # the drum floats over Sakuraba's head

@@ -548,7 +548,6 @@ BUILTIN_CUTS = {
     "cut_balloons": scene_cabin_roses_hand,
     "cut_mario": art_hd.scene_hotel,
     "cut_body": art_hd.card_prologue,
-    "cut_vase": art_hd.scene_theater,
     "cut_fall": art_hd.scene_theater,
     "cut_psychic": art_hd.scene_theater,
     "cut_drum": art_hd.scene_theater,
