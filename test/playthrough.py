@@ -71,7 +71,7 @@ def run(exe, route, ids, title=0, sram=None, shots=None, video="2", traps=False,
     if shots:
         os.makedirs(shots, exist_ok=True)
         env["SHOTS"] = shots
-    p = subprocess.run([exe], env=env, capture_output=True, text=True, timeout=600)
+    p = subprocess.run([exe], env=env, capture_output=True, text=True, timeout=int(os.environ.get("RUN_TIMEOUT", "600")))
     return p.returncode, p.stdout, p.stderr
 
 

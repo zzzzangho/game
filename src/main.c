@@ -92,6 +92,15 @@ static void wait_frames(int n)
     while (n-- > 0) frame();
 }
 
+/* Emulators play sound 50-100 ms after it is started; the picture that goes with a sound waits
+ * SND_LEAD frames, so what is seen and heard land together. */
+#define SND_LEAD 3
+static void sfx(int id)
+{
+    plat_sfx(id);
+    wait_frames(SND_LEAD);
+}
+
 static void fade_out(void)
 {
     for (int l = 1; l <= 16; l++) {
@@ -320,6 +329,16 @@ static void type_text(int x, int y, int id, u16 c)
     const u16 *s = txt(id);
     int caption = is_caption(s);
     int cx = caption ? (SCREEN_W - line_width(s, 1)) / 2 : x, instant = 0, n = 0, emph = 0;
+    /* emulators play sound 50-100 ms late: the typing sound starts SND_LEAD frames before the first
+     * letter and stops that much before the last one, so the two line up */
+    int left = 0;
+    for (const u16 *q = s; *q != TXT_END; q++) left += *q != TXT_NL && *q != TXT_EMPH_ON && *q != TXT_EMPH_OFF;
+    plat_sfx(SFX_BLIP);
+    for (int k = 0; k < SND_LEAD; k++) {
+        ambient_tick();
+        frame();
+        if (keys_new & (KEY_A | KEY_B)) instant = 1;
+    }
     for (; *s != TXT_END; s++) {
         if (*s == TXT_EMPH_ON || *s == TXT_EMPH_OFF) {
             emph = *s == TXT_EMPH_ON;
@@ -331,7 +350,8 @@ static void type_text(int x, int y, int id, u16 c)
             cx = caption ? (SCREEN_W - line_width(s + 1, 1)) / 2 : x;
             continue;
         }
-        if (!instant && (n & 1) == 0) plat_sfx(SFX_BLIP); /* with the letter, from the very first one */
+        left--;
+        if (!instant && (n & 1) == 1 && left > 2) plat_sfx(SFX_BLIP);
         glyph_shadowed(cx, y, *s, caption ? C_GOLD : emph ? C_EMPH : c, 1);
         cx += glyph_adv[*s];
         if (!instant) { /* about 40 characters a second: 1 and 2 frames in turn */
@@ -774,7 +794,7 @@ static int timer_tick(void)
         plat_debug_event("timeout", 0);
         return 1;
     }
-    if (timer_left % 60 == 0 && timer_left <= 300) plat_sfx(SFX_MOVE); /* last five seconds tick */
+    if (timer_left % 60 == 0 && timer_left <= 300) sfx(SFX_OK); /* last five seconds tick */
     return 0;
 }
 
@@ -822,7 +842,7 @@ static void meet(int c, int title)
     w += 16;
     int x = (SCREEN_W - w) / 2, y = (SCREEN_H - h) / 2;
     save_screen();
-    plat_sfx(SFX_GET);
+    sfx(SFX_GET);
     popup_window(x, y, w, h);
     draw_disp(title, SCREEN_W / 2, y + 10); /* small Galmuri9, like the name tags */
     fill(SCREEN_W / 2 - THUMB_W / 2, y + 18, THUMB_W, THUMB_H, RGB(1, 1, 3));
@@ -830,7 +850,7 @@ static void meet(int c, int title)
     draw_text(SCREEN_W / 2 - tw / 2, y + THUMB_H + 21, name, C_WHITE);
     plat_debug_event("get", 0);
     wait_a(10);
-    plat_sfx(SFX_OK);
+    sfx(SFX_OK);
     restore_screen();
 }
 
@@ -899,7 +919,7 @@ static void wait_a(int min_frames)
 static void got_item(int title, int name, const u16 *img, int w, int h)
 {
     save_screen();
-    plat_sfx(SFX_GET);
+    sfx(SFX_GET);
     int wy = 16, wh = h + 16; /* names up to GOT_NAME_W px fit (checked by build_assets.py) */
     popup_window(10, wy, 220, wh);
     fill(18, wy + 8, w, h, RGB(1, 1, 3));
@@ -908,7 +928,7 @@ static void got_item(int title, int name, const u16 *img, int w, int h)
     draw_text(92, wy + 32, name, C_WHITE);
     plat_debug_event("get", 0);
     wait_a(10);
-    plat_sfx(SFX_OK);
+    sfx(SFX_OK);
     restore_screen();
 }
 
@@ -938,7 +958,7 @@ static void do_fx(int kind)
         flash(C_WHITE, 3);
         break;
     case FX_SHOCK:
-        plat_sfx(SFX_SHOCK);
+        sfx(SFX_SHOCK);
         flash(C_WHITE, 2);
         shake(16, 4);
         break;
@@ -946,7 +966,7 @@ static void do_fx(int kind)
         shake(20, 3);
         break;
     case FX_RED:
-        plat_sfx(SFX_SHOCK);
+        sfx(SFX_SHOCK);
         save_screen();
         for (int i = 0; i < 3; i++) shade(0, 0, SCREEN_W, SCREEN_H, RGB(28, 0, 2));
         shake(24, 4);
@@ -955,7 +975,7 @@ static void do_fx(int kind)
         frame();
         break;
     case FX_CRASH: /* something breaks: a bang, a white flash and a hard jolt */
-        plat_sfx(SFX_SHOCK);
+        sfx(SFX_SHOCK);
         flash(C_WHITE, 2);
         shake(30, 7);
         break;
@@ -963,37 +983,37 @@ static void do_fx(int kind)
         save_screen();
         fill(0, 0, SCREEN_W, SCREEN_H, 0);
         frame();
-        plat_sfx(SFX_DUN);
+        sfx(SFX_DUN);
         wait_frames(10);
-        plat_sfx(SFX_DUN);
+        sfx(SFX_DUN);
         wait_frames(16);
         for (int k = 0; k < 4; k++) {
             restore_screen();
             if (k & 1) for (int i = 0; i < 3; i++) shade(0, 0, SCREEN_W, SCREEN_H, RGB(28, 0, 2));
-            plat_sfx(SFX_SHOCK);
+            sfx(SFX_SHOCK);
             shake(5 + k * 2, 10 - k * 2);
             fill(0, 0, SCREEN_W, SCREEN_H, k == 2 ? C_WHITE : 0);
             wait_frames(2);
         }
         restore_screen();
         for (int i = 0; i < 2; i++) shade(0, 0, SCREEN_W, SCREEN_H, RGB(28, 0, 2));
-        plat_sfx(SFX_SHOCK);
+        sfx(SFX_SHOCK);
         shake(40, 7);
         wait_frames(24);
         restore_screen();
         frame();
         break;
     case FX_DUN: /* a dramatic entrance: "du-dun!" like the chapter eyecatch */
-        plat_sfx(SFX_DUN);
+        sfx(SFX_DUN);
         wait_frames(7);
-        plat_sfx(SFX_DUN);
+        sfx(SFX_DUN);
         wait_frames(10);
         break;
     case FX_BOOM: /* the explosion on the train roof: blinding flash, then a long rumble */
-        plat_sfx(SFX_SHOCK);
+        sfx(SFX_SHOCK);
         flash(C_WHITE, 4);
         shake(12, 8);
-        plat_sfx(SFX_SHOCK);
+        sfx(SFX_SHOCK);
         flash(C_WHITE, 2);
         shake(36, 5);
         break;
@@ -1019,7 +1039,7 @@ static void do_shout(int spk, int t, int portrait)
     while (cut && n < 3 && cut[n]) n++;
     for (int k = 0; k <= n; k++) {
         int last = k == n;
-        plat_sfx(last ? SFX_OBJECTION : SFX_SHOCK);
+        sfx(last ? SFX_OBJECTION : SFX_SHOCK);
         if (last && k == 0) flash(C_WHITE, 2);
         draw_disp_part(t, SCREEN_W / 2, cy, last ? -1 : cut[k]);
         shake(last ? 18 : 8, last ? 6 : 4);
@@ -1034,7 +1054,7 @@ static void do_shout(int spk, int t, int portrait)
 
 static int lose_life(void)
 {
-    plat_sfx(SFX_WRONG);
+    sfx(SFX_WRONG);
     if (lives > 0) lives--;
     if (!hearts_shown) hearts_depth = run_depth; /* hidden again after this part of the script */
     hearts_shown = 1;
@@ -1054,7 +1074,7 @@ static int lose_life(void)
         fill(0, BOX_Y - 24, SCREEN_W, 22, RGB(10, 0, 0));
         draw_text_ex(SCREEN_W / 2, BOX_Y - 19, UI_DANGER, C_RED, 1, 1);
         for (int i = 0; i < 70; i++) {
-            if ((i % 30) == 0 || (i % 30) == 8) plat_sfx(SFX_SHOCK); /* heartbeat */
+            if ((i % 30) == 0 || (i % 30) == 8) sfx(SFX_SHOCK); /* heartbeat */
             frame();
         }
     }
@@ -1075,7 +1095,7 @@ static void place_caption(int t)
     fill(0, cy + 14, SCREEN_W, 1, C_BORDER);
     fill(x - 34, cy, 24, 1, C_BORDER);
     fill(x + w + 10, cy, 24, 1, C_BORDER);
-    plat_sfx(SFX_GET);
+    sfx(SFX_GET);
     for (int v = 0; v < w + 6; v += 6) {   /* wipe the name in from the left */
         draw_disp_part(t, SCREEN_W / 2, cy, v);
         frame();
@@ -1098,7 +1118,7 @@ static void intro_card(int spk, int portrait, int epi, int name)
     cur_portrait = portrait;
     draw_scene();
     save_screen();
-    plat_sfx(SFX_GET);
+    sfx(SFX_GET);
     for (int f = 0; f <= 14; f++) {
         int off = (14 - f) * 18;
         restore_screen();
@@ -1124,7 +1144,12 @@ static void intro_card(int spk, int portrait, int epi, int name)
  * The spin is done by the display hardware (BG2 affine horizontal scale), so it is smooth at 60fps. */
 static int cur_bgm = NONE; /* sound index of the music playing (kept in saves) */
 
-static void play_sound(int id) { if (id != NONE) plat_pcm(sound_pcm[id], sound_len[id]); }
+static void play_sound(int id)
+{
+    if (id == NONE) return;
+    plat_pcm(sound_pcm[id], sound_len[id]);
+    wait_frames(SND_LEAD);
+}
 
 static void play_bgm(int id)
 {
@@ -1156,9 +1181,9 @@ static void eyecatch(void)
     }
     plat_hscale(256);
     if (SND_SILHOUETTE == NONE) {
-        plat_sfx(SFX_DUN);          /* du- */
+        sfx(SFX_DUN);          /* du- */
         wait_frames(7);
-        plat_sfx(SFX_DUN);          /* -dun! */
+        sfx(SFX_DUN);          /* -dun! */
     }
     flash(C_WHITE, 2);
     shake(8, 2);
@@ -1284,7 +1309,7 @@ static int choose(int spk, int q, const u16 *texts, int n, u32 greyed, int extra
         plat_debug_event("menu", sel);
         int d = dbg_id >= 0 ? plat_debug_menu(dbg_id, total, traps) : plat_debug_choice(dbg_kind, total);
         if (d >= 0 && d < total) {
-            plat_sfx(SFX_OK);
+            sfx(SFX_OK);
             return d;
         }
         frame();
@@ -1292,22 +1317,22 @@ static int choose(int spk, int q, const u16 *texts, int n, u32 greyed, int extra
         if (keys_new & KEY_UP) {
             sel = (sel + total - 1) % total;
             redraw = 1;
-            plat_sfx(SFX_MOVE);
+            sfx(SFX_OK);
         } else if (keys_new & KEY_DOWN) {
             sel = (sel + 1) % total;
             redraw = 1;
-            plat_sfx(SFX_MOVE);
+            sfx(SFX_OK);
         } else if ((keys_new & (KEY_LEFT | KEY_RIGHT)) && cols > 1) {
             int r = sel % rows, c = sel / rows ^ 1; /* the same row in the other column */
             if (c * rows + r < total) sel = c * rows + r;
             else sel = total - 1;
             redraw = 1;
-            plat_sfx(SFX_MOVE);
+            sfx(SFX_OK);
         } else if (keys_new & KEY_A) {
-            plat_sfx(SFX_OK);
+            sfx(SFX_OK);
             return sel;
         } else if ((keys_new & KEY_B) && extra == UI_BACK) {
-            plat_sfx(SFX_MOVE);   /* B = "돌아간다" in sub-menus */
+            sfx(SFX_OK);   /* B = "돌아간다" in sub-menus */
             return n;
         } else if (keys_new & KEY_START) {
             record(0, NONE);
@@ -1371,7 +1396,7 @@ static int record(int present, int question)
     int top = 0, result = -1;
 
     plat_copy32(saved_screen, fb, SCREEN_W * SCREEN_H / 2);
-    plat_sfx(SFX_OK);
+    sfx(SFX_OK);
     if (present) tab = 0;
     /* animation (kept cheap for the GBA): the notebook is drawn once and uncovered from the middle
      * by presenting only a growing band of rows; a new selection redraws the list once and then
@@ -1510,18 +1535,18 @@ static int record(int present, int question)
                 if (sel[tab] < top) top = sel[tab];
                 if (sel[tab] >= top + REC_ROWS) top = sel[tab] - REC_ROWS + 1;
                 pic_dx = 12, pic_only = 0;
-                plat_sfx(SFX_MOVE);
+                sfx(SFX_OK);
                 redraw = 1;
             }
         } else if (!present && (keys_new & (KEY_L | KEY_R | KEY_LEFT | KEY_RIGHT))) {
             tab ^= 1;
             top = 0;
             pic_dx = 12, pic_only = 0, full = 1;
-            plat_sfx(SFX_MOVE);
+            sfx(SFX_OK);
             redraw = 1;
         } else if (present && (keys_new & KEY_A) && n) {
             result = list[sel[tab]];
-            plat_sfx(SFX_OK);
+            sfx(SFX_OK);
             for (int k = 0; k < 12; k++) { /* the chosen row flashes, the picture shakes */
                 int y = REC_LIST_Y + (sel[tab] - top) * 13;
                 fill(4, y, 152, 13, (k & 2) ? C_WHITE : C_HILITE);
@@ -1534,15 +1559,15 @@ static int record(int present, int question)
             }
             break;
         } else if (present == 2 && (keys_new & KEY_B)) { /* showing is optional */
-            plat_sfx(SFX_CANCEL);
+            sfx(SFX_CANCEL);
             result = NONE;
             break;
         } else if (present == 3 && (keys_new & KEY_B)) { /* testimony: back to the statements */
-            plat_sfx(SFX_CANCEL);
+            sfx(SFX_CANCEL);
             result = -2;
             break;
         } else if (!present && (keys_new & (KEY_B | KEY_START))) {
-            plat_sfx(SFX_CANCEL);
+            sfx(SFX_CANCEL);
             break;
         } else if (!present && in_game && (keys_new & KEY_SELECT)) {
             save_prompt();
@@ -1675,11 +1700,11 @@ static int slot_menu(int saving)
         if (keys_new & (KEY_UP | KEY_DOWN)) {
             int step = (keys_new & KEY_UP) ? -1 : 1;
             sel = first + (sel - first + step + (SLOT_COUNT - first)) % (SLOT_COUNT - first);
-            plat_sfx(SFX_MOVE);
+            sfx(SFX_OK);
             redraw = 1;
         } else if (keys_new & KEY_A) {
             if (!saving && !ok[sel]) {
-                plat_sfx(SFX_WRONG);
+                sfx(SFX_WRONG);
                 continue;
             }
             break;
@@ -1688,7 +1713,7 @@ static int slot_menu(int saving)
             break;
         }
     }
-    plat_sfx(sel >= 0 ? SFX_OK : SFX_CANCEL);
+    sfx(sel >= 0 ? SFX_OK : SFX_CANCEL);
     restore_screen();
     return sel;
 }
@@ -1734,11 +1759,11 @@ static void chapter_save_ask(void)
         frame();
         if (keys_new & (KEY_LEFT | KEY_RIGHT | KEY_UP | KEY_DOWN)) {
             yes ^= 1;
-            plat_sfx(SFX_MOVE);
+            sfx(SFX_OK);
             redraw = 1;
         } else if (keys_new & (KEY_A | KEY_B)) {
             if (keys_new & KEY_B) yes = 0;
-            plat_sfx(yes ? SFX_OK : SFX_CANCEL);
+            sfx(yes ? SFX_OK : SFX_CANCEL);
             break;
         }
     }
@@ -1930,13 +1955,13 @@ static int examine(int id, int q, int n, const u16 *opts)
             if (ex_y > SCREEN_H - 4) ex_y = SCREEN_H - 4;
             if (keys_new & KEY_A) {
                 if (hover >= 0) {
-                    plat_sfx(SFX_OK);
+                    sfx(SFX_OK);
                     sel = hover;
                     break;
                 }
-                plat_sfx(SFX_CANCEL);
+                sfx(SFX_CANCEL);
             } else if (keys_new & KEY_B) {
-                plat_sfx(SFX_MOVE);
+                sfx(SFX_OK);
                 examine_quit = has_end;
                 return RET_RETURN;
             } else if (keys_new & KEY_START) {
@@ -1964,11 +1989,11 @@ static void banner(int kind)
     shade(0, 0, SCREEN_W, SCREEN_H, 0);
     frame();
     wait_frames(4);
-    plat_sfx(SFX_SHOCK);
+    sfx(SFX_SHOCK);
     draw_disp(a, x + wa / 2, cy);
     shake(10, 5);
     wait_frames(6);
-    plat_sfx(kind == 3 ? SFX_OBJECTION : SFX_SHOCK);
+    sfx(kind == 3 ? SFX_OBJECTION : SFX_SHOCK);
     draw_disp(b, x + wa + gap + wb / 2, cy);
     plat_debug_event("banner", kind);
     shake(14, 6);
@@ -2013,17 +2038,17 @@ static int video(int title, int n, const u16 *frames, int cur)
         frame();
         if ((keys_new & KEY_LEFT) && cur > 0) {
             cur--;
-            plat_sfx(SFX_MOVE);
+            sfx(SFX_OK);
             redraw = 1;
         } else if ((keys_new & KEY_RIGHT) && cur < n - 1) {
             cur++;
-            plat_sfx(SFX_MOVE);
+            sfx(SFX_OK);
             redraw = 1;
         } else if (keys_new & KEY_A) {
-            plat_sfx(SFX_OK);
+            sfx(SFX_OK);
             return cur;
         } else if (keys_new & KEY_B) {
-            plat_sfx(SFX_CANCEL);
+            sfx(SFX_CANCEL);
             return -1;
         }
     }
@@ -2038,7 +2063,7 @@ static int mash(int t, int frames)
     draw_box(NONE);
     draw_text(TEXT_X, TEXT_Y, t, C_WHITE);
     save_screen();
-    plat_sfx(SFX_SHOCK);
+    sfx(SFX_SHOCK);
     int forced = plat_debug_choice(DBG_MASH, 0);
     for (int f = 0; f < frames; f++) {
         restore_rect(20, 60, 200, 40);
@@ -2058,7 +2083,7 @@ static int mash(int t, int frames)
         if (gauge < 0) gauge = 0;
         if (gauge >= 1000) {
             plat_offset(0, 0);
-            plat_sfx(SFX_OK);
+            sfx(SFX_OK);
             plat_debug_event("mash", 1);
             restore_screen();
             return 1;
@@ -2124,13 +2149,13 @@ static int testimony(int spk, int title, int n, const u16 *stmts, int wrong)
             frame();
             if (keys_new & KEY_RIGHT) {
                 cur = (cur + 1) % n;
-                plat_sfx(SFX_MOVE);
+                sfx(SFX_OK);
                 redraw = 1;
                 continue;
             }
             if (keys_new & KEY_LEFT) {
                 cur = (cur + n - 1) % n;
-                plat_sfx(SFX_MOVE);
+                sfx(SFX_OK);
                 redraw = 1;
                 continue;
             }
@@ -2268,7 +2293,6 @@ static int run_inner(u16 pc)
                 /* the next line redraws the screen without it */
                 break;
             }
-            plat_sfx(SFX_MOVE);
             for (int h = 8; h <= INSET_H / 2 + 2; h += 12) { /* opens from the middle */
                 draw_inset(INSET_Y + INSET_H / 2 - h, INSET_Y + INSET_H / 2 + h);
                 frame();
@@ -2419,7 +2443,7 @@ static int run_inner(u16 pc)
                 int chosen = record(1, q);
                 timer_total = 0;
                 if (chosen == target) {
-                    plat_sfx(SFX_OBJECTION);
+                    sfx(SFX_OBJECTION);
                     flash(C_WHITE, 2);
                     break;
                 }
@@ -2446,7 +2470,7 @@ static int run_inner(u16 pc)
             int chosen = record(1, q);
             timer_total = 0;
             if (chosen == target) {
-                plat_sfx(SFX_OBJECTION);
+                sfx(SFX_OBJECTION);
                 flash(C_WHITE, 2);
                 pc = ok;
             } else {
@@ -2499,7 +2523,7 @@ static void disclaimer(void)
     for (int i = 0; i < 240; i++) {
         frame();
         if (i > 20 && (keys_new & (KEY_A | KEY_START))) {
-            plat_sfx(SFX_OK);
+            sfx(SFX_OK);
             break;
         }
     }
@@ -2547,14 +2571,13 @@ static void title_draw(int t, int menu, int has_save)
             draw_text_ex(SCREEN_W / 2, y, tx, c, 1, 1);
         }
     }
-    draw_disp(UI_TITLE_FAN, SCREEN_W / 2, 151);
 }
 
 /* Debug: chapter select (title screen, hold L and tap R 5 times). Returns a chapter or -1. */
 static int debug_menu(void)
 {
     int sel = 0;
-    plat_sfx(SFX_OBJECTION);
+    sfx(SFX_OBJECTION);
     for (int redraw = 1;;) {
         if (redraw) {
             fill(0, 0, SCREEN_W, SCREEN_H, RGB(2, 2, 6));
@@ -2575,13 +2598,13 @@ static int debug_menu(void)
         frame();
         if (keys_new & (KEY_UP | KEY_DOWN)) {
             sel = (sel + ((keys_new & KEY_UP) ? CHAPTER_COUNT - 1 : 1)) % CHAPTER_COUNT;
-            plat_sfx(SFX_MOVE);
+            sfx(SFX_OK);
             redraw = 1;
         } else if (keys_new & (KEY_A | KEY_START)) {
-            plat_sfx(SFX_OK);
+            sfx(SFX_OK);
             return sel;
         } else if (keys_new & KEY_B) {
-            plat_sfx(SFX_CANCEL);
+            sfx(SFX_CANCEL);
             return -1;
         }
     }
@@ -2626,17 +2649,17 @@ static int title_screen(int has_save)
         if (redraw) t++;
         if (menu < 0) {
             if (keys_new & (KEY_START | KEY_A)) {
-                plat_sfx(SFX_OK);
+                sfx(SFX_OK);
                 menu = sel;
                 title_blink0 = t;
                 redraw = 1;
             }
         } else {
-            if ((keys_new & (KEY_UP | KEY_DOWN)) && !has_save) plat_sfx(SFX_WRONG); /* nothing to continue */
+            if ((keys_new & (KEY_UP | KEY_DOWN)) && !has_save) sfx(SFX_WRONG); /* nothing to continue */
             if ((keys_new & (KEY_UP | KEY_DOWN)) && has_save) {
                 sel ^= 1;
                 menu = sel;
-                plat_sfx(SFX_MOVE);
+                sfx(SFX_OK);
                 title_blink0 = t;
                 redraw = 1;
             }
@@ -2644,7 +2667,7 @@ static int title_screen(int has_save)
         }
         if (redraw) title_draw(t, menu, has_save);
     }
-    plat_sfx(SFX_OK);
+    sfx(SFX_OK);
     fade_out();
     return sel;
 }
