@@ -26,7 +26,7 @@ def convert(src, peak):
 
 if __name__ == "__main__":
     kind, name, src = sys.argv[1:4]
-    pcm = convert(src, 0.85 if kind == "bgm" else 1.0)
+    pcm = convert(src, 0.6 if kind == "bgm" else 1.0)  # music sits well under the effects
     os.makedirs(OUT, exist_ok=True)
     pcm.tofile(os.path.join(OUT, f"{kind}_{name}.s8"))
     print(f"{kind}_{name}: {len(pcm) / RATE:.1f} s, {len(pcm) // 1024} KB")

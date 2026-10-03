@@ -102,7 +102,7 @@ static void bgm_start(void)
 {
     REG_DMA1CNT = 0;
     REG_SNDDSCNT = ds_cnt | (1 << 11); /* reset FIFO A */
-    ds_set(ds_cnt | (1 << 2) | (3 << 8));
+    ds_set(ds_cnt | (3 << 8)); /* DS A at 50%: the music stays under the voices and effects */
     REG_DMA1SAD = (u32)bgm_pcm;
     REG_DMA1DAD = REG_FIFO_A;
     REG_DMA1CNT = 0xB6400000u; /* enable, sound FIFO timing, 32-bit, repeat, fixed destination */
@@ -114,7 +114,7 @@ void plat_bgm(const signed char *pcm, u32 len)
 {
     if (pcm == bgm_pcm && len && bgm_len) return; /* already playing */
     REG_DMA1CNT = 0;
-    ds_set(ds_cnt & ~((1 << 2) | (3 << 8)));
+    ds_set(ds_cnt & ~(3 << 8));
     bgm_pcm = pcm;
     bgm_len = len;
     if (len) bgm_start();
@@ -219,6 +219,11 @@ void plat_sfx(int id)
         REG_SND1FREQ = rate(160) | 0xC000;
         REG_SND4CNT = (15 << 12) | (5 << 8);
         REG_SND4FREQ = 0x8000 | (6 << 4) | 3;
+        break;
+    case SFX_CLICK: /* a soft click when a page is turned */
+        REG_SND1SWEEP = (1 << 4) | (1 << 3) | 2;
+        REG_SND1CNT = (8 << 12) | (1 << 8) | (2 << 6) | 52;
+        REG_SND1FREQ = rate(1600) | 0xC000;
         break;
     case SFX_OBJECTION:
         REG_SND1SWEEP = (3 << 4) | 1;
