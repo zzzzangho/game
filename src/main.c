@@ -1121,6 +1121,17 @@ static void intro_card(int spk, int portrait, int epi, int name)
 
 /* Chapter-change eyecatch: Kindaichi's glowing silhouette spins, then lands with "du-dun!".
  * The spin is done by the display hardware (BG2 affine horizontal scale), so it is smooth at 60fps. */
+static int cur_bgm = NONE; /* sound index of the music playing (kept in saves) */
+
+static void play_sound(int id) { if (id != NONE) plat_pcm(sound_pcm[id], sound_len[id]); }
+
+static void play_bgm(int id)
+{
+    cur_bgm = id;
+    if (id == NONE) plat_bgm(0, 0);
+    else plat_bgm(sound_pcm[id], sound_len[id]);
+}
+
 static void eyecatch(void)
 {
 #if HAVE_EYECATCH
@@ -1132,6 +1143,7 @@ static void eyecatch(void)
     frame();
     plat_fade(0);
     plat_debug_event("eyecatch", 0);
+    play_sound(SND_SILHOUETTE);
     for (int a = 64; a <= 256; a += 8) {   /* 1/4 turn (edge-on) .. full turn, 25 frames */
         int q = a & 255, c;
         if (q <= 64) c = cosq[q];
@@ -1142,12 +1154,14 @@ static void eyecatch(void)
         frame();
     }
     plat_hscale(256);
-    plat_sfx(SFX_DUN);          /* du- */
-    wait_frames(7);
-    plat_sfx(SFX_DUN);          /* -dun! */
+    if (SND_SILHOUETTE == NONE) {
+        plat_sfx(SFX_DUN);          /* du- */
+        wait_frames(7);
+        plat_sfx(SFX_DUN);          /* -dun! */
+    }
     flash(C_WHITE, 2);
     shake(8, 2);
-    wait_frames(45);
+    wait_frames(SND_SILHOUETTE == NONE ? 45 : 115); /* the sting runs 2.4 s */
 #endif
 }
 
@@ -1580,7 +1594,7 @@ static void save_slot(int slot, u16 pc)
     s.pc = pc;
     s.scene = cur_scene;
     s.cut = cut_mode;
-    s.pad = 0;
+    s.pad = cur_bgm == NONE ? 0 : cur_bgm + 1;
     s.gameover = gameover_pc;
     s.lives = lives;
     s.max_lives = max_lives;
@@ -2462,6 +2476,12 @@ static int run_inner(u16 pc)
         case OP_WAIT:
             wait_frames(S[pc++]);
             break;
+        case OP_BGM:
+            play_bgm(S[pc++]);
+            break;
+        case OP_PCM:
+            play_sound(S[pc++]);
+            break;
         default:
             return RET_TITLE; /* end of script or corrupt data */
         }
@@ -2574,7 +2594,7 @@ static int title_screen(int has_save)
     cur_scene = SCENE_TITLE;
     cur_portrait = NONE;
     title_draw(t, menu, has_save);
-    plat_bgm(bgm_title, bgm_title_len);
+    play_bgm(NONE);
     fade_in();
     for (int f = 1;; f++) {
         plat_debug_event("title", has_save);
@@ -2590,7 +2610,6 @@ static int title_screen(int has_save)
                 debug_chapter = debug_menu();
                 if (debug_chapter >= 0) {
                     fade_out();
-                    plat_bgm(0, 0);
                     return 2;
                 }
                 title_draw(t, menu, has_save);
@@ -2622,7 +2641,6 @@ static int title_screen(int has_save)
     }
     plat_sfx(SFX_OK);
     fade_out();
-    plat_bgm(0, 0);
     return sel;
 }
 
@@ -2666,6 +2684,7 @@ int main(void)
             cur_chapter = s.chapter;
             cur_place = s.place;
             pc = s.pc;
+            if (s.pad && s.pad - 1 < SOUND_COUNT) play_bgm(s.pad - 1);
         }
         if (choice == 2 && debug_chapter >= 0) { /* debug start: the chapter, every piece of evidence */
             pc = chapter_pc[debug_chapter];
