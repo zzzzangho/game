@@ -355,8 +355,8 @@
 김전일[shock]: 폭탄이라고?
 켄모치[tense]: 야, 전일아, 혹시 그 전화도 마술 공연의 일부분이 아닐까?
 @cut cut_salad_boom
-@fx boom
 @sfx pop
+@fx boom
 펑!
 @cut cut_salad_blast
 켄모치[shock]: 으아아악! 뭐야! 펑 하는 소린! 폭탄 아냐!
@@ -463,8 +463,8 @@
 @inset ins_watch
 켄모치의 손목시계 바늘이, 예고된 시각을 향해 움직였다. 째깍, 째깍…
 @cut cut_burst
-@fx boom
 @sfx boom
+@fx boom
 열차 지붕 위에서, 무언가가 펑 터졌다!
 @cut cut_flinch
 다들 저도 모르게 몸을 움츠렸다.
@@ -540,8 +540,8 @@
 켄모치[shock]: 다들 피해! 위험해! 빨리 엎드려!
 @fx shake
 켄모치는 김전일을 감싸며 문을 쾅 닫았다.
-@fx shake
 @sfx pops
+@fx shake
 펑, 펑, 펑펑펑…! 연기 속에서 무언가가 연달아 터지는 소리가 났다.
 @scene cabin_empty
 @bgm locked
@@ -874,8 +874,8 @@
 @return
 
 *c1c_alarm_trap
-@fx shake
 @sfx alarm
+@fx shake
 요란한 경보가 울려 퍼지고, 승객들이 복도로 쏟아져 나왔다.
 켄모치[angry]: 전일아!! 이게 무슨 소동이야!
 @penalty
@@ -2670,8 +2670,8 @@
 김전일: 네, 그 당시하고 똑같이 현장을 재현해 봤습니다. 시체가 인형으로 바뀐 것만 빼면요.
 김전일: 그 사건은 한 통의 전화에서 시작됐어요. 우리는 지옥의 인형술사한테서 전화를 받고 이 객실로 달려왔고, 장미에 둘러싸여 있는 단장님의 시체를 발견했죠.
 김전일: 장미 가시 때문에 들어가지 못하고 있는데, 갑자기 흰 연기가 피어올랐고. 우린 놀라서 문을 닫았어요.
-@fx flash
 @sfx pops
+@fx flash
 펑, 펑펑펑…!
 미유키[surprised]: 아니, 이건… 풍선 터지는 소리?
 켄모치[surprised]: 그때하고 상황이 똑같아…!

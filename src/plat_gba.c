@@ -185,9 +185,9 @@ void plat_sfx(int id)
         REG_SND2CNT = (4 << 12) | (1 << 8) | (2 << 6) | 60;
         REG_SND2FREQ = rate(1400) | 0xC000;
         break;
-    case SFX_MOVE:
-        REG_SND2CNT = (6 << 12) | (1 << 8) | (2 << 6) | 56;
-        REG_SND2FREQ = rate(900) | 0xC000;
+    case SFX_MOVE: /* a short, clear "tick" (about 0.1 s), loud enough over the music */
+        REG_SND2CNT = (11 << 12) | (1 << 8) | (1 << 6) | 38;
+        REG_SND2FREQ = rate(1200) | 0xC000;
         break;
     case SFX_OK:
         REG_SND1SWEEP = (2 << 4) | 3;
