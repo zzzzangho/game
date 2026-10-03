@@ -189,14 +189,14 @@ void plat_sfx(int id)
         REG_SND2CNT = (11 << 12) | (1 << 8) | (1 << 6) | 38;
         REG_SND2FREQ = rate(1200) | 0xC000;
         break;
-    case SFX_OK:
-        REG_SND1SWEEP = (2 << 4) | 3;
-        REG_SND1CNT = (10 << 12) | (2 << 8) | (2 << 6) | 40;
-        REG_SND1FREQ = rate(700) | 0xC000;
+    case SFX_OK: /* a bright, clear confirm: loud start, rising a little */
+        REG_SND1SWEEP = (3 << 4) | 4;
+        REG_SND1CNT = (15 << 12) | (3 << 8) | (2 << 6) | 26;
+        REG_SND1FREQ = rate(880) | 0xC000;
         break;
     case SFX_CANCEL:
         REG_SND1SWEEP = (2 << 4) | (1 << 3) | 3;
-        REG_SND1CNT = (9 << 12) | (2 << 8) | (2 << 6) | 40;
+        REG_SND1CNT = (13 << 12) | (2 << 8) | (2 << 6) | 30;
         REG_SND1FREQ = rate(600) | 0xC000;
         break;
     case SFX_GET:

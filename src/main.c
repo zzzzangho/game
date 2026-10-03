@@ -895,7 +895,10 @@ static void wait_a(int min_frames)
 {
     for (int i = 0; ; i++) {
         frame();
-        if (i >= min_frames && (keys_new & (KEY_A | KEY_START))) return;
+        if (i >= min_frames && (keys_new & (KEY_A | KEY_START))) {
+            plat_sfx(SFX_CLICK);
+            return;
+        }
     }
 }
 
@@ -2501,7 +2504,10 @@ static void disclaimer(void)
     fade_in();
     for (int i = 0; i < 240; i++) {
         frame();
-        if (i > 20 && (keys_new & (KEY_A | KEY_START))) break;
+        if (i > 20 && (keys_new & (KEY_A | KEY_START))) {
+            plat_sfx(SFX_OK);
+            break;
+        }
     }
     fade_out();
 }
@@ -2632,6 +2638,7 @@ static int title_screen(int has_save)
                 redraw = 1;
             }
         } else {
+            if ((keys_new & (KEY_UP | KEY_DOWN)) && !has_save) plat_sfx(SFX_WRONG); /* nothing to continue */
             if ((keys_new & (KEY_UP | KEY_DOWN)) && has_save) {
                 sel ^= 1;
                 menu = sel;
