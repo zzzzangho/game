@@ -94,12 +94,8 @@ static void wait_frames(int n)
 
 /* Emulators play sound 50-100 ms after it is started; the picture that goes with a sound waits
  * SND_LEAD frames, so what is seen and heard land together. */
-#define SND_LEAD 3
-static void sfx(int id)
-{
-    plat_sfx(id);
-    wait_frames(SND_LEAD);
-}
+#define SND_LEAD 6 /* ~100 ms: how much earlier the typing sound starts */
+static void sfx(int id) { plat_sfx(id); } /* a button sound plays at once; the screen does not wait */
 
 static void fade_out(void)
 {
@@ -333,8 +329,8 @@ static void type_text(int x, int y, int id, u16 c)
      * letter and stops that much before the last one, so the two line up */
     int left = 0;
     for (const u16 *q = s; *q != TXT_END; q++) left += *q != TXT_NL && *q != TXT_EMPH_ON && *q != TXT_EMPH_OFF;
-    plat_sfx(SFX_BLIP);
     for (int k = 0; k < SND_LEAD; k++) {
+        if (k % 3 == 0 && !instant) plat_sfx(SFX_BLIP); /* the same pace as the letters */
         ambient_tick();
         frame();
         if (keys_new & (KEY_A | KEY_B)) instant = 1;
@@ -351,7 +347,7 @@ static void type_text(int x, int y, int id, u16 c)
             continue;
         }
         left--;
-        if (!instant && (n & 1) == 1 && left > 2) plat_sfx(SFX_BLIP);
+        if (!instant && (n & 1) == 1 && left > SND_LEAD / 2) plat_sfx(SFX_BLIP);
         glyph_shadowed(cx, y, *s, caption ? C_GOLD : emph ? C_EMPH : c, 1);
         cx += glyph_adv[*s];
         if (!instant) { /* about 40 characters a second: 1 and 2 frames in turn */
@@ -1148,7 +1144,7 @@ static void play_sound(int id)
 {
     if (id == NONE) return;
     plat_pcm(sound_pcm[id], sound_len[id]);
-    wait_frames(SND_LEAD);
+    wait_frames(3);
 }
 
 static void play_bgm(int id)
