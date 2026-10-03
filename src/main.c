@@ -800,10 +800,7 @@ static void wait_advance(void)
         if ((frame_count >> 4) & 1) draw_arrow(225, 154, C_WHITE);
         ambient_tick();
         frame();
-        if (keys_new & KEY_A) {
-            plat_sfx(SFX_CLICK); /* the page turns */
-            return;
-        }
+        if (keys_new & KEY_A) return;
         if (keys_new & KEY_START) record(0, NONE);
     }
 }
@@ -895,10 +892,7 @@ static void wait_a(int min_frames)
 {
     for (int i = 0; ; i++) {
         frame();
-        if (i >= min_frames && (keys_new & (KEY_A | KEY_START))) {
-            plat_sfx(SFX_CLICK);
-            return;
-        }
+        if (i >= min_frames && (keys_new & (KEY_A | KEY_START))) return;
     }
 }
 

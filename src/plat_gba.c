@@ -118,6 +118,7 @@ void plat_bgm(const signed char *pcm, u32 len)
     bgm_pcm = pcm;
     bgm_len = len;
     if (len) bgm_start();
+    else if (!pcm_len) REG_TM0CNT = 0;
 }
 
 void plat_pcm(const signed char *pcm, u32 len)
@@ -144,6 +145,7 @@ void plat_vsync(void)
         REG_DMA2CNT = 0;
         ds_set(ds_cnt & ~((1 << 3) | (3 << 12)));
         pcm_len = 0;
+        if (!bgm_len) REG_TM0CNT = 0; /* nothing streaming: the sound timer stops too */
     }
 }
 
