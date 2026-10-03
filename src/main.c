@@ -331,10 +331,11 @@ static void type_text(int x, int y, int id, u16 c)
             cx = caption ? (SCREEN_W - line_width(s + 1, 1)) / 2 : x;
             continue;
         }
+        if (!instant && (n & 1) == 0) plat_sfx(SFX_BLIP); /* with the letter, from the very first one */
         glyph_shadowed(cx, y, *s, caption ? C_GOLD : emph ? C_EMPH : c, 1);
         cx += glyph_adv[*s];
         if (!instant) { /* about 40 characters a second: 1 and 2 frames in turn */
-            if ((++n & 1) == 0) plat_sfx(SFX_BLIP);
+            ++n;
             for (int k = 0; k < 1 + (n & 1) && !instant; k++) {
                 ambient_tick();
                 frame();
