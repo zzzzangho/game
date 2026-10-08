@@ -1,0 +1,8 @@
+{
+  "name": "SennenKazoku.Editor",
+  "rootNamespace": "SennenKazoku.EditorTools",
+  "references": [ "SennenKazoku.Core", "SennenKazoku.Game" ],
+  "includePlatforms": [ "Editor" ],
+  "excludePlatforms": [],
+  "autoReferenced": false
+}

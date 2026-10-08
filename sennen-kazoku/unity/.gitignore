@@ -1,0 +1,15 @@
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+*.csproj
+*.sln
+*.apk
+*.aab
+# 원작 ROM·추출물·로컬 생성 팩은 절대 커밋하지 않는다
+/Assets/Resources/LocalPacks/
+/Assets/Resources/LocalPacks.meta
+*.gba

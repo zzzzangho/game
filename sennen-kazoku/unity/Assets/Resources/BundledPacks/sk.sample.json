@@ -1,0 +1,342 @@
+{
+ "format": 1,
+ "packId": "sk.sample",
+ "version": 1,
+ "title": "원작 규칙 구조 샘플 (임시 문구)",
+ "kind": "base",
+ "origin": "original",
+ "minContract": 1,
+ "events": [
+  {
+   "id": "sk.s1.good",
+   "version": 1,
+   "origin": "original",
+   "certainty": "confirmed",
+   "textSource": "placeholder",
+   "sourceRef": "sk-event-2301",
+   "kind": "outcome",
+   "title": "[원작 구조] 조금 누그러짐",
+   "category": "예정 상태 결과",
+   "trigger": {
+    "condition": {
+     "op": "cmp",
+     "l": "self.hearts",
+     "cmp": ">=",
+     "r": 96
+    }
+   },
+   "pages": [
+    {
+     "speaker": "self",
+     "text": "{self}의 표정이 조금 풀렸다. (임시 문구)"
+    }
+   ],
+   "effects": [
+    {
+     "op": "add_hearts",
+     "target": "self",
+     "value": 24
+    },
+    {
+     "op": "family_mood",
+     "value": 20
+    }
+   ]
+  },
+  {
+   "id": "sk.s1.fallback",
+   "version": 1,
+   "origin": "original",
+   "certainty": "confirmed",
+   "textSource": "placeholder",
+   "sourceRef": "sk-event-2300",
+   "kind": "outcome",
+   "title": "[원작 구조] 가족이 싫어짐",
+   "category": "예정 상태 결과",
+   "trigger": {
+    "condition": {
+     "op": "always"
+    }
+   },
+   "pages": [
+    {
+     "speaker": "self",
+     "text": "{self:은는} 방문을 닫고 들어가 버렸다. (임시 문구)"
+    }
+   ],
+   "effects": [
+    {
+     "op": "add_hearts",
+     "target": "self",
+     "value": -48
+    },
+    {
+     "op": "family_mood",
+     "value": -28
+    }
+   ]
+  },
+  {
+   "id": "sk.s2.good",
+   "version": 1,
+   "origin": "original",
+   "certainty": "confirmed",
+   "textSource": "placeholder",
+   "sourceRef": "sk-event-1437",
+   "kind": "outcome",
+   "title": "[원작 구조] 마음을 고쳐먹음",
+   "category": "예정 상태 결과",
+   "trigger": {
+    "condition": {
+     "op": "cmp",
+     "l": "family.mood",
+     "cmp": ">=",
+     "r": 160
+    }
+   },
+   "pages": [
+    {
+     "speaker": "self",
+     "text": "{self:은는} 다시 해 보기로 마음먹었다. (임시 문구)"
+    }
+   ],
+   "effects": [
+    {
+     "op": "add_hearts",
+     "target": "self",
+     "value": 24
+    }
+   ]
+  },
+  {
+   "id": "sk.s2.fallback",
+   "version": 1,
+   "origin": "original",
+   "certainty": "confirmed",
+   "textSource": "placeholder",
+   "sourceRef": "sk-event-1436",
+   "kind": "outcome",
+   "title": "[원작 구조] 의욕 없음",
+   "category": "예정 상태 결과",
+   "trigger": {
+    "condition": {
+     "op": "always"
+    }
+   },
+   "pages": [
+    {
+     "speaker": "self",
+     "text": "{self:은는} 의욕이 나지 않는 모양이다. (임시 문구)"
+    }
+   ],
+   "effects": [
+    {
+     "op": "add_hearts",
+     "target": "self",
+     "value": -24
+    }
+   ]
+  },
+  {
+   "id": "sk.s3.good",
+   "version": 1,
+   "origin": "original",
+   "certainty": "confirmed",
+   "textSource": "placeholder",
+   "sourceRef": "sk-event-1585",
+   "kind": "outcome",
+   "title": "[원작 구조] 솜씨가 늘었다",
+   "category": "예정 상태 결과",
+   "trigger": {
+    "condition": {
+     "op": "or",
+     "args": [
+      {
+       "op": "and",
+       "args": [
+        {
+         "op": "cmp",
+         "l": "self.stamina",
+         "cmp": "<",
+         "r": 1980
+        },
+        {
+         "op": "chance",
+         "num": 1,
+         "den": 4
+        }
+       ]
+      },
+      {
+       "op": "and",
+       "args": [
+        {
+         "op": "cmp",
+         "l": "self.stamina",
+         "cmp": ">=",
+         "r": 1980
+        },
+        {
+         "op": "chance",
+         "num": 3,
+         "den": 4
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "pages": [
+    {
+     "speaker": "self",
+     "text": "{self:은는} 연습한 보람이 있었다. (임시 문구)"
+    }
+   ],
+   "effects": [
+    {
+     "op": "add_job_mastery",
+     "target": "self",
+     "value": 6
+    }
+   ]
+  },
+  {
+   "id": "sk.s3.fallback",
+   "version": 1,
+   "origin": "original",
+   "certainty": "confirmed",
+   "textSource": "placeholder",
+   "sourceRef": "sk-event-1586",
+   "kind": "outcome",
+   "title": "[원작 구조] 무리한 연습",
+   "category": "예정 상태 결과",
+   "trigger": {
+    "condition": {
+     "op": "always"
+    }
+   },
+   "pages": [
+    {
+     "speaker": "self",
+     "text": "{self:은는} 지쳐 버렸다. (임시 문구)"
+    }
+   ],
+   "effects": [
+    {
+     "op": "add_job_mastery",
+     "target": "self",
+     "value": 3
+    },
+    {
+     "op": "add_hearts",
+     "target": "self",
+     "value": -48
+    }
+   ]
+  }
+ ],
+ "plannedStates": [
+  {
+   "id": "sk.ps.family-nag",
+   "title": "[원작 구조] 가족의 간섭이 신경 쓰임",
+   "minAge": 18,
+   "maxAge": 29,
+   "weight": 10,
+   "delay": [
+    20,
+    60
+   ],
+   "eligible": {
+    "op": "and",
+    "args": [
+     {
+      "op": "cmp",
+      "l": "self.married",
+      "cmp": "==",
+      "r": 0
+     },
+     {
+      "op": "cmp",
+      "l": "self.gender",
+      "cmp": "==",
+      "r": 1
+     }
+    ]
+   },
+   "outcomes": [
+    "sk.s1.good",
+    "sk.s1.fallback"
+   ],
+   "certainty": "estimated",
+   "note": "결과 선택 규칙·조건은 원작 분석(planned-0072FD80)에 근거. 연령대 경계와 대상 분류, 지연 일수는 임시값."
+  },
+  {
+   "id": "sk.ps.job-hunt",
+   "title": "[원작 구조] 가족의 시선이 부담됨",
+   "minAge": 18,
+   "maxAge": 29,
+   "weight": 10,
+   "delay": [
+    20,
+    60
+   ],
+   "eligible": {
+    "op": "and",
+    "args": [
+     {
+      "op": "cmp",
+      "l": "self.married",
+      "cmp": "==",
+      "r": 0
+     },
+     {
+      "op": "cmp",
+      "l": "self.gender",
+      "cmp": "==",
+      "r": 1
+     }
+    ]
+   },
+   "outcomes": [
+    "sk.s2.good",
+    "sk.s2.fallback"
+   ],
+   "certainty": "estimated",
+   "note": "결과 선택 규칙·조건은 원작 분석(planned-006E0BAC)에 근거. 연령대 경계와 대상 분류, 지연 일수는 임시값."
+  },
+  {
+   "id": "sk.ps.training",
+   "title": "[원작 구조] 기술 연마 중",
+   "minAge": 18,
+   "maxAge": 29,
+   "weight": 10,
+   "delay": [
+    20,
+    60
+   ],
+   "eligible": {
+    "op": "and",
+    "args": [
+     {
+      "op": "cmp",
+      "l": "self.married",
+      "cmp": "==",
+      "r": 0
+     },
+     {
+      "op": "cmp",
+      "l": "self.gender",
+      "cmp": "==",
+      "r": 0
+     }
+    ]
+   },
+   "outcomes": [
+    "sk.s3.good",
+    "sk.s3.fallback"
+   ],
+   "certainty": "estimated",
+   "note": "결과 선택 규칙·조건은 원작 분석(planned-006E311C)에 근거. 연령대 경계와 대상 분류, 지연 일수는 임시값."
+  }
+ ]
+}

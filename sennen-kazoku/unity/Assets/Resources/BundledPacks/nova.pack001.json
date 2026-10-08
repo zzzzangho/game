@@ -1,0 +1,109 @@
+{
+ "format": 1,
+ "packId": "nova.pack001",
+ "version": 1,
+ "title": "신규 이벤트 팩 1 (임시)",
+ "kind": "expansion",
+ "origin": "new",
+ "minContract": 1,
+ "requires": [
+  {
+   "packId": "sk.sample",
+   "minVersion": 1
+  }
+ ],
+ "events": [
+  {
+   "id": "nova.picnic.001",
+   "version": 1,
+   "origin": "new",
+   "certainty": "placeholder",
+   "textSource": "new",
+   "kind": "standalone",
+   "title": "[신규] 갑작스러운 소풍",
+   "category": "가족",
+   "roles": {
+    "spouse": "spouse"
+   },
+   "trigger": {
+    "condition": {
+     "op": "and",
+     "args": [
+      {
+       "op": "cmp",
+       "l": "self.age",
+       "cmp": ">=",
+       "r": 20
+      },
+      {
+       "op": "cmp",
+       "l": "family.mood",
+       "cmp": ">=",
+       "r": 96
+      }
+     ]
+    },
+    "weight": 10,
+    "priority": 1,
+    "cooldownDays": 720
+   },
+   "pages": [
+    {
+     "speaker": "self",
+     "text": "{self:이가} 말했다. \"날씨도 좋은데 어디 나가 볼까?\""
+    },
+    {
+     "speaker": "spouse",
+     "text": "{spouse:은는} 기다렸다는 듯 도시락을 꺼냈다."
+    }
+   ],
+   "choices": [
+    {
+     "id": "go",
+     "text": "다 같이 소풍을 간다",
+     "effects": [
+      {
+       "op": "family_mood",
+       "value": 12
+      },
+      {
+       "op": "add_hearts",
+       "target": "self",
+       "value": 24
+      }
+     ],
+     "result": [
+      {
+       "speaker": "",
+       "text": "온 가족이 공원에서 즐거운 하루를 보냈다."
+      }
+     ]
+    },
+    {
+     "id": "stay",
+     "text": "집에서 쉰다",
+     "effects": [
+      {
+       "op": "add_hearts",
+       "target": "self",
+       "value": 6
+      }
+     ],
+     "result": [
+      {
+       "speaker": "",
+       "text": "느긋한 하루가 지나갔다."
+      }
+     ]
+    }
+   ],
+   "effects": [
+    {
+     "op": "set_flag",
+     "scope": "family",
+     "name": "nova.picnic.done"
+    }
+   ]
+  }
+ ]
+}
