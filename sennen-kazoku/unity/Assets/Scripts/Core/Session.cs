@@ -63,6 +63,20 @@ namespace SennenKazoku.Core
     }
 
     /// <summary>시간 진행 + 이벤트 선택 + 이벤트 진행. 코어 로직 전체가 UnityEngine 비의존.</summary>
+    /// <summary>사건 하나로 바뀐 값. PersonId −1 = 가족 전체(무드).</summary>
+    public sealed class EffectChange
+    {
+        public int PersonId; public string Key = ""; public int Delta;
+        public string Label { get { switch (Key) { case "mood": return "무드"; case "hearts": return "하트"; case "s0": return "지력"; case "s1": return "체력"; case "s2": return "매력"; case "s3": return "운"; } return Key; } }
+        public string Arrow { get { return Delta > 0 ? "↑" : "↓"; } }
+        public static string Format(Family f, List<EffectChange> l)
+        {
+            var parts = new List<string>();
+            foreach (var c in l) { var p = f.Get(c.PersonId); parts.Add((p != null ? p.Name + " " : "") + c.Label + c.Arrow); }
+            return string.Join("  ", parts);
+        }
+    }
+
     public sealed class GameSession
     {
         public Family Family { get; private set; }
@@ -224,6 +238,7 @@ namespace SennenKazoku.Core
         {
             Family.Active = Family.Queue[0]; Family.Queue.RemoveAt(0);
             Family.Active.PageIndex = 0; Family.Active.Phase = "pages";
+            Family.Active.Before = Snapshot();
             // 첫 페이지가 비어 있지 않도록 검증은 팩 로딩 단계에서 끝났다.
         }
 
@@ -328,16 +343,47 @@ namespace SennenKazoku.Core
             return false;
         }
 
+        // ---------- 사건 결과(무엇이 오르고 내렸나) ----------
+        /// <summary>마지막으로 끝난 사건의 변화. 원작은 사건마다 "이번 일로 … 올랐어/내려갔어"로 알려 준다.</summary>
+        public readonly List<EffectChange> LastChanges = new List<EffectChange>();
+
+        Dictionary<string, int> Snapshot()
+        {
+            var d = new Dictionary<string, int> { { "mood", Family.Mood } };
+            foreach (var p in Family.Members)
+            {
+                d["p" + p.Id + ".hearts"] = p.Hearts;
+                for (int i = 0; i < 4; i++) d["p" + p.Id + ".s" + i] = p.Stats[i];
+            }
+            return d;
+        }
+
+        public static List<EffectChange> Diff(Family f, Dictionary<string, int> before)
+        {
+            var r = new List<EffectChange>();
+            if (before == null || before.Count == 0) return r;
+            int v;
+            if (before.TryGetValue("mood", out v) && f.Mood != v) r.Add(new EffectChange { PersonId = -1, Key = "mood", Delta = f.Mood - v });
+            foreach (var p in f.Members)
+            {
+                if (before.TryGetValue("p" + p.Id + ".hearts", out v) && p.Hearts != v) r.Add(new EffectChange { PersonId = p.Id, Key = "hearts", Delta = p.Hearts - v });
+                for (int i = 0; i < 4; i++)
+                    if (before.TryGetValue("p" + p.Id + ".s" + i, out v) && p.Stats[i] != v) r.Add(new EffectChange { PersonId = p.Id, Key = "s" + i, Delta = p.Stats[i] - v });
+            }
+            return r;
+        }
+
         void Finish(ActiveEvent a, EventDef d)
         {
             var cx = CastContext(a);
             Rules.Apply(d.Effects, cx, Log);
+            LastChanges.Clear(); LastChanges.AddRange(Diff(Family, a.Before));
             Person self = cx.Self;
             string key = d.Id + "|" + (self != null ? self.Id : -1);
             Family.LastFired[key] = Family.Today;
             int n; Family.FireCount.TryGetValue(key, out n); Family.FireCount[key] = n + 1;
             Family.History.Add(new EventRecord { Day = Family.Today, EventId = d.Id, EventVersion = d.Version, Title = d.Title,
-                PersonId = self != null ? self.Id : -1, Choice = a.ChosenId });
+                PersonId = self != null ? self.Id : -1, Choice = a.ChosenId, Changes = EffectChange.Format(Family, LastChanges) });
             Family.Active = null;
             Family.RngState = Rng.State;
         }

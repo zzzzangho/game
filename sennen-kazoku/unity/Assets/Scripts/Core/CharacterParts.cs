@@ -30,6 +30,7 @@ namespace SennenKazoku.Core
         public List<int> BasePalette = new List<int>();
         public readonly List<int[]> HairColors = new List<int[]>(), SkinColors = new List<int[]>(), OutfitTable = new List<int[]>();
         public readonly Dictionary<string, CharacterLook> Presets = new Dictionary<string, CharacterLook>();
+        public readonly Dictionary<string, AgeSlots> PresetAges = new Dictionary<string, AgeSlots>();   // 프리셋이 나온 목록의 연령 칸
 
         public bool Available { get { return Count("body") > 0 && Count("face") > 0 && Count("hairfront") > 0; } }
         public int Count(string cat) { List<PartGroup> l; return Categories.TryGetValue(cat, out l) ? l.Count : 0; }
@@ -73,7 +74,12 @@ namespace SennenKazoku.Core
                 ReadColors(J.List(pal, "outfitTable"), lib.OutfitTable);
             }
             var pre = J.Child(root, "presets");
-            if (pre != null) foreach (var kv in pre) lib.Presets[kv.Key] = CharacterLook.FromJson(J.Obj(kv.Value));
+            if (pre != null)
+                foreach (var kv in pre)
+                {
+                    lib.Presets[kv.Key] = CharacterLook.FromJson(J.Obj(kv.Value));
+                    lib.PresetAges[kv.Key] = AgeSlots.FromJson(J.Get(J.Obj(kv.Value), "age"), AgeSlots.Adult);
+                }
             return lib;
         }
 
@@ -152,6 +158,28 @@ namespace SennenKazoku.Core
     }
 
     /// <summary>
+    /// 연령 칸(파트 묶음 안 순번)을 분류별로. 원작 갤러리 대조 결과:
+    /// 아이(7~12세) 모두 0 · 10대(13세~)와 성인 모두 1 · 노인(조부모 목록) = 몸통 2, 얼굴 1, 머리 1, 눈코입 2.
+    /// 나이 → 칸 경계 중 6세 이하·노인 시작 나이는 미확인(추정).
+    /// </summary>
+    public struct AgeSlots
+    {
+        public int Body, Face, Hair, Feat;
+        public AgeSlots(int body, int face, int hair, int feat) { Body = body; Face = face; Hair = hair; Feat = feat; }
+        public static AgeSlots Uniform(int a) { return new AgeSlots(a, a, a, a); }
+        public static readonly AgeSlots Child = Uniform(0), Adult = Uniform(1);
+        public static readonly AgeSlots Elder = new AgeSlots(2, 1, 1, 2);
+        public const int ElderFromAge = 60;          // 추정: 원작 노화 시점 미확인
+        public static AgeSlots ForAge(int years) { return years < 13 ? Child : years >= ElderFromAge ? Elder : Adult; }
+        public static AgeSlots FromJson(object o, AgeSlots def)
+        {
+            var d = J.Obj(o);
+            if (d == null) { if (o is long || o is int || o is double) return Uniform(Convert.ToInt32(o)); return def; }
+            return new AgeSlots(J.Int(d, "body", def.Body), J.Int(d, "face", def.Face), J.Int(d, "hair", def.Hair), J.Int(d, "feat", def.Feat));
+        }
+    }
+
+    /// <summary>
     /// 원작 조합 규칙 (tools/gba_capture/charcompose.py 와 동일; 갤러리 252명 대조 결과는 docs/07 참고).
     /// 원점 O = 발 아래 중앙. 결과는 위→아래 행 순서의 색 번호 배열.
     /// </summary>
@@ -193,25 +221,48 @@ namespace SennenKazoku.Core
             l.HairColor = -1; l.SkinColor = -1; l.OutfitColor = -1; l.Preset = key;
         }
 
-        public static byte[] Compose(PartsLibrary lib, CharacterLook look, int age = AdultAge)
+        public static byte[] Compose(PartsLibrary lib, CharacterLook look, int age = AdultAge) { return Compose(lib, look, AgeSlots.Uniform(age)); }
+
+        /// <summary>
+        /// 자세(몸통 묶음 24개 단위 블록). 본게임 걷기 캡처로 확인: 0·1 뒷모습 걷기, 2·3 앞모습 걷기(2 = 서기, 갤러리).
+        /// 4~15 는 같은 구성의 다른 의상 세트로 보인다(계절 의상으로 추정, 미확인) → set*4 를 더해 쓴다.
+        /// </summary>
+        public enum Pose { BackA = 0, BackB = 1, FrontA = 2, FrontB = 3 }
+
+        public static byte[] Compose(PartsLibrary lib, CharacterLook look, AgeSlots a) { return Compose(lib, look, a, Pose.FrontA, 0); }
+
+        public static byte[] Compose(PartsLibrary lib, CharacterLook look, AgeSlots a, Pose pose, int outfitSet)
         {
             var c = new byte[Width * Height];
             if (lib == null || !lib.Available || look == null) return c;
-            int ox = Width / 2, oy = Height;
-            var b = lib.Group("body", FrontBlock + look.Body).At(age);
-            var f = lib.Group("face", look.Face).At(age);
+            bool back = pose == Pose.BackA || pose == Pose.BackB;
+            int ox = Width / 2 - (back ? 1 : 0), oy = Height;          // 뒷모습은 원점이 1 왼쪽 (캡처와 일치)
+            int block = ((outfitSet & 3) * 4 + (int)pose) * 24;
+            var b = lib.Group("body", block + (look.Body % 24 + 24) % 24).At(a.Body);
+            var f = lib.Group("face", look.Face).At(a.Face);
             if (b == null || f == null || f.Ext.Length < 7 || b.Ext.Length < 2) return c;
             // 얼굴 메타 m[0..8] = 헤더 4바이트째부터 = (Ax, Ay, Ext[0..])
             int[] m = new int[9]; m[0] = f.Ax; m[1] = f.Ay; for (int i = 0; i < 7; i++) m[2 + i] = f.Ext[i];
             int nx = ox + b.Ext[0] - 16, ny = oy + b.Ext[1] - 32, refY = ny - m[0];
-            var hb = lib.Group("hairback", look.Hair).At(age);
+            if (back)
+            {
+                // 뒷모습: 몸통 → 뒷통수(faceB, 얼굴과 같은 번호) → 뒷머리(머리 번호 + 104)
+                Put(lib, c, b, ox, oy - 16, false);
+                var fb = Part(lib, "faceB", look.Face, a.Face);
+                if (fb != null && fb.Ext.Length >= 1) Put(lib, c, fb, nx - fb.Ext[0] + fb.Ax, refY + m[1] - 2 + fb.Ay, false);
+                var bh = Part(lib, "hairback", 104 + look.Hair, a.Hair);
+                if (bh != null && !bh.Empty && bh.Ext.Length >= 2) Put(lib, c, bh, nx, refY + m[2] + 16 - bh.Ext[1], false);
+                return c;
+            }
+            var hb = lib.Group("hairback", look.Hair).At(a.Hair);
             if (hb != null && !hb.Empty && hb.Ext.Length >= 2) Put(lib, c, hb, nx, refY + m[2] + 16 - hb.Ext[1], false);
             Put(lib, c, b, ox, oy - 16, false);
-            Put(lib, c, f, nx - m[7] + f.Ax, refY + m[1] - 2 + f.Ay, false);
-            Put(lib, c, Part(lib, "nose", look.Nose, age), nx, refY + m[4], look.NoseFlip);
-            Put(lib, c, Part(lib, "eyes", look.Eyes, age), nx, refY + m[3], look.EyesFlip);
-            Put(lib, c, Part(lib, "mouth", look.Mouth, age), nx, refY + m[5], look.MouthFlip);
-            Put(lib, c, Part(lib, "hairfront", look.Hair, age), nx, refY + m[1], false);
+            // 얼굴 세로 위치: 아이 칸(0)은 1 아래 (원작 아이 목록 대조로 확인)
+            Put(lib, c, f, nx - m[7] + f.Ax, refY + m[1] - 2 + (a.Face == 0 ? 1 : 0) + f.Ay, false);
+            Put(lib, c, Part(lib, "nose", look.Nose, a.Feat), nx, refY + m[4], look.NoseFlip);
+            Put(lib, c, Part(lib, "eyes", look.Eyes, a.Feat), nx, refY + m[3], look.EyesFlip);
+            Put(lib, c, Part(lib, "mouth", look.Mouth, a.Feat), nx, refY + m[5], look.MouthFlip);
+            Put(lib, c, Part(lib, "hairfront", look.Hair, a.Hair), nx, refY + m[1], false);
             return c;
         }
 

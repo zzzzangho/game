@@ -97,13 +97,15 @@ namespace SennenKazoku.Game
         }
 
         /// <summary>원작 파트 조합 그림 (발 아래 중앙 기준 32x64). 파트 자료가 없으면 null.</summary>
-        public Sprite LookSprite(CharacterLook look, int age = CharacterComposer.AdultAge)
+        public Sprite LookSprite(CharacterLook look) { return LookSprite(look, AgeSlots.Adult, CharacterComposer.Pose.FrontA, 0); }
+
+        public Sprite LookSprite(CharacterLook look, AgeSlots ages, CharacterComposer.Pose pose, int outfitSet)
         {
             if (look == null || !Parts.Available) return null;
-            var key = MiniJson.Serialize(look.ToJson()) + "|" + age;
+            var key = MiniJson.Serialize(look.ToJson()) + "|" + ages.Body + ages.Face + ages.Hair + ages.Feat + "|" + (int)pose + "|" + outfitSet;
             Sprite s;
             if (lookCache.TryGetValue(key, out s)) return s;
-            var idx = CharacterComposer.Compose(Parts, look, age); var pal = Parts.Palette(look);
+            var idx = CharacterComposer.Compose(Parts, look, ages, pose, outfitSet); var pal = Parts.Palette(look);
             int W = CharacterComposer.Width, H = CharacterComposer.Height;
             var t = new Texture2D(W, H, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
             var px = new Color32[W * H];

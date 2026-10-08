@@ -78,7 +78,7 @@ namespace SennenKazoku.Core
             var members = new List<object>(); foreach (var p in f.Members) members.Add(p.ToJson());
             var hist = new List<object>();
             foreach (var h in f.History)
-                hist.Add(new Dictionary<string, object> { { "day", h.Day }, { "id", h.EventId }, { "ver", h.EventVersion }, { "title", h.Title }, { "person", h.PersonId }, { "choice", h.Choice } });
+                hist.Add(new Dictionary<string, object> { { "day", h.Day }, { "id", h.EventId }, { "ver", h.EventVersion }, { "title", h.Title }, { "person", h.PersonId }, { "choice", h.Choice }, { "changes", h.Changes } });
             var last = new Dictionary<string, object>(); foreach (var kv in f.LastFired) last[kv.Key] = kv.Value;
             var cnt = new Dictionary<string, object>(); foreach (var kv in f.FireCount) cnt[kv.Key] = kv.Value;
             var queue = new List<object>(); foreach (var q in f.Queue) queue.Add(q.ToJson());
@@ -113,7 +113,7 @@ namespace SennenKazoku.Core
             foreach (var o in J.List(d, "history"))
             {
                 var h = J.Obj(o);
-                f.History.Add(new EventRecord { Day = J.Int(h, "day"), EventId = J.Str(h, "id"), EventVersion = J.Int(h, "ver"), Title = J.Str(h, "title"), PersonId = J.Int(h, "person", -1), Choice = J.Str(h, "choice") });
+                f.History.Add(new EventRecord { Day = J.Int(h, "day"), EventId = J.Str(h, "id"), EventVersion = J.Int(h, "ver"), Title = J.Str(h, "title"), PersonId = J.Int(h, "person", -1), Choice = J.Str(h, "choice"), Changes = J.Str(h, "changes") });
             }
             var lf = J.Child(d, "lastFired"); if (lf != null) foreach (var kv in lf) f.LastFired[kv.Key] = Convert.ToInt32(kv.Value);
             var fc = J.Child(d, "fireCount"); if (fc != null) foreach (var kv in fc) f.FireCount[kv.Key] = Convert.ToInt32(kv.Value);

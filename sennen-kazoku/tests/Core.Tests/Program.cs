@@ -122,6 +122,9 @@ namespace SennenKazoku.Tests
                 T.True(s.Advance());   // 결과 마지막 → 종료
                 T.True(!s.Paused); T.Eq(f.Mood, mood0 + 12); T.Eq(f.Members[0].Hearts, h0 + 24); T.True(f.Flags.Contains("nova.picnic.done"));
                 T.Eq(f.History.Count, 1); T.Eq(f.History[0].Choice, "go");
+                T.True(s.LastChanges.Exists(c => c.Key == "mood" && c.Delta == 12), "사건 결과: 무드 +12");
+                T.True(s.LastChanges.Exists(c => c.Key == "hearts" && c.PersonId == f.Members[0].Id && c.Delta == 24), "사건 결과: 하트 +24");
+                T.True(f.History[0].Changes.Contains("무드↑") && f.History[0].Changes.Contains("하트↑"), "기록에 변화 요약: " + f.History[0].Changes);
             });
             T.Run("쿨다운·최대 횟수 준수", () => {
                 var cat = Cat(Bundled()); var f = NewGame.Create(7); var s = new GameSession(f, cat); s.EventRateNum = 1; s.EventRateDen = 1;
@@ -363,6 +366,35 @@ namespace SennenKazoku.Tests
                 T.Eq(back.EyesFlip, true, "저장 왕복"); T.Eq(back.HairColor, -1, "색 미지정 유지");
             });
 
+            T.Run("내가 아는 가족: 원작 입력 항목 → 가족 생성(관계·능력 순위·저장 왕복)", () => {
+                var fs = new FamilySetup { Surname = "야마다" };
+                var g = fs.Add(FamilyRole.Grandfather); g.Name = "겐";
+                var gm = fs.Add(FamilyRole.Grandmother); gm.Name = "우메";
+                var mo = fs.Add(FamilyRole.Mother); mo.Name = "요코"; mo.Blood = "AB"; mo.Personality = 2; mo.AbilityRank = new[] { 4, 3, 2, 1 };
+                var d = fs.Add(FamilyRole.Child, 1); d.Name = "미키";
+                T.Eq(GameDate.Year(g.BirthDay), 1968, "조부 기본 생년(원작 관찰 1968)");
+                T.Eq(GameDate.Year(d.BirthDay), 2004, "자녀 기본 생년(원작 관찰 2004)");
+                T.True(!FamilySetup.AsksCharacter(d, fs.StartDay), "6세 이하는 캐릭터 선택 없음");
+                d.BirthDay = GameDate.Make(1992, 1, 1);
+                T.True(FamilySetup.AsksCharacter(d, fs.StartDay), "7세 이상은 선택");
+                T.Eq(FamilySetup.GalleryRole(d, fs.StartDay), "daughter13", "13세 딸 목록");
+                d.BirthDay = GameDate.Make(1995, 1, 1); T.Eq(FamilySetup.GalleryRole(d, fs.StartDay), "daughter7", "10세 딸 목록");
+                T.Eq(FamilySetup.GalleryRole(g, fs.StartDay), "grandfather", "조부 목록");
+                var bad = new FamilySetup(); var x = bad.Add(FamilyRole.Father); x.Name = "a"; x.AbilityRank = new[] { 1, 1, 2, 3 };
+                T.True(bad.Validate().Count > 0, "능력 순위 중복 거부");
+                var f = fs.Build(42);
+                T.Eq(f.Members.Count, 4, "인원");
+                var pm = f.Members[2]; var pd = f.Members[3];
+                T.Eq(f.Members[0].SpouseId, f.Members[1].Id, "조부모 부부");
+                T.Eq(pd.MotherId, pm.Id, "어머니 → 딸");
+                T.Eq(pm.FatherId, f.Members[0].Id, "조부 → 어머니(아버지 칸 없을 때)");
+                T.Eq(f.HeadId, pm.Id, "세대주 = 어머니(아버지 없음)");
+                T.True(pm.Stats[3] > pm.Stats[0], "운 1순위 > 지력 4순위");
+                T.Eq(f.Name, "야마다 가", "가족 성");
+                var back = Person.FromJson(J.Obj(MiniJson.Parse(MiniJson.Serialize(pm.ToJson()))));
+                T.Eq(back.Blood, "AB", "혈액형 저장"); T.Eq(back.Personality, 2, "성격 저장");
+            });
+
             var localArt = Environment.GetEnvironmentVariable("SK_LOCAL_ART");
             var galleryDir = Environment.GetEnvironmentVariable("SK_GALLERY_IDX");
             if (!string.IsNullOrEmpty(localArt) && File.Exists(Path.Combine(localArt, "parts.json")))
@@ -376,10 +408,25 @@ namespace SennenKazoku.Tests
                         var d = J.Obj(kv.Value); var f = Path.Combine(galleryDir ?? "", kv.Key + ".idx");
                         if (!File.Exists(f)) continue;
                         var img = File.ReadAllBytes(f).Skip(4).ToArray();
-                        var c = CharacterComposer.Compose(lib, lib.Presets[kv.Key]);
+                        var c = CharacterComposer.Compose(lib, lib.Presets[kv.Key], lib.PresetAges[kv.Key]);
                         int diff = 0; for (int i = 0; i < c.Length; i++) if (c[i] != img[i]) diff++;
                         T.Eq(diff, J.Int(d, "diffPixels"), kv.Key + " 픽셀 차이 수가 파이썬과 다름");
                         total++; if (diff == 0) exact++;
+                    }
+                    var refPath = Path.Combine(localArt, "compose_ref.json");
+                    if (File.Exists(refPath))
+                    {
+                        int ok = 0, n = 0;
+                        foreach (var o in J.Arr(MiniJson.Parse(File.ReadAllText(refPath))))
+                        {
+                            var d = J.Obj(o); var look = CharacterLook.FromJson(J.Child(d, "look"));
+                            var ag = AgeSlots.FromJson(J.Get(d, "age"), AgeSlots.Adult);
+                            var px = CharacterComposer.Compose(lib, look, ag, (CharacterComposer.Pose)J.Int(d, "pose"), J.Int(d, "set"));
+                            var h = BitConverter.ToString(System.Security.Cryptography.MD5.HashData(px)).Replace("-", "").ToLowerInvariant();
+                            n++; if (h == J.Str(d, "md5")) ok++;
+                        }
+                        T.Eq(ok, n, "자세·연령 칸 조합이 파이썬 기준과 다름");
+                        Console.WriteLine("       자세·연령 칸 무작위 " + n + "건 C# = 파이썬");
                     }
                     T.True(total > 0, "갤러리 캡처 없음");
                     Console.WriteLine("       갤러리 " + total + "명 중 원작과 픽셀 완전 일치 " + exact + "명");

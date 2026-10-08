@@ -180,4 +180,5 @@ def main():
     sheet([("%dx%d" % (dev["w"], dev["h"]), im) for dev, m, im in shots if m == "main"], "sheet_ratios.png", 800)
     print("ok", len(shots))
 
-main()
+if __name__ == "__main__":
+    main()

@@ -36,7 +36,7 @@ namespace SennenKazoku.Game
         int speed = 1; float acc; const float SecondsPerDay = 0.6f;   // 임시 진행 속도(원작은 실시간 시계 기반으로 보이나 미확인)
         bool playing, popupOpen, follow = true; int lastAutoDay; float toastUntil;
         int selectedId = -1; float scrollX;                             // GBA px
-        sealed class Actor { public int Id; public float X, Target; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; }
+        sealed class Actor { public int Id; public float X, Target; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; }
         readonly Dictionary<int, Actor> actors = new Dictionary<int, Actor>();
 
         // =============================================================== 시작
@@ -81,26 +81,33 @@ namespace SennenKazoku.Game
             lay = LayoutCalculator.Compute(w, h, sa.x, h - (sa.y + sa.height), sa.width, sa.height, 160f * (w / 360f));
             dp = lay.Dp; hs = lay.HouseScale;
             foreach (var rt in new[] { titleRoot, gameRoot, popupRoot }) UiKit.SetPx(rt, 0, 0, w, h);
-            UiKit.SetPx(hud, lay.TopBar); UiKit.SetPx(scene, lay.Scene); UiKit.SetPx(bar, lay.FamilyStrip);
-            UiKit.SetPx(dialog, lay.EventPanel); UiKit.SetPx(menu, lay.Controls);
+            UiKit.SetPx(hud, lay.TopBar); UiKit.SetPx(scene, lay.Scene); UiKit.SetPx(menu, lay.Controls);
             LayoutHud(); LayoutBar(); LayoutDialog(); LayoutMenu();
             lastScreen = new Vector2(w, h); lastSafe = sa;
             if (playing) { RebuildActors(); RefreshAll(); }
             if (titleRoot.gameObject.activeSelf || !playing) ShowTitle();
         }
 
-        // =============================================================== 화면 뼈대
+        // =============================================================== 화면 뼈대 (사용자 스케치 기준)
+        //  ┌ HUD: 집 아이콘 · "○○가 소지금" · 무드 포인트 · 날짜 │ 오른쪽 위 코너 = 배속(누르고 있는 동안, 원작 R 버튼)
+        //  ├ 집 장면: 가족(머리 위 ! / 감정 말풍선) · 큐피트(게임 팁 말풍선) · 왼쪽 아래 코너 = 아이템, 오른쪽 아래 코너 = 활
+        //  ├ 인물 패널: ◀ 초상(→상세)·이름 │ 체·지·매·운 등급 │ 글상자(대사·선택지) │ 사건 결과(무드↑ 하트↓ …) ▶
+        //  └ 탭: 상세 · 가계도 · 사건 · 설정
         Button[] menuBtns = new Button[4];
-        Text[] menuIcons = new Text[4];
+        RectTransform panel; Text rankText, effectText, tipText; Image tipBox, itemCorner, bowCorner, speedCorner;
+        Text speedText; bool holdingSpeed; string[] tips; int tipIndex; float tipUntil;
 
         void BuildGame()
         {
-            hud = UiKit.Node(gameRoot, "hud"); scene = UiKit.Node(gameRoot, "scene"); bar = UiKit.Node(gameRoot, "bar");
-            dialog = UiKit.Node(gameRoot, "dialog"); menu = UiKit.Node(gameRoot, "menu");
+            hud = UiKit.Node(gameRoot, "hud"); scene = UiKit.Node(gameRoot, "scene");
+            panel = UiKit.Node(gameRoot, "panel"); bar = UiKit.Node(panel, "bar"); dialog = UiKit.Node(panel, "dialog");
+            menu = UiKit.Node(gameRoot, "menu");
 
             var hb = UiKit.Box(hud, "bg", new Color32(0xF6, 0xE3, 0x9A, 255)); UiKit.Stretch(hb.rectTransform, 0, 0, 0, 0);
-            hudText = UiKit.Label(hud, "t", "", 20, new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.MiddleCenter, FontStyle.Bold);
-            var ol = hudText.gameObject.AddComponent<Outline>(); ol.effectColor = Color.white; ol.effectDistance = new Vector2(2, -2);
+            hudIcon = UiKit.Box(hud, "icon", Color.white, art.Ui("hud_family_a")); hudIcon.preserveAspect = true;
+            if (hudIcon.sprite == null) { hudIcon.sprite = UiKit.Circle; hudIcon.color = new Color32(0xE8, 0x70, 0x40, 255); }
+            hudText = UiKit.Label(hud, "t", "", 16, new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.MiddleLeft, FontStyle.Bold);
+            hudSub = UiKit.Label(hud, "sub", "", 13, UiKit.Ink, TextAnchor.MiddleLeft);
 
             // 집: RawImage 의 uvRect 로 가로 무한 스크롤
             var hgo = new GameObject("house", typeof(RectTransform), typeof(RawImage)); hgo.transform.SetParent(scene, false);
@@ -111,93 +118,141 @@ namespace SennenKazoku.Game
             drag.OnBegin = () => { follow = false; };
             drag.OnDragX = dx => { scrollX -= dx / hs; };
             figures = UiKit.Node(scene, "figures");
-            cupid = UiKit.Box(scene, "cupid", Color.white, art.Cupid(0)); cupid.preserveAspect = true;
-            if (cupid.sprite == null) { cupid.sprite = UiKit.Circle; cupid.color = new Color32(0xFF, 0xE0, 0x70, 255); }
             marker = UiKit.Box(scene, "marker", Color.white, art.Ui("marker_select"));
             if (marker.sprite == null) marker.color = new Color32(0x50, 0xC0, 0x50, 255);
+            // 큐피트 + 게임 팁 (팁 문구는 새로 쓴 안내 — 원작 문구 아님)
+            cupid = UiKit.Box(scene, "cupid", Color.white, art.Cupid(0)); cupid.preserveAspect = true; cupid.raycastTarget = true;
+            if (cupid.sprite == null) { cupid.sprite = UiKit.Circle; cupid.color = new Color32(0xFF, 0xE0, 0x70, 255); }
+            cupid.gameObject.AddComponent<Button>().onClick.AddListener(() => { tipIndex++; tipUntil = Time.time + 8f; RefreshTip(); });
+            tipBox = UiKit.Box(scene, "tip", new Color(1, 1, 1, 0.94f));
+            tipText = UiKit.Label(tipBox.transform, "t", "", 13, UiKit.Ink, TextAnchor.MiddleCenter);
+            tips = new[] {
+                "가족을 누르면 자세히 볼 수 있어!", "머리 위에 ! 가 뜨면 곧 무슨 일이 생겨",
+                "오른쪽 위 배속을 누르고 있으면 시간이 빨리 가", "활로 힘내라·진정해 화살을 쏠 수 있어",
+                "◀ ▶ 로 지켜볼 사람을 바꿔 봐", "사건이 끝나면 무드·하트가 어떻게 바뀌었는지 알려 줄게",
+                "집을 좌우로 끌면 다른 방도 볼 수 있어" };
+            // 장면 코너 버튼: 왼쪽 아래 아이템, 오른쪽 아래 활, 오른쪽 위 배속
+            itemCorner = Corner(scene, "아이템", new Color32(0xF0, 0xA0, 0x40, 235), () => OpenTools("item"));
+            bowCorner = Corner(scene, "활", new Color32(0xE8, 0x50, 0x70, 235), () => OpenTools("arrow"));
+            var bow = art.Ui("btn_bow");
+            if (bow != null) { var ic = UiKit.Box(bowCorner.transform, "icon", Color.white, bow); ic.preserveAspect = true; bowIcon = ic; }
+            speedCorner = UiKit.Box(hud, "speed", new Color32(0x3A, 0x6E, 0xC8, 255)); speedCorner.raycastTarget = true;
+            speedText = UiKit.Label(speedCorner.transform, "t", "배속", 14, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
+            var hold = speedCorner.gameObject.AddComponent<HoldButton>();
+            hold.OnDown = () => { holdingSpeed = true; RefreshHud(); };
+            hold.OnUp = () => { holdingSpeed = false; RefreshHud(); };
 
-            // 선택 인물 바 (원작 하단 바 구성)
-            var bb = UiKit.Box(bar, "bg", new Color32(0x10, 0x4E, 0x6E, 255)); UiKit.Stretch(bb.rectTransform, 0, 0, 0, 0);
+            // 인물 패널
+            var pbg = UiKit.Box(panel, "bg", new Color32(0x10, 0x4E, 0x6E, 255)); UiKit.Stretch(pbg.rectTransform, 0, 0, 0, 0); pbg.transform.SetAsFirstSibling();
             barPortrait = UiKit.Box(bar, "portrait", Color.white); barPortrait.preserveAspect = true; barPortrait.raycastTarget = true;
             barPortrait.gameObject.AddComponent<Button>().onClick.AddListener(() => { var p = Sel(); if (p != null) OpenDetail(p); });
-            barName = UiKit.Label(bar, "name", "", 16, UiKit.Ink, TextAnchor.MiddleLeft, FontStyle.Bold);
-            var nb = UiKit.Box(barName.transform.parent, "nameBg", Color.white); nb.transform.SetSiblingIndex(barName.transform.GetSiblingIndex());
-            nameBg = nb;
+            nameBg = UiKit.Box(bar, "nameBg", Color.white);
+            barName = UiKit.Label(bar, "name", "", 16, UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
+            rankText = UiKit.Label(bar, "ranks", "", 20, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold); rankText.supportRichText = true;
             for (int i = 0; i < 3; i++) { barHearts[i] = UiKit.Box(bar, "heart" + i, Color.white); barHearts[i].preserveAspect = true; }
-            barPlanned = UiKit.Label(bar, "planned", "", 15, Color.white, TextAnchor.MiddleLeft);
+            barPlanned = UiKit.Label(bar, "planned", "", 13, Color.white, TextAnchor.MiddleLeft);
             barGauge = UiKit.Box(bar, "gauge", Color.white); barGauge.preserveAspect = true;
-            prevBtn = UiKit.Btn(bar, "prev", "◀", 16, new Color32(0x0A, 0x38, 0x50, 255), Color.white, () => CycleSel(-1));
-            nextSelBtn = UiKit.Btn(bar, "nextSel", "▶", 16, new Color32(0x0A, 0x38, 0x50, 255), Color.white, () => CycleSel(1));
+            prevBtn = UiKit.Btn(panel, "prev", "◀", 18, new Color32(0x0A, 0x38, 0x50, 255), Color.white, () => CycleSel(-1));
+            nextSelBtn = UiKit.Btn(panel, "nextSel", "▶", 18, new Color32(0x0A, 0x38, 0x50, 255), Color.white, () => CycleSel(1));
 
-            // 대화창 (원작: 흰 바탕 둥근 상자, 파란 테두리)
-            var dbg = UiKit.Box(dialog, "frame", new Color32(0x3A, 0x6E, 0xC8, 255)); UiKit.Stretch(dbg.rectTransform, 6, 6, 6, 6);
-            var din = UiKit.Box(dialog, "inner", Color.white); UiKit.Stretch(din.rectTransform, 10, 10, 10, 10);
-            dlgTitle = UiKit.Label(dialog, "title", "", 13, new Color32(0x9C, 0x52, 0x20, 255), TextAnchor.MiddleLeft, FontStyle.Bold);
-            dlgSpeaker = UiKit.Label(dialog, "speaker", "", 15, new Color32(0x1E, 0x46, 0xC8, 255), TextAnchor.MiddleLeft, FontStyle.Bold);
-            dlgText = UiKit.Label(dialog, "text", "", 17, UiKit.Ink, TextAnchor.UpperLeft);
-            dlgText.supportRichText = true;
+            // 글상자 (원작 대화창: 흰 바탕, 파란 테두리)
+            var dbg = UiKit.Box(dialog, "frame", new Color32(0x3A, 0x6E, 0xC8, 255)); UiKit.Stretch(dbg.rectTransform, 2, 2, 2, 2);
+            var din = UiKit.Box(dialog, "inner", Color.white); UiKit.Stretch(din.rectTransform, 5, 5, 5, 5);
+            dlgTitle = UiKit.Label(dialog, "title", "", 12, new Color32(0x9C, 0x52, 0x20, 255), TextAnchor.MiddleLeft, FontStyle.Bold);
+            dlgSpeaker = UiKit.Label(dialog, "speaker", "", 14, new Color32(0x1E, 0x46, 0xC8, 255), TextAnchor.MiddleLeft, FontStyle.Bold);
+            dlgText = UiKit.Label(dialog, "text", "", 16, UiKit.Ink, TextAnchor.UpperLeft); dlgText.supportRichText = true;
             choiceHost = UiKit.Node(dialog, "choices");
             nextBtn = UiKit.Btn(dialog, "next", "▼", 18, new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, OnNext);
+            effectText = UiKit.Label(panel, "effects", "", 17, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold); effectText.supportRichText = true;
 
-            // 하단 메뉴
+            // 하단 탭
             var mb = UiKit.Box(menu, "bg", new Color32(0xE8, 0xD0, 0x90, 255)); UiKit.Stretch(mb.rectTransform, 0, 0, 0, 0);
-            string[] labels = { "활쏘기", "아이템", "큐피트", "관찰" };
-            Action[] acts = { () => OpenTools("arrow"), () => OpenTools("item"), OpenCupid, OpenObserve };
+            string[] labels = { "상세", "가계도", "사건", "설정" };
+            Action[] acts = { () => { var p = Sel(); if (p != null) OpenDetail(p); }, () => TextWindow("가계도", TreeText()), () => TextWindow("사건 기록", LogText()), OpenSettings };
             for (int i = 0; i < 4; i++)
             {
                 int k = i;
                 menuBtns[i] = UiKit.Btn(menu, "m" + i, labels[i], 16, new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => acts[k]());
             }
-            var bow = art.Ui("btn_bow");
-            if (bow != null) { var ic = UiKit.Box(menuBtns[0].transform, "icon", Color.white, bow); ic.preserveAspect = true; bowIcon = ic; }
         }
-        Image nameBg, bowIcon; Button prevBtn, nextSelBtn;
+        Image nameBg, bowIcon, hudIcon; Text hudSub; Button prevBtn, nextSelBtn;
+
+        Image Corner(RectTransform parent, string label, Color c, Action onClick)
+        {
+            var b = UiKit.Box(parent, "corner_" + label, c, UiKit.Circle); b.raycastTarget = true;
+            b.gameObject.AddComponent<Button>().onClick.AddListener(() => onClick());
+            var t = UiKit.Label(b.transform, "t", label, 14, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
+            var o = t.gameObject.AddComponent<Outline>(); o.effectColor = new Color(0, 0, 0, 0.5f);
+            return b;
+        }
 
         void LayoutHud()
         {
-            hudText.fontSize = Px(18);
-            UiKit.Stretch(hudText.rectTransform, Px(8), 0, Px(8), 0);
+            float h = lay.TopBar.H, w = lay.TopBar.W, pad = Px(6), corner = Mathf.Min(Px(76), h * 1.6f);
+            UiKit.SetPx(hudIcon.rectTransform, pad, pad, h - 2 * pad, h - 2 * pad);
+            float x = h + pad;
+            hudText.fontSize = Px(15); hudSub.fontSize = Px(12);
+            UiKit.SetPx(hudText.rectTransform, x, 0, w - x - corner, h * 0.55f);
+            UiKit.SetPx(hudSub.rectTransform, x, h * 0.5f, w - x - corner, h * 0.5f);
+            // 배속 코너: HUD 오른쪽 위에서 장면 쪽으로 걸쳐 둥근 모서리
+            UiKit.SetPx(speedCorner.rectTransform, w - corner, 0, corner, h);
+            UiKit.Stretch(speedText.rectTransform, 0, 0, 0, 0); speedText.fontSize = Px(14);
         }
 
         void LayoutBar()
         {
-            float h = lay.FamilyStrip.H, w = lay.FamilyStrip.W, pad = Px(6), ar = Px(30);
-            UiKit.SetPx(prevBtn.GetComponent<RectTransform>(), 0, 0, ar, h);
-            UiKit.SetPx(nextSelBtn.GetComponent<RectTransform>(), w - ar, 0, ar, h);
-            float x = ar + pad, ph = h - 2 * pad;
-            UiKit.SetPx(barPortrait.rectTransform, x, pad, ph, ph); x += ph + pad;
-            float nameW = Px(110);
-            UiKit.SetPx(nameBg.rectTransform, x, pad, nameW, h * 0.45f);
-            UiKit.SetPx(barName.rectTransform, x + Px(6), pad, nameW - Px(6), h * 0.45f); barName.fontSize = Px(15);
-            float hx = x + nameW + pad, hsz = h * 0.42f;
-            for (int i = 0; i < 3; i++) UiKit.SetPx(barHearts[i].rectTransform, hx + i * (hsz + Px(2)), pad, hsz, hsz);
-            UiKit.SetPx(barPlanned.rectTransform, x, h * 0.5f, w - x - ar - Px(40), h * 0.45f); barPlanned.fontSize = Px(14);
-            UiKit.SetPx(barGauge.rectTransform, w - ar - Px(36), pad, Px(30), h - 2 * pad);
+            // 패널 = 인물 줄(FamilyStrip) + 글상자(EventPanel) 를 합친 영역
+            var pr = new RectPx { X = lay.FamilyStrip.X, Y = lay.FamilyStrip.Y, W = lay.FamilyStrip.W, H = lay.FamilyStrip.H + lay.EventPanel.H };
+            UiKit.SetPx(panel, pr);
+            float w = pr.W, H = pr.H, ar = Px(30), pad = Px(6), effH = Px(30);
+            UiKit.SetPx(prevBtn.GetComponent<RectTransform>(), 0, 0, ar, H - effH);
+            UiKit.SetPx(nextSelBtn.GetComponent<RectTransform>(), w - ar, 0, ar, H - effH);
+            float leftW = Mathf.Min(Px(96), w * 0.26f), inner = w - 2 * ar;
+            UiKit.SetPx(bar, ar, 0, inner, H - effH);
+            float ph = Mathf.Min(leftW, (H - effH) * 0.55f);
+            UiKit.SetPx(barPortrait.rectTransform, pad, pad, leftW - pad, ph);
+            UiKit.SetPx(nameBg.rectTransform, pad, pad + ph + Px(2), leftW - pad, Px(26));
+            UiKit.SetPx(barName.rectTransform, pad, pad + ph + Px(2), leftW - pad, Px(26)); barName.fontSize = Px(14);
+            float hsz = Mathf.Min(Px(22), (leftW - pad) / 3f - Px(2)), hy = pad + ph + Px(32);
+            for (int i = 0; i < 3; i++) UiKit.SetPx(barHearts[i].rectTransform, pad + i * (hsz + Px(2)), hy, hsz, hsz);
+            UiKit.SetPx(barGauge.rectTransform, pad, hy + hsz + Px(4), leftW - pad, Px(18));
+            float rx = leftW + pad * 2, rw = inner - rx - pad;
+            UiKit.SetPx(rankText.rectTransform, rx, pad, rw, Px(30)); rankText.fontSize = Px(20);
+            UiKit.SetPx(barPlanned.rectTransform, rx, pad + Px(30), rw, Px(20)); barPlanned.fontSize = Px(12);
+            UiKit.SetPx(dialog, ar + rx, pad + Px(52), rw, H - effH - Px(52) - pad * 2);
+            UiKit.SetPx(effectText.rectTransform, ar, H - effH, inner, effH); effectText.fontSize = Px(16);
         }
 
         void LayoutDialog()
         {
-            float w = lay.EventPanel.W, h = lay.EventPanel.H, pad = Px(18);
-            dlgTitle.fontSize = Px(12); dlgSpeaker.fontSize = Px(14); dlgText.fontSize = Px(17);
-            UiKit.SetPx(dlgTitle.rectTransform, pad, Px(12), w - 2 * pad, Px(18));
-            UiKit.SetPx(dlgSpeaker.rectTransform, pad, Px(30), w - 2 * pad, Px(20));
-            UiKit.SetPx(dlgText.rectTransform, pad, Px(52), w - 2 * pad, h - Px(52) - Px(56));
-            UiKit.SetPx(nextBtn.GetComponent<RectTransform>(), w - pad - Px(56), h - Px(56), Px(48), Px(44));
+            float w = dialog.sizeDelta.x, h = dialog.sizeDelta.y, pad = Px(10);
+            dlgTitle.fontSize = Px(11); dlgSpeaker.fontSize = Px(13); dlgText.fontSize = Px(15);
+            UiKit.SetPx(dlgTitle.rectTransform, pad, Px(6), w - 2 * pad, Px(16));
+            UiKit.SetPx(dlgSpeaker.rectTransform, pad, Px(22), w - 2 * pad, Px(18));
+            UiKit.SetPx(dlgText.rectTransform, pad, Px(40), w - 2 * pad, h - Px(40) - Px(8));
+            UiKit.SetPx(nextBtn.GetComponent<RectTransform>(), w - Px(52), h - Px(46), Px(44), Px(40));
         }
 
         void LayoutMenu()
         {
-            float w = lay.Controls.W, h = lay.Controls.H, pad = Px(6), bw = (w - 5 * pad) / 4f, bh = h - 2 * pad;
+            float w = lay.Controls.W, h = lay.Controls.H, pad = Px(4), bw = (w - 5 * pad) / 4f, bh = h - 2 * pad;
             for (int i = 0; i < 4; i++)
             {
                 UiKit.SetPx(menuBtns[i].GetComponent<RectTransform>(), pad + i * (bw + pad), pad, bw, bh);
-                var t = menuBtns[i].GetComponentInChildren<Text>(); t.fontSize = Px(15);
-                if (i == 0 && bowIcon != null)
-                {
-                    UiKit.SetPx(bowIcon.rectTransform, bw * 0.3f, Px(4), bw * 0.4f, bh * 0.55f);
-                    t.alignment = TextAnchor.LowerCenter;
-                }
+                menuBtns[i].GetComponentInChildren<Text>().fontSize = Px(16);
             }
+            // 장면 코너 버튼(사분원)과 팁 말풍선
+            float sw = lay.Scene.W, sh = lay.Scene.H, r = Mathf.Min(Px(84), sh * 0.42f);
+            UiKit.SetPx(itemCorner.rectTransform, -r, sh - r, 2 * r, 2 * r);
+            UiKit.SetPx(bowCorner.rectTransform, sw - r, sh - r, 2 * r, 2 * r);
+            foreach (var c in new[] { itemCorner, bowCorner })
+            {
+                var t = c.transform.Find("t").GetComponent<Text>(); t.fontSize = Px(14);
+                bool left = c == itemCorner;
+                UiKit.SetPx(t.rectTransform, left ? r : r * 0.15f, r * 0.2f, r * 0.85f, r * 0.6f);
+            }
+            if (bowIcon != null) UiKit.SetPx(bowIcon.rectTransform, r * 0.3f, r * 0.05f, r * 0.5f, r * 0.3f);
+            tipText.fontSize = Px(13);
         }
 
         // =============================================================== 타이틀
@@ -399,17 +454,29 @@ namespace SennenKazoku.Game
                 if (img.sprite == null) { img.sprite = UiKit.Circle; img.color = p.Gender == 0 ? new Color32(0x5B, 0x8F, 0xC9, 255) : new Color32(0xD9, 0x6A, 0x8A, 255); }
                 int pid = p.Id;
                 img.gameObject.AddComponent<Button>().onClick.AddListener(() => { selectedId = pid; follow = true; RefreshBar(); OpenDetail(session.Family.Get(pid)); });
-                var bub = UiKit.Box(img.transform, "bubble", Color.white, art.Ui("bubble_note_white") ?? art.Ui("bubble_note_pink")); bub.preserveAspect = true; bub.gameObject.SetActive(false);
+                var bub = UiKit.Box(img.transform, "bubble", Color.white, null); bub.preserveAspect = true; bub.gameObject.SetActive(false);
+                var bubT = UiKit.Label(bub.transform, "t", "", 14, Color.red, TextAnchor.MiddleCenter, FontStyle.Bold);
                 float x = UnityEngine.Random.Range(room[0] + 4, room[1] - 36);
-                actors[p.Id] = new Actor { Id = p.Id, X = x, Target = x, Rt = img.rectTransform, Img = img, NextMove = Time.time + UnityEngine.Random.Range(2f, 6f), Bubble = bub };
+                actors[p.Id] = new Actor { Id = p.Id, X = x, Target = x, Rt = img.rectTransform, Img = img, NextMove = Time.time + UnityEngine.Random.Range(2f, 6f), Bubble = bub, BubbleText = bubT };
             }
         }
 
-        /// <summary>인물 그림: 원작 파트 조합(있으면) → 캡처 프레임 → null. 파트 조합의 걸음·뒷모습 프레임은 아직 없다(정면 고정).</summary>
+        /// <summary>
+        /// 인물 그림: 원작 파트 조합(있으면) → 캡처 프레임 → null.
+        /// 파트 조합: 나이로 연령 칸(아이·성인·노인), 걸을 때 앞모습 A/B 번갈아(원작 걷기 프레임), back=true 면 뒷모습 A/B.
+        /// 의상 세트(몸통 블록 4~15)의 쓰임(계절 추정)은 미확인이라 세트 0 만 쓴다.
+        /// </summary>
         Sprite Figure(Person p, bool back, int frame)
         {
-            var s = art.LookSprite(p.Look);
-            return s ?? art.Frame(p.Character, back ? "back" : "front", frame);
+            if (p.Look != null && art.Parts.Available)
+            {
+                var ages = AgeSlots.ForAge(p.Age(session.Family.Today));
+                var pose = back ? (frame % 2 == 0 ? CharacterComposer.Pose.BackA : CharacterComposer.Pose.BackB)
+                                : (frame % 2 == 0 ? CharacterComposer.Pose.FrontA : CharacterComposer.Pose.FrontB);
+                var s = art.LookSprite(p.Look, ages, pose, 0);
+                if (s != null) return s;
+            }
+            return art.Frame(p.Character, back ? "back" : "front", frame);
         }
 
         /// <summary>
@@ -445,19 +512,56 @@ namespace SennenKazoku.Game
                 if (spr != null) a.Img.sprite = spr;
                 float dx = Mod(a.X - scrollX, W); if (dx > viewW + 32) dx -= W;
                 UiKit.SetPx(a.Rt, dx * hs, floorTop * hs, 32 * hs, 64 * hs);
-                bool showBubble = !string.IsNullOrEmpty(p.PlannedStateId) && Mathf.Repeat(Time.time + a.Id * 1.7f, 6f) < 1.5f;
-                a.Bubble.gameObject.SetActive(showBubble && a.Bubble.sprite != null);
-                if (showBubble) UiKit.SetPx(a.Bubble.rectTransform, 0, -14 * hs, 32 * hs, 32 * hs);
+                // 머리 위 말풍선: 사건 직전(예정 상태 2일 이내)엔 "!", 평소엔 가끔 원작 감정 말풍선(음표·zzz 등)
+                bool soon = !string.IsNullOrEmpty(p.PlannedStateId) && p.PlannedDue - session.Family.Today <= 2;
+                bool emote = !soon && Mathf.Repeat(Time.time + a.Id * 2.3f, 9f) < 1.6f;
+                if (soon) { a.Bubble.sprite = null; a.Bubble.color = new Color(1, 1, 1, 0.95f); a.BubbleText.text = "!"; a.BubbleText.color = new Color32(0xE0, 0x30, 0x30, 255); }
+                else if (emote)
+                {
+                    var emo = EmoteFor(p, a.Id);
+                    a.Bubble.sprite = emo; a.Bubble.color = emo != null ? Color.white : new Color(1, 1, 1, 0.95f);
+                    a.BubbleText.text = emo != null ? "" : (p.Hearts >= Person.HeartUnit * 2 ? "♥" : p.Hearts < Person.HeartUnit / 2 ? "💢" : "♪");
+                    a.BubbleText.color = new Color32(0xE0, 0x50, 0x80, 255);
+                }
+                a.Bubble.gameObject.SetActive(soon || emote);
+                if (soon || emote)
+                {
+                    float bob2 = soon ? Mathf.Abs(Mathf.Sin(Time.time * 6f)) * 3f : 0f;
+                    UiKit.SetPx(a.Bubble.rectTransform, 6 * hs, (-16 - bob2) * hs, 20 * hs, 20 * hs);
+                    UiKit.Stretch(a.BubbleText.rectTransform, 0, 0, 0, 0); a.BubbleText.fontSize = Mathf.RoundToInt(14 * hs);
+                }
             }
             if (sa != null)
             {
                 float dx = Mod(sa.X - scrollX, W); if (dx > viewW + 32) dx -= W;
                 float bob = Mathf.Sin(Time.time * 3f) * 2f;
                 UiKit.SetPx(marker.rectTransform, (dx + 8) * hs, (floorTop + 6 + bob) * hs, 16 * hs, 16 * hs);
-                UiKit.SetPx(cupid.rectTransform, (dx - 26) * hs, (floorTop - 18 + bob * 1.5f) * hs, 32 * hs, 32 * hs);
-                var cs = art.Cupid((int)(Time.time * 6) % 4); if (cs != null) cupid.sprite = cs;
-                cupid.transform.SetAsLastSibling();
             }
+            // 큐피트: 장면 왼쪽 위를 떠다니며 팁 말풍선을 보여 준다
+            {
+                float t = Time.time, cx = 10 + Mathf.Sin(t * 0.7f) * 6f, cy = 12 + Mathf.Sin(t * 2.1f) * 3f;
+                UiKit.SetPx(cupid.rectTransform, cx * hs, cy * hs, 32 * hs, 32 * hs);
+                var cs = art.Cupid((int)(t * 6) % 4); if (cs != null) cupid.sprite = cs;
+                cupid.transform.SetAsLastSibling();
+                float tw = Mathf.Min(lay.Scene.W - (cx + 36) * hs - Px(8), Px(240));
+                UiKit.SetPx(tipBox.rectTransform, (cx + 34) * hs, (cy + 2) * hs, tw, Px(40));
+                UiKit.Stretch(tipText.rectTransform, Px(6), Px(2), Px(6), Px(2));
+                tipBox.transform.SetAsLastSibling();
+                itemCorner.transform.SetAsLastSibling(); bowCorner.transform.SetAsLastSibling();
+            }
+        }
+
+        Sprite EmoteFor(Person p, int seed)
+        {
+            int hour = (int)(Time.time / 20f) % 4;
+            if (hour == 3 && art.Ui("zzz_a") != null) return art.Ui(new[] { "zzz_a", "zzz_b", "zzz_c", "zzz_d" }[(int)(Time.time * 3) % 4]);
+            string[] notes = { "bubble_note_green", "bubble_note_pink", "bubble_note_green2", "bubble_note_pink2", "bubble_note_green3" };
+            return art.Ui(notes[(seed + (int)(Time.time / 9f)) % notes.Length]);
+        }
+
+        void UpdateTip()
+        {
+            if (Time.time > tipUntil) { tipIndex++; tipUntil = Time.time + 8f; RefreshTip(); }
         }
 
         static float Mod(float a, float m) { return m <= 0 ? a : a - Mathf.Floor(a / m) * m; }
@@ -477,8 +581,9 @@ namespace SennenKazoku.Game
             if (titleHouse != null && titleRoot.gameObject.activeSelf) { var u = titleHouse.uvRect; u.x += Time.deltaTime * 0.01f; titleHouse.uvRect = u; }
             if (!playing || session == null) return;
             UpdateActors();
-            if (popupOpen || session.Paused || speed == 0) return;
-            acc += Time.deltaTime * speed;
+            UpdateTip();
+            if (popupOpen || session.Paused || EffectiveSpeed == 0) return;
+            acc += Time.deltaTime * EffectiveSpeed;
             bool started = false;
             while (acc >= SecondsPerDay && !started)
             {
@@ -503,18 +608,30 @@ namespace SennenKazoku.Game
         // =============================================================== 표시 갱신
         void RefreshAll() { RefreshHud(); RefreshBar(); RefreshDialog(); }
 
+        int EffectiveSpeed { get { return holdingSpeed ? 4 : speed; } }
+
         void RefreshHud()
         {
             var f = session.Family;
-            hudText.text = f.YearsAsFamily + "년가족   " + GameDate.Format(f.Today) + (speed == 0 ? "  ⏸" : speed > 1 ? "  ×" + speed : "");
+            hudText.text = f.Name + "  소지금 " + f.Assets.ToString("N0") + "엔";
+            hudSub.text = "무드 포인트 " + f.Mood + " (" + Family.MoodLevel(f.Mood) + "단계)   " + f.YearsAsFamily + "년가족 · " + GameDate.Format(f.Today);
+            speedText.text = holdingSpeed ? "▶▶▶\n×4" : speed == 0 ? "⏸\n배속" : "배속";
+            speedCorner.color = holdingSpeed ? new Color32(0xE8, 0x70, 0x40, 255) : new Color32(0x3A, 0x6E, 0xC8, 255);
         }
+
+        static readonly string[] RankKeys = { "체", "지", "매", "운" };
+        static readonly int[] RankOrder = { Stat.Stamina, Stat.Int, Stat.Charm, Stat.Luck };    // 스케치 순서: 체 · 지 · 매 · 운
 
         void RefreshBar()
         {
             var p = Sel(); if (p == null) return;
-            var por = art.LookSprite(p.Look) ?? art.Portrait(p.Character);
+            var por = (p.Look != null && art.Parts.Available ? Figure(p, false, 0) : null) ?? art.Portrait(p.Character);
             barPortrait.sprite = por ?? UiKit.Circle; barPortrait.color = por != null ? Color.white : (p.Gender == 0 ? new Color32(0x5B, 0x8F, 0xC9, 255) : new Color32(0xD9, 0x6A, 0x8A, 255));
             barName.text = p.Name;
+            var sb = new StringBuilder();
+            for (int i = 0; i < 4; i++)
+                sb.Append(RankKeys[i]).Append("<color=#FFC040>").Append(Stat.Rank(p.Stats[RankOrder[i]])).Append("</color>  ");
+            rankText.text = sb.ToString();
             for (int i = 0; i < 3; i++)
             {
                 int v = p.Hearts - i * Person.HeartUnit;
@@ -522,9 +639,33 @@ namespace SennenKazoku.Game
                 var s = art.Ui(key); barHearts[i].sprite = s ?? UiKit.Circle;
                 barHearts[i].color = s != null ? Color.white : (key == "heart_full" ? Color.red : key == "heart_half" ? new Color(1, 0.5f, 0.6f) : new Color(0.4f, 0.5f, 1f));
             }
-            barPlanned.text = "★" + PlannedTitle(p);
+            barPlanned.text = p.Age(session.Family.Today) + "세 · 몰입도 " + p.Immersion;
             var g = art.Ui(p.Immersion >= 170 ? "gauge_full" : p.Immersion >= 85 ? "gauge_mid" : "gauge_empty");
             barGauge.sprite = g; barGauge.enabled = g != null;
+            RefreshEffects();
+        }
+
+        /// <summary>사건 결과: 마지막 사건에서 오르고 내린 것 (원작은 사건마다 "이번 일로 … 올랐어/내려갔어"를 알려 준다).</summary>
+        void RefreshEffects()
+        {
+            var ch = session.LastChanges;
+            if (ch.Count == 0) { effectText.text = ""; return; }
+            var sb = new StringBuilder(); int shown = 0;
+            foreach (var c in ch)
+            {
+                if (shown >= 4) { sb.Append(" …"); break; }
+                var who = session.Family.Get(c.PersonId);
+                string col = c.Delta > 0 ? "#FF9090" : "#90B8FF";
+                sb.Append(who != null && who.Id != selectedId ? who.Name + " " : "").Append(c.Label).Append("<color=").Append(col).Append(">").Append(c.Arrow).Append("</color>  ");
+                shown++;
+            }
+            effectText.text = sb.ToString();
+        }
+
+        void RefreshTip()
+        {
+            if (tips == null || tips.Length == 0) return;
+            tipText.text = tips[((tipIndex % tips.Length) + tips.Length) % tips.Length];
         }
 
         string PlannedTitle(Person p)
@@ -542,7 +683,8 @@ namespace SennenKazoku.Game
             if (v == null)
             {
                 var p = Sel(); dlgTitle.text = ""; dlgSpeaker.text = "";
-                dlgText.text = p == null ? "" : "<color=#1E46C8>" + p.Name + "</color>(" + p.Age(session.Family.Today) + "세)는\n이런 생각을 하는 모양이야!\n「" + PlannedTitle(p) + "」";
+                bool soon = p != null && !string.IsNullOrEmpty(p.PlannedStateId) && p.PlannedDue - session.Family.Today <= 2;
+                dlgText.text = p == null ? "" : "<color=#1E46C8>" + p.Name + "</color>는 이런 생각을 하는 모양이야" + (soon ? " <color=#E04040>!</color>" : "") + "\n「" + PlannedTitle(p) + "」";
                 nextBtn.gameObject.SetActive(false); LayoutDialog(); return;
             }
             dlgTitle.text = v.Title + "   [" + (v.Origin == "original" ? "원작 규칙" : "신규") + " · " + (v.TextSource == "original-translation" ? "원작 문구" : "임시 문구") + "]";
@@ -550,14 +692,15 @@ namespace SennenKazoku.Game
             if (v.NeedsChoice)
             {
                 nextBtn.gameObject.SetActive(false);
-                float pad = Px(18), w = lay.EventPanel.W - 2 * pad, bh = Px(46), gap = Px(6), total = v.Choices.Count * (bh + gap);
-                float top = Mathf.Max(Px(52) + Px(40), lay.EventPanel.H - Px(14) - total);
+                float pad = Px(8), w = dialog.sizeDelta.x - 2 * pad, gap = Px(4), dh = dialog.sizeDelta.y;
+                float bh = Mathf.Clamp((dh - Px(70)) / Mathf.Max(1, v.Choices.Count) - gap, Px(34), Px(44)), total = v.Choices.Count * (bh + gap);
+                float top = Mathf.Max(Px(40) + Px(24), dh - Px(6) - total);
                 UiKit.SetPx(choiceHost, pad, top, w, total);
-                UiKit.SetPx(dlgText.rectTransform, pad, Px(52), w, top - Px(56));
+                UiKit.SetPx(dlgText.rectTransform, pad, Px(40), w, top - Px(42));
                 for (int i = 0; i < v.Choices.Count; i++)
                 {
                     string id = v.Choices[i].Id;
-                    var b = UiKit.Btn(choiceHost, "c" + i, "▶ " + v.Choices[i].Text, Px(15), new Color32(0xE8, 0xF0, 0xFF, 255), new Color32(0x1E, 0x46, 0x9A, 255), () => { session.Choose(id); AfterEventStep(); });
+                    var b = UiKit.Btn(choiceHost, "c" + i, "▶ " + v.Choices[i].Text, Px(14), new Color32(0xE8, 0xF0, 0xFF, 255), new Color32(0x1E, 0x46, 0x9A, 255), () => { session.Choose(id); AfterEventStep(); });
                     UiKit.SetPx(b.GetComponent<RectTransform>(), 0, i * (bh + gap), w, bh);
                 }
             }
@@ -666,38 +809,30 @@ namespace SennenKazoku.Game
             }
         }
 
-        // ---- 큐피트 (저장·기록·가계도·콘텐츠) ----
-        void OpenCupid()
+        // ---- 설정 (속도·따라가기·저장·콘텐츠·타이틀) ----
+        void OpenSettings()
         {
-            var body = Window("큐피트 메뉴", 460); float w = BodyW(body), bh = Px(54), y = 0;
+            var body = Window("설정", 600); float w = BodyW(body), bw = (w - Px(18)) / 4f, y = 0;
+            var sl = UiKit.Label(body, "sl", "진행 속도 (배속 코너를 누르고 있으면 ×4)", Px(13), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(sl.rectTransform, 0, y, w, Px(22)); y += Px(24);
+            string[] l = { "정지", "×1", "×2", "×4" }; int[] sp = { 0, 1, 2, 4 };
+            for (int i = 0; i < 4; i++)
+            {
+                int v = sp[i];
+                var b = UiKit.Btn(body, "s" + i, l[i], Px(16), speed == v ? new Color32(0xE8, 0x70, 0x40, 255) : new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => { speed = v; OpenSettings(); });
+                UiKit.SetPx(b.GetComponent<RectTransform>(), i * (bw + Px(6)), y, bw, Px(50));
+            }
+            y += Px(60);
             var items = new List<KeyValuePair<string, Action>> {
+                new KeyValuePair<string, Action>(follow ? "선택한 사람 따라가기: 켜짐" : "선택한 사람 따라가기: 꺼짐", () => { follow = !follow; OpenSettings(); }),
                 new KeyValuePair<string, Action>("저장 / 불러오기", () => OpenSaveSlots()),
-                new KeyValuePair<string, Action>("가계도", () => TextWindow("가계도", TreeText())),
-                new KeyValuePair<string, Action>("이벤트 기록", () => TextWindow("이벤트 기록", LogText())),
                 new KeyValuePair<string, Action>("콘텐츠 · 업데이트", OpenContent),
                 new KeyValuePair<string, Action>("타이틀로", () => { SaveSlot("auto", true); ShowTitle(); }) };
             foreach (var kv in items)
             {
                 var act = kv.Value;
                 var b = UiKit.Btn(body, kv.Key, kv.Key, Px(16), Color.white, new Color32(0x1E, 0x46, 0x9A, 255), () => act());
-                UiKit.SetPx(b.GetComponent<RectTransform>(), 0, y, w, bh); y += bh + Px(8);
+                UiKit.SetPx(b.GetComponent<RectTransform>(), 0, y, w, Px(52)); y += Px(60);
             }
-        }
-
-        // ---- 관찰 (시간 속도·따라가기) ----
-        void OpenObserve()
-        {
-            var body = Window("관찰", 300); float w = BodyW(body), bw = (w - Px(18)) / 4f;
-            string[] l = { "정지", "×1", "×2", "×4" }; int[] sp = { 0, 1, 2, 4 };
-            for (int i = 0; i < 4; i++)
-            {
-                int v = sp[i];
-                var b = UiKit.Btn(body, "s" + i, l[i], Px(16), speed == v ? new Color32(0xE8, 0x70, 0x40, 255) : new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => { speed = v; ClosePopup(); });
-                UiKit.SetPx(b.GetComponent<RectTransform>(), i * (bw + Px(6)), 0, bw, Px(56));
-            }
-            var fb = UiKit.Btn(body, "follow", follow ? "선택한 사람 따라가기: 켜짐" : "선택한 사람 따라가기: 꺼짐", Px(15), Color.white, UiKit.Ink, () => { follow = !follow; ClosePopup(); });
-            UiKit.SetPx(fb.GetComponent<RectTransform>(), 0, Px(70), w, Px(52));
-            var hint = UiKit.Label(body, "hint", "집 화면을 좌우로 끌면 자유롭게 둘러볼 수 있습니다.", Px(13), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(hint.rectTransform, 0, Px(130), w, Px(40));
         }
 
         // ---- 저장 슬롯 ----
@@ -781,7 +916,8 @@ namespace SennenKazoku.Game
             for (int i = f.History.Count - 1; i >= 0; i--)
             {
                 var h = f.History[i]; var p = f.Get(h.PersonId);
-                sb.AppendLine(GameDate.Format(h.Day) + " · " + (p != null ? p.Name : "-") + "\n  " + h.Title + (h.Choice.Length > 0 ? "  [선택: " + h.Choice + "]" : "") + "\n");
+                sb.AppendLine(GameDate.Format(h.Day) + " · " + (p != null ? p.Name : "-") + "\n  " + h.Title + (h.Choice.Length > 0 ? "  [선택: " + h.Choice + "]" : "")
+                    + (string.IsNullOrEmpty(h.Changes) ? "" : "\n  → " + h.Changes) + "\n");
             }
             return sb.ToString();
         }

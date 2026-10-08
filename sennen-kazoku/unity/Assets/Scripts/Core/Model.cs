@@ -99,6 +99,8 @@ namespace SennenKazoku.Core
         public string Character = "";      // 그래픽 id (LocalArt manifest)
         public string PlannedTitle = "";   // 카탈로그에 없는 원작 예정 상태의 표시용 제목
         public CharacterLook Look;          // 원작 파트 조합 외형 (null = 아직 정하지 않음)
+        public string Blood = "?";          // 혈액형 (원작 입력 항목)
+        public int Personality = 1;         // 0 내향적 · 1 보통 · 2 외향적 (원작 입력 항목)
 
         public int Age(int today) { return GameDate.AgeYears(BirthDay, today); }
         public void AddStat(int i, int v) { Stats[i] = Math.Max(0, Math.Min(Stat.Max, Stats[i] + v)); }
@@ -115,7 +117,7 @@ namespace SennenKazoku.Core
                 {"planned", PlannedStateId}, {"plannedDue", PlannedDue}, {"alive", Alive},
                 {"flags", new List<object>(new List<string>(Flags).ConvertAll(x => (object)x))},
                 {"dream", Dream}, {"arrow", ArrowId}, {"arrowUntil", ArrowUntil}, {"character", Character}, {"plannedTitle", PlannedTitle},
-                {"look", Look == null ? null : Look.ToJson()}
+                {"look", Look == null ? null : Look.ToJson()}, {"blood", Blood}, {"personality", Personality}
             };
         }
         public static Person FromJson(Dictionary<string, object> d)
@@ -133,6 +135,7 @@ namespace SennenKazoku.Core
             p.Dream = J.Str(d, "dream"); p.ArrowId = J.Str(d, "arrow"); p.ArrowUntil = J.Int(d, "arrowUntil", -1);
             p.Character = J.Str(d, "character"); p.PlannedTitle = J.Str(d, "plannedTitle");
             p.Look = CharacterLook.FromJson(J.Child(d, "look"));
+            p.Blood = J.Str(d, "blood", "?"); p.Personality = J.Int(d, "personality", 1);
             return p;
         }
     }
@@ -141,6 +144,7 @@ namespace SennenKazoku.Core
     {
         public int Day; public string EventId = ""; public int EventVersion; public string Title = "";
         public int PersonId; public string Choice = "";
+        public string Changes = "";           // 이 사건으로 바뀐 것 (예: "무드+12;타로.하트-30;타로.체력+50")
     }
 
     /// <summary>진행 중 이벤트. 스냅샷을 함께 저장해 팩 업데이트로 깨지지 않는다.</summary>
@@ -152,14 +156,17 @@ namespace SennenKazoku.Core
         public int PageIndex;                 // 현재 표시 중인 페이지
         public string Phase = "pages";        // pages | choices | result
         public string ChosenId = "";
+        public Dictionary<string, int> Before = new Dictionary<string, int>();   // 시작 시점 수치 (사건 결과 표시용)
 
         public Dictionary<string, object> ToJson()
         {
             var cast = new Dictionary<string, object>();
             foreach (var kv in Cast) cast[kv.Key] = kv.Value;
+            var before = new Dictionary<string, object>();
+            foreach (var kv in Before) before[kv.Key] = kv.Value;
             return new Dictionary<string, object> {
                 {"id", EventId}, {"version", EventVersion}, {"snapshot", SnapshotJson}, {"cast", cast},
-                {"page", PageIndex}, {"phase", Phase}, {"chosen", ChosenId} };
+                {"page", PageIndex}, {"phase", Phase}, {"chosen", ChosenId}, {"before", before} };
         }
         public static ActiveEvent FromJson(Dictionary<string, object> d)
         {
@@ -167,6 +174,8 @@ namespace SennenKazoku.Core
                 PageIndex = J.Int(d, "page"), Phase = J.Str(d, "phase", "pages"), ChosenId = J.Str(d, "chosen") };
             var c = J.Child(d, "cast");
             if (c != null) foreach (var kv in c) a.Cast[kv.Key] = Convert.ToInt32(kv.Value);
+            var b = J.Child(d, "before");
+            if (b != null) foreach (var kv in b) a.Before[kv.Key] = Convert.ToInt32(kv.Value);
             return a;
         }
     }

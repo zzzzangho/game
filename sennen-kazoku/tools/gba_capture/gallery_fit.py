@@ -21,8 +21,8 @@ def preset_palette(idx_path, img, w):
             r, g, b = im.getpixel((i % w, i // w)); pal[v] = (r >> 3) | (g >> 3) << 5 | (b >> 3) << 10
     return pal
 
-def fit(lib, img):
-    diff = lambda l: sum(1 for a, b in zip(C.compose(lib, l), img) if a != b)
+def fit(lib, img, age=1):
+    diff = lambda l: sum(1 for a, b in zip(C.compose(lib, l, age=age), img) if a != b)
     cats = {"hair": [(i, 0) for i in range(len(lib.cat["hairfront"]))], "face": [(i, 0) for i in range(len(lib.cat["face"]))],
             "body": [(i, 0) for i in range(48, 72)],
             "facebody": [((fc, b), 0) for fc in range(len(lib.cat["face"])) for b in range(48, 72)],
@@ -55,11 +55,23 @@ def fit(lib, img):
 if __name__ == "__main__":
     rom, d, role, out = sys.argv[1:5]
     lib = C.Library(R.load(rom)); res = {}
+    # 연령 칸(파트 묶음 안 순번)은 목록마다 하나 — 앞 3명으로 고른다.
+    # 1) 모든 분류 같은 칸으로 맞춰 보고 2) 그 결과에서 분류별(몸통·얼굴·머리·눈코입) 칸 조합 256가지를 비교한다.
+    probe = [load_idx(os.path.join(d, "%s_%02d.idx" % (role, n)))[2] for n in range(3) if os.path.exists(os.path.join(d, "%s_%02d.idx" % (role, n)))]
+    base = min(range(4), key=lambda a: sum(fit(lib, im, a)[1] for im in probe))
+    looks = [fit(lib, im, base)[0] for im in probe]
+    import itertools
+    def total(a):
+        A = dict(zip(C.AGE_KEYS, a))
+        return sum(sum(1 for x, y in zip(C.compose(lib, l, age=A), im) if x != y) for l, im in zip(looks, probe))
+    age = dict(zip(C.AGE_KEYS, min(itertools.product(range(4), repeat=4), key=total)))
+    if os.environ.get("FIT_AGE"): age = json.loads(os.environ["FIT_AGE"])     # 수동 지정 (예: 노인 {"body":2,"face":1,"hair":1,"feat":2})
+    print(role, "연령 칸", age, flush=True)
     for n in range(84):
         f = os.path.join(d, "%s_%02d.idx" % (role, n))
         if not os.path.exists(f): continue
         w, h, img = load_idx(f)
-        look, dd = fit(lib, img)
-        res["%s_%02d" % (role, n)] = dict(look, role=role, slot=n, diffPixels=dd, palette=preset_palette(f, img, w))
+        look, dd = fit(lib, img, age)
+        res["%s_%02d" % (role, n)] = dict(look, role=role, slot=n, age=age, diffPixels=dd, palette=preset_palette(f, img, w))
         print(role, n, dd, flush=True)
     json.dump(res, open(out, "w"), ensure_ascii=False, indent=0)

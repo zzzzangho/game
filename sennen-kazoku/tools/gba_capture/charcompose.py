@@ -37,17 +37,50 @@ def _put(canvas, W, H, p, ax_abs, ay_abs, flip=False):
             v = px[y * w + (w - 1 - x if flip else x)]
             if v and 0 <= x0 + x < W and 0 <= y0 + y < H: canvas[(y0 + y) * W + x0 + x] = v
 
-def compose(lib, look, age=1, W=32, H=64, O=(16, 64)):
-    """look: body, face, hair, eyes, nose, mouth (번호) + eyesFlip/noseFlip/mouthFlip."""
-    c = [0] * (W * H); Ox, Oy = O
-    b = lib.cat["body"][look["body"]]["parts"][age]; bm = b["meta"]
-    f = lib.cat["face"][look["face"]]["parts"][age]; m = list(f["meta"][4:])
+def at(g, age):
+    """연령 칸 — 묶음 파트 수가 모자라면 마지막 칸 (C# PartGroup.At 과 같음)."""
+    return g["parts"][max(0, min(age, len(g["parts"]) - 1))]
+
+AGE_KEYS = ("body", "face", "hair", "feat")
+
+def ages(age):
+    """연령 칸: 정수 하나(전부 같은 칸) 또는 분류별 dict {body, face, hair, feat(눈·코·입)}."""
+    if isinstance(age, dict): return {k: age.get(k, 1) for k in AGE_KEYS}
+    return {k: age for k in AGE_KEYS}
+
+def compose_back(lib, look, age=1, W=32, H=64, O=(15, 64), block=0):
+    """뒷모습: 몸통(뒷모습 묶음) → 뒷통수(faceB, 얼굴과 같은 번호) → 뒷머리(머리 번호 + 104).
+    본게임 걷기 캡처 6장과 일치(원점 x 가 앞모습보다 1 왼쪽)."""
+    c = [0] * (W * H); Ox, Oy = O; A = ages(look.get("ages", age))
+    b = at(lib.cat["body"][block * 24 + look["body"] % 24], A["body"]); bm = b["meta"]
+    f = at(lib.cat["face"][look["face"]], A["face"]); m = list(f["meta"][4:])
+    fb = at(lib.cat["faceB"][look["face"]], A["face"])
     nx, ny = Ox + bm[6] - 16, Oy + bm[7] - 32; ref = ny - m[0]
-    hb = lib.cat["hairback"][look["hair"]]["parts"][age]
-    if hb["w"]: _put(c, W, H, hb, nx, ref + m[2] + 16 - hb["meta"][7])
     _put(c, W, H, b, Ox, Oy - 16)
-    _put(c, W, H, f, nx - m[7] + s8(f["meta"][4]), ref + m[1] - 2 + s8(f["meta"][5]))
+    _put(c, W, H, fb, nx - fb["meta"][6] + s8(fb["meta"][4]), ref + m[1] - 2 + s8(fb["meta"][5]))
+    hb = at(lib.cat["hairback"][104 + look["hair"]], A["hair"])
+    if hb["w"]: _put(c, W, H, hb, nx, ref + m[2] + 16 - hb["meta"][7])
+    return c
+
+def render(lib, look, ages_=1, pose=2, outfit_set=0):
+    """Unity CharacterComposer.Compose(lib, look, AgeSlots, Pose, set) 와 같은 호출 규약."""
+    block = (outfit_set & 3) * 4 + pose
+    if pose in (0, 1): return compose_back(lib, look, age=ages_, block=block)
+    return compose(lib, look, age=ages_, block=block)
+
+def compose(lib, look, age=1, W=32, H=64, O=(16, 64), shift=None, block=None):
+    """look: body, face, hair, eyes, nose, mouth (번호) + eyesFlip/noseFlip/mouthFlip.
+    shift: 조사용 층별 세로 보정 {body, face, feat, hair} (규칙 탐색에만 사용)."""
+    c = [0] * (W * H); Ox, Oy = O; A = ages(look.get("ages", age)); S = shift or {}
+    bi = look["body"] if block is None else block * 24 + look["body"] % 24
+    b = at(lib.cat["body"][bi], A["body"]); bm = b["meta"]
+    f = at(lib.cat["face"][look["face"]], A["face"]); m = list(f["meta"][4:])
+    nx, ny = Ox + bm[6] - 16, Oy + bm[7] - 32; ref = ny - m[0]
+    hb = at(lib.cat["hairback"][look["hair"]], A["hair"])
+    if hb["w"]: _put(c, W, H, hb, nx, ref + m[2] + 16 - hb["meta"][7] + S.get("hair", 0))
+    _put(c, W, H, b, Ox, Oy - 16 + S.get("body", 0))
+    _put(c, W, H, f, nx - m[7] + s8(f["meta"][4]), ref + m[1] - 2 + (1 if A["face"] == 0 else 0) + s8(f["meta"][5]) + S.get("face", 0))
     for k, mi in (("nose", 4), ("eyes", 3), ("mouth", 5)):
-        _put(c, W, H, lib.cat[k][look[k]]["parts"][age], nx, ref + m[mi], bool(look.get(k + "Flip")))
-    _put(c, W, H, lib.cat["hairfront"][look["hair"]]["parts"][age], nx, ref + m[1])
+        _put(c, W, H, at(lib.cat[k][look[k]], A["feat"]), nx, ref + m[mi] + S.get("feat", 0), bool(look.get(k + "Flip")))
+    _put(c, W, H, at(lib.cat["hairfront"][look["hair"]], A["hair"]), nx, ref + m[1] + S.get("hair", 0))
     return c
