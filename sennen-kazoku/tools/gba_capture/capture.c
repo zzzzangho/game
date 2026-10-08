@@ -46,6 +46,49 @@ int main(int argc, char** argv) {
             for (unsigned a = 0x07000000; a < 0x07000400; a++) fputc(c->busRead8(c, a), f);
             for (unsigned a = 0x04000000; a < 0x04000060; a++) fputc(c->busRead8(c, a), f);
             fclose(f);
+        } else if (!strcmp(cmd, "rundump")) {   /* rundump <프레임> <키> <간격> <접두어> : 간격마다 메모리 덤프 */
+            int every = 1; if (sscanf(line, "%*s %d %i %d %199s", &n, &keys, &every, arg) != 4) continue;
+            for (int i = 0; i < n; i++) {
+                c->setKeys(c, keys); c->runFrame(c); frame++;
+                if (i % every == 0) {
+                    char p[512]; snprintf(p, sizeof p, "%s/%s_%06ld.mem", argv[2], arg, frame); FILE* f = fopen(p, "wb");
+                    for (unsigned a = 0x05000000; a < 0x05000400; a++) fputc(c->busRead8(c, a), f);
+                    for (unsigned a = 0x06000000; a < 0x06018000; a++) fputc(c->busRead8(c, a), f);
+                    for (unsigned a = 0x07000000; a < 0x07000400; a++) fputc(c->busRead8(c, a), f);
+                    for (unsigned a = 0x04000000; a < 0x04000060; a++) fputc(c->busRead8(c, a), f);
+                    fclose(f);
+                }
+            }
+        } else if (!strcmp(cmd, "runshot")) {   /* runshot <프레임> <키> <간격> <접두어> : 간격마다 화면 저장 */
+            int every = 1; if (sscanf(line, "%*s %d %i %d %199s", &n, &keys, &every, arg) != 4) continue;
+            for (int i = 0; i < n; i++) {
+                c->setKeys(c, keys); c->runFrame(c); frame++;
+                if (i % every == 0) {
+                    char p[512]; snprintf(p, sizeof p, "%s/%s_%06ld.ppm", argv[2], arg, frame);
+                    FILE* f = fopen(p, "wb"); fprintf(f, "P6 240 160 255\n");
+                    for (int k = 0; k < 240 * 160; k++) { unsigned v = pix[k]; unsigned char rgb[3] = { v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF }; fwrite(rgb, 1, 3, f); }
+                    fclose(f);
+                    if (getenv("CAP_RAM")) {   /* 같은 이름으로 WRAM 도 저장(카메라 변수 탐색용) */
+                        snprintf(p, sizeof p, "%s/%s_%06ld.ram", argv[2], arg, frame); f = fopen(p, "wb");
+                        for (unsigned a = 0x02000000; a < 0x02040000; a++) fputc(c->busRead8(c, a), f);
+                        for (unsigned a = 0x03000000; a < 0x03008000; a++) fputc(c->busRead8(c, a), f);
+                        fclose(f);
+                    }
+                }
+            }
+        } else if (!strcmp(cmd, "sweep")) {   /* sweep <주소> <시작> <끝> <간격> <접두어> : 16비트 변수를 바꿔 가며 화면 저장 */
+            unsigned addr; int v0, v1, st; if (sscanf(line, "%*s %i %d %d %d %199s", &addr, &v0, &v1, &st, arg) != 5) continue;
+            for (int v = v0; v <= v1; v += st) {
+                if (getenv("SWEEP_RELOAD")) {   /* 위치마다 같은 상태에서 시작 → 시간대(팔레트) 고정 */
+                    char sp[512]; snprintf(sp, sizeof sp, "%s/%s.state", argv[2], getenv("SWEEP_RELOAD"));
+                    struct VFile* vf = VFileOpen(sp, O_RDONLY); mCoreLoadStateNamed(c, vf, SAVESTATE_ALL); vf->close(vf);
+                }
+                for (int k = 0; k < (getenv("SWEEP_SETTLE") ? atoi(getenv("SWEEP_SETTLE")) : 3); k++) { c->busWrite16(c, addr, (uint16_t)v); if (getenv("SWEEP_ALL")) { c->busWrite16(c, addr - 4, (uint16_t)v); c->busWrite16(c, addr - 8, (uint16_t)v); c->busWrite16(c, 0x03007dd8, (uint16_t)v); } c->setKeys(c, 0); c->runFrame(c); frame++; }
+                char p[512]; snprintf(p, sizeof p, "%s/%s_%05d.ppm", argv[2], arg, v);
+                FILE* f = fopen(p, "wb"); fprintf(f, "P6 240 160 255\n");
+                for (int k = 0; k < 240 * 160; k++) { unsigned q = pix[k]; unsigned char rgb[3] = { q & 0xFF, (q >> 8) & 0xFF, (q >> 16) & 0xFF }; fwrite(rgb, 1, 3, f); }
+                fclose(f);
+            }
         } else if (!strcmp(cmd, "savestate") && sscanf(line, "%*s %199s", arg) == 1) {
             char p[512]; snprintf(p, sizeof p, "%s/%s.state", argv[2], arg);
             struct VFile* vf = VFileOpen(p, O_CREAT | O_TRUNC | O_RDWR); mCoreSaveStateNamed(c, vf, SAVESTATE_ALL); vf->close(vf);

@@ -13,3 +13,5 @@
 /Assets/Resources/LocalPacks/
 /Assets/Resources/LocalPacks.meta
 *.gba
+/Assets/Resources/LocalArt/
+/Assets/Resources/LocalArt.meta
