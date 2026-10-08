@@ -130,7 +130,7 @@ namespace SennenKazoku.Game
                 "가족을 누르면 자세히 볼 수 있어!", "머리 위에 ! 가 뜨면 곧 무슨 일이 생겨",
                 "오른쪽 위 배속을 누르고 있으면 시간이 빨리 가", "힘내라의 화살을 쏘면 열중 게이지가 올라가",
                 "진정해의 화살을 쏘면 열중 게이지가 0이 돼", "열중이 높으면 지금 관심사에 푹 빠져",
-                "◀ ▶ 로 지켜볼 사람을 바꿔 봐", "일이 일어나면 무드·하트가 어떻게 바뀌었는지 알려 줄게",
+                "◀ ▶ 로 지켜볼 사람을 바꿔 봐", "푹 빠져 있으면 무엇이 오르고 내릴지 알려 줄게",
                 "집을 좌우로 끌면 다른 방도 볼 수 있어" };
             // 장면 코너 버튼: 왼쪽 아래 아이템, 오른쪽 아래 활, 오른쪽 위 배속
             itemCorner = Corner(scene, "아이템", new Color32(0xF0, 0xA0, 0x40, 235), () => OpenTools("item"));
@@ -778,7 +778,7 @@ namespace SennenKazoku.Game
                 int self; if (session.Family.Active != null && session.Family.Active.Cast.TryGetValue("self", out self)) { selectedId = self; follow = true; }
                 RefreshAll();
             }
-            else RefreshHud();
+            else { RefreshHud(); RefreshEffects(); }
         }
 
         void OnApplicationPause(bool paused) { if (paused && playing && session != null) SaveSlot("auto", true); }
@@ -825,20 +825,31 @@ namespace SennenKazoku.Game
             RefreshEffects();
         }
 
-        /// <summary>사건 결과: 마지막 사건에서 오르고 내린 것 (원작은 사건마다 "이번 일로 … 올랐어/내려갔어"를 알려 준다).</summary>
+        /// <summary>
+        /// 결과 예고: 선택한 사람이 지금 관심사에 푹 빠져 있으면(열중 높음) 그 관심사가 이루어질 때 무엇이 오르고 내리는지 보여 준다.
+        /// 계산은 GameSession.Predict(같은 규칙으로 복제 가족에 적용해 본 차이). "푹 빠져 있음" 경계 170 은 원작 측정 전 임시값.
+        /// </summary>
+        const int ImmersedFrom = 170;
+        string predKey = "";
         void RefreshEffects()
         {
-            var ch = session.LastChanges;
-            if (ch.Count == 0) { effectText.text = ""; return; }
-            var sb = new StringBuilder(); int shown = 0;
-            foreach (var c in ch)
+            var p = Sel();
+            if (p == null || string.IsNullOrEmpty(p.PlannedStateId) || p.Immersion < ImmersedFrom) { effectText.text = ""; predKey = ""; return; }
+            string key = p.Id + "|" + p.PlannedStateId + "|" + session.Family.Today + "|" + p.Immersion;
+            if (key == predKey) return;
+            predKey = key;
+            var pr = session.Predict(p.Id);
+            if (pr == null || pr.Changes.Count == 0) { effectText.text = pr != null && pr.OutcomeId != "" ? "푹 빠져 있어! → 큰 변화는 없을 것 같아" : ""; return; }
+            var sb = new StringBuilder("푹 빠져 있어! → "); int shown = 0;
+            foreach (var c in pr.Changes)
             {
                 if (shown >= 4) { sb.Append(" …"); break; }
                 var who = session.Family.Get(c.PersonId);
                 string col = c.Delta > 0 ? "#FF9090" : "#90B8FF";
-                sb.Append(who != null && who.Id != selectedId ? who.Name + " " : "").Append(c.Label).Append("<color=").Append(col).Append(">").Append(c.Arrow).Append("</color>  ");
+                sb.Append(who != null && who.Id != p.Id ? who.Name + " " : "").Append(c.Label).Append("<color=").Append(col).Append(">").Append(c.Arrow).Append("</color>  ");
                 shown++;
             }
+            if (pr.HasRandom) sb.Append("<size=" + Px(11) + ">(운에 따라 달라짐)</size>");
             effectText.text = sb.ToString();
         }
 

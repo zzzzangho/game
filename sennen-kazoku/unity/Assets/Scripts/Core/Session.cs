@@ -77,6 +77,13 @@ namespace SennenKazoku.Core
         }
     }
 
+    public sealed class Prediction
+    {
+        public string OutcomeId = "", Title = "";
+        public List<EffectChange> Changes = new List<EffectChange>();
+        public bool HasRandom;
+    }
+
     public sealed class GameSession
     {
         public Family Family { get; private set; }
@@ -359,15 +366,45 @@ namespace SennenKazoku.Core
         /// <summary>마지막으로 끝난 사건의 변화. 원작은 사건마다 "이번 일로 … 올랐어/내려갔어"로 알려 준다.</summary>
         public readonly List<EffectChange> LastChanges = new List<EffectChange>();
 
-        Dictionary<string, int> Snapshot()
+        Dictionary<string, int> Snapshot() { return Snapshot(Family); }
+
+        static Dictionary<string, int> Snapshot(Family family)
         {
-            var d = new Dictionary<string, int> { { "mood", Family.Mood } };
-            foreach (var p in Family.Members)
+            var d = new Dictionary<string, int> { { "mood", family.Mood } };
+            foreach (var p in family.Members)
             {
                 d["p" + p.Id + ".hearts"] = p.Hearts;
                 for (int i = 0; i < 4; i++) d["p" + p.Id + ".s" + i] = p.Stats[i];
             }
             return d;
+        }
+
+        /// <summary>
+        /// 지금 관심사가 이루어지면 무엇이 오르고 내리는지 미리 본다(원작: 푹 빠져 있을 때 보여 주는 결과 예고).
+        /// 가족을 복제해 같은 규칙(표 순서 첫 통과 결과)으로 결과를 골라 효과를 적용해 본 뒤 차이를 돌려준다. 실제 가족은 바뀌지 않는다.
+        /// 조건에 난수가 섞인 결과는 지금 난수 상태 기준의 한 가지 경우다(HasRandom).
+        /// </summary>
+        public Prediction Predict(int personId)
+        {
+            var p = Family.Get(personId);
+            if (p == null || string.IsNullOrEmpty(p.PlannedStateId)) return null;
+            PlannedStateDef st; if (!Catalog.States.TryGetValue(p.PlannedStateId, out st)) return null;
+            var clone = SaveSystem.FromJson(J.Obj(MiniJson.Parse(MiniJson.Serialize(SaveSystem.ToJson(Family, Catalog, SaveSystem.CurrentSchema)))));
+            var sim = new GameSession(clone, Catalog); sim.Rng.State = Rng.State;
+            var cp = clone.Get(personId);
+            foreach (var oid in st.Outcomes)
+            {
+                EventDef e; if (!Catalog.Events.TryGetValue(oid, out e)) continue;
+                var cx = sim.Resolve(e, cp);
+                if (cx == null || !sim.Allowed(e, cp)) continue;
+                if (!Rules.Eval(e.Condition, cx)) continue;
+                var before = Snapshot(clone);
+                Rules.Apply(e.Effects, cx, new List<string>());
+                var json = MiniJson.Serialize(e.Raw);
+                return new Prediction { OutcomeId = e.Id, Title = e.Title, Changes = Diff(clone, before),
+                    HasRandom = json.Contains("\"random\"") || json.Contains("\"chance\"") || json.Contains("\"skill_check\"") };
+            }
+            return new Prediction { OutcomeId = "", Title = "", Changes = new List<EffectChange>() };
         }
 
         public static List<EffectChange> Diff(Family f, Dictionary<string, int> before)

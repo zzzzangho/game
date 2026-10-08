@@ -145,6 +145,24 @@ namespace SennenKazoku.Tests
                 T.True(string.IsNullOrEmpty(p.PlannedStateId) || p.PlannedDue > f.Today, "진정해 맞은 관심사는 기한에 접힘");
                 T.True(s.Log.Exists(l => l.Contains("관심을 접었다")), "기록");
             });
+            T.Run("결과 예고: 지금 관심사가 이루어지면 무엇이 오르고 내리는지 (실제 가족은 그대로)", () => {
+                var cat = Cat(Bundled()); int checkedN = 0;
+                foreach (var st in cat.States.Values)
+                {
+                    var f = NewGame.Create(5); var s = new GameSession(f, cat); s.EventRateNum = 0;
+                    var p = f.Members[0]; p.PlannedStateId = st.Id; p.PlannedDue = f.Today + 1; p.Immersion = 200;
+                    int mood0 = f.Mood, h0 = p.Hearts;
+                    var pr = s.Predict(p.Id);
+                    T.True(pr != null, "예고 있음"); T.Eq(f.Mood, mood0, "예고는 가족을 바꾸지 않음"); T.Eq(p.Hearts, h0, "예고는 하트를 바꾸지 않음");
+                    if (pr.HasRandom || pr.OutcomeId == "") continue;
+                    for (int i = 0; i < 3 && !s.Paused; i++) s.StepDay();
+                    while (s.Paused) { var v = s.View(); if (v.NeedsChoice) s.Choose(v.Choices[0].Id); else s.Advance(); }
+                    string sig(List<EffectChange> l) => string.Join(",", l.Select(c => c.PersonId + c.Key + Math.Sign(c.Delta)));
+                    T.Eq(sig(s.LastChanges), sig(pr.Changes), st.Id + " 예고 = 실제");
+                    checkedN++;
+                }
+                T.True(checkedN > 0, "검증한 관심사 없음");
+            });
             T.Run("쿨다운·최대 횟수 준수", () => {
                 var cat = Cat(Bundled()); var f = NewGame.Create(7); var s = new GameSession(f, cat); s.EventRateNum = 1; s.EventRateDen = 1;
                 f.Mood = 200; int fired = 0;
