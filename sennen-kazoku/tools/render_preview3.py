@@ -103,11 +103,21 @@ def main():
         rk = sel["ranks"][si]
         d.text((tx, y + pad), lab, font=f, fill="white"); tx += d.textlength(lab, font=f)
         d.text((tx, y + pad), rk, font=f, fill=(0xFF, 0xC0, 0x40)); tx += d.textlength(rk + "  ", font=f)
-    d.text((rx, y + pad + px(30)), "%d세 · 몰입도 %d" % (sel["age"], sel["imm"]), font=font(px(12)), fill="white")
-    dx0, dy0, dw, dh = rx, y + pad + px(52), rw, H2 - effH - px(52) - pad * 2
+    imm = 220   # 미리보기: 힘내라의 화살을 맞은 상태
+    d.text((rx, y + pad + px(32)), "열중", font=font(px(15), True), fill=(0xFF, 0xC0, 0x40))
+    gx, gy, gw, gh = rx + px(44), y + pad + px(34), rw - px(44), px(20)
+    d.rectangle([gx, gy, gx + gw, gy + gh], fill=(0x06, 0x26, 0x38)); d.rectangle([gx, gy, gx + gw * imm / 255, gy + gh], fill=(0xF0, 0x50, 0x30))
+    t = "%d / 255" % imm; f = font(px(12), True); d.text((gx + gw / 2 - d.textlength(t, font=f) / 2, gy + px(2)), t, font=f, fill="white")
+    d.text((rx, y + pad + px(58)), "%d세 · 힘내라의 화살 효과 중" % sel["age"], font=font(px(12)), fill="white")
+    dx0, dy0, dw, dh = rx, y + pad + px(80), rw, H2 - effH - px(80) - pad * 2
     d.rounded_rectangle([dx0, dy0, dx0 + dw, dy0 + dh], radius=px(8), fill=BLUE)
     d.rounded_rectangle([dx0 + px(2), dy0 + px(2), dx0 + dw - px(2), dy0 + dh - px(2)], radius=px(6), fill="white")
     ev = dev.get("event")
+    if not ev:
+        f = font(px(15)); ty = dy0 + px(14)
+        for ln in wrap(d, sel["name"] + "는 이런 생각을 하는 모양이야\n「" + sel["planned"] + "」", f, dw - px(20)):
+            d.text((dx0 + px(10), ty), ln, font=f, fill=INK); ty += px(22)
+        d.text((dx0 + px(10), ty + px(4)), "푹 빠져 있어!", font=font(px(15), True), fill=(0xC0, 0x50, 0x20))
     if ev:
         d.text((dx0 + px(10), dy0 + px(6)), ev["title"] + "  [신규 · 임시 문구]", font=font(px(11), True), fill=(0x9C, 0x52, 0x20))
         d.text((dx0 + px(10), dy0 + px(22)), ev["speaker"], font=font(px(13), True), fill=(0x1E, 0x46, 0xC8))
@@ -117,7 +127,7 @@ def main():
         for i, c in enumerate(ev["choices"]):
             yy = by + i * (bh + gap); d.rounded_rectangle([dx0 + px(8), yy, dx0 + dw - px(8), yy + bh], radius=px(6), fill=(0xE8, 0xF0, 0xFF), outline=BLUE, width=2)
             t = "▶ " + c; f = font(px(14), True); d.text((dx0 + dw / 2 - d.textlength(t, font=f) / 2, yy + bh / 2 - px(8)), t, font=f, fill=HUDBLUE)
-    d.text((x + ar + inner / 2 - px(110), y + H2 - effH + px(4)), "지난 사건:  무드", font=font(px(16), True), fill="white")
+    d.text((x + ar + inner / 2 - px(110), y + H2 - effH + px(4)), "지난 일:  무드", font=font(px(16), True), fill="white")
     d.text((x + ar + inner / 2 + px(22), y + H2 - effH + px(4)), "↑", font=font(px(16), True), fill=(0xFF, 0x90, 0x90))
     d.text((x + ar + inner / 2 + px(42), y + H2 - effH + px(4)), "하트", font=font(px(16), True), fill="white")
     d.text((x + ar + inner / 2 + px(82), y + H2 - effH + px(4)), "↓", font=font(px(16), True), fill=(0x90, 0xB8, 0xFF))

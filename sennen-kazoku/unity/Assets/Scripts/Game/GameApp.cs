@@ -128,8 +128,9 @@ namespace SennenKazoku.Game
             tipText = UiKit.Label(tipBox.transform, "t", "", 13, UiKit.Ink, TextAnchor.MiddleCenter);
             tips = new[] {
                 "가족을 누르면 자세히 볼 수 있어!", "머리 위에 ! 가 뜨면 곧 무슨 일이 생겨",
-                "오른쪽 위 배속을 누르고 있으면 시간이 빨리 가", "활로 힘내라·진정해 화살을 쏠 수 있어",
-                "◀ ▶ 로 지켜볼 사람을 바꿔 봐", "사건이 끝나면 무드·하트가 어떻게 바뀌었는지 알려 줄게",
+                "오른쪽 위 배속을 누르고 있으면 시간이 빨리 가", "힘내라의 화살을 쏘면 열중 게이지가 올라가",
+                "진정해의 화살을 쏘면 열중 게이지가 0이 돼", "열중이 높으면 지금 관심사에 푹 빠져",
+                "◀ ▶ 로 지켜볼 사람을 바꿔 봐", "일이 일어나면 무드·하트가 어떻게 바뀌었는지 알려 줄게",
                 "집을 좌우로 끌면 다른 방도 볼 수 있어" };
             // 장면 코너 버튼: 왼쪽 아래 아이템, 오른쪽 아래 활, 오른쪽 위 배속
             itemCorner = Corner(scene, "아이템", new Color32(0xF0, 0xA0, 0x40, 235), () => OpenTools("item"));
@@ -151,6 +152,11 @@ namespace SennenKazoku.Game
             rankText = UiKit.Label(bar, "ranks", "", 20, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold); rankText.supportRichText = true;
             for (int i = 0; i < 3; i++) { barHearts[i] = UiKit.Box(bar, "heart" + i, Color.white); barHearts[i].preserveAspect = true; }
             barPlanned = UiKit.Label(bar, "planned", "", 13, Color.white, TextAnchor.MiddleLeft);
+            // 열중 게이지 (현재 관심 몰입도 0~255): 힘내라의 화살 +95, 진정해의 화살 → 0
+            immLabel = UiKit.Label(bar, "immL", "열중", 15, new Color32(0xFF, 0xC0, 0x40, 255), TextAnchor.MiddleLeft, FontStyle.Bold);
+            immBg = UiKit.Box(bar, "immBg", new Color32(0x06, 0x26, 0x38, 255));
+            immFill = UiKit.Box(immBg.transform, "immFill", new Color32(0xF0, 0x80, 0x30, 255));
+            immVal = UiKit.Label(immBg.transform, "immV", "", 12, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
             barGauge = UiKit.Box(bar, "gauge", Color.white); barGauge.preserveAspect = true;
             prevBtn = UiKit.Btn(panel, "prev", "◀", 18, new Color32(0x0A, 0x38, 0x50, 255), Color.white, () => CycleSel(-1));
             nextSelBtn = UiKit.Btn(panel, "nextSel", "▶", 18, new Color32(0x0A, 0x38, 0x50, 255), Color.white, () => CycleSel(1));
@@ -175,7 +181,7 @@ namespace SennenKazoku.Game
                 menuBtns[i] = UiKit.Btn(menu, "m" + i, labels[i], 16, new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => acts[k]());
             }
         }
-        Image nameBg, bowIcon, hudIcon; Text hudSub; Button prevBtn, nextSelBtn;
+        Image nameBg, bowIcon, hudIcon, immBg, immFill; Text hudSub, immLabel, immVal; Button prevBtn, nextSelBtn; float shownImm = -1;
 
         Image Corner(RectTransform parent, string label, Color c, Action onClick)
         {
@@ -218,8 +224,11 @@ namespace SennenKazoku.Game
             UiKit.SetPx(barGauge.rectTransform, pad, hy + hsz + Px(4), leftW - pad, Px(18));
             float rx = leftW + pad * 2, rw = inner - rx - pad;
             UiKit.SetPx(rankText.rectTransform, rx, pad, rw, Px(30)); rankText.fontSize = Px(20);
-            UiKit.SetPx(barPlanned.rectTransform, rx, pad + Px(30), rw, Px(20)); barPlanned.fontSize = Px(12);
-            UiKit.SetPx(dialog, ar + rx, pad + Px(52), rw, H - effH - Px(52) - pad * 2);
+            UiKit.SetPx(immLabel.rectTransform, rx, pad + Px(32), Px(44), Px(24)); immLabel.fontSize = Px(15);
+            UiKit.SetPx(immBg.rectTransform, rx + Px(44), pad + Px(34), rw - Px(44), Px(20));
+            immVal.fontSize = Px(12); UiKit.Stretch(immVal.rectTransform, 0, 0, 0, 0);
+            UiKit.SetPx(barPlanned.rectTransform, rx, pad + Px(58), rw, Px(18)); barPlanned.fontSize = Px(12);
+            UiKit.SetPx(dialog, ar + rx, pad + Px(80), rw, H - effH - Px(80) - pad * 2);
             UiKit.SetPx(effectText.rectTransform, ar, H - effH, inner, effH); effectText.fontSize = Px(16);
         }
 
@@ -612,7 +621,7 @@ namespace SennenKazoku.Game
                 img.raycastTarget = true; img.preserveAspect = true;
                 if (img.sprite == null) { img.sprite = UiKit.Circle; img.color = p.Gender == 0 ? new Color32(0x5B, 0x8F, 0xC9, 255) : new Color32(0xD9, 0x6A, 0x8A, 255); }
                 int pid = p.Id;
-                img.gameObject.AddComponent<Button>().onClick.AddListener(() => { selectedId = pid; follow = true; RefreshBar(); OpenDetail(session.Family.Get(pid)); });
+                img.gameObject.AddComponent<Button>().onClick.AddListener(() => { selectedId = pid; follow = true; shownImm = -1; RefreshBar(); OpenDetail(session.Family.Get(pid)); });
                 var bub = UiKit.Box(img.transform, "bubble", Color.white, null); bub.preserveAspect = true; bub.gameObject.SetActive(false);
                 var bubT = UiKit.Label(bub.transform, "t", "", 14, Color.red, TextAnchor.MiddleCenter, FontStyle.Bold);
                 float x = UnityEngine.Random.Range(room[0] + 4, room[1] - 36);
@@ -718,6 +727,16 @@ namespace SennenKazoku.Game
             return art.Ui(notes[(seed + (int)(Time.time / 9f)) % notes.Length]);
         }
 
+        void UpdateGauge()
+        {
+            var p = Sel(); if (p == null || immFill == null) return;
+            shownImm = shownImm < 0 ? p.Immersion : Mathf.MoveTowards(shownImm, p.Immersion, Time.deltaTime * 180f);
+            float w = immBg.rectTransform.sizeDelta.x, h = immBg.rectTransform.sizeDelta.y;
+            UiKit.SetPx(immFill.rectTransform, 0, 0, w * Mathf.Clamp01(shownImm / 255f), h);
+            immFill.color = shownImm >= 170 ? new Color32(0xF0, 0x50, 0x30, 255) : shownImm >= 85 ? new Color32(0xF0, 0x80, 0x30, 255) : new Color32(0x70, 0x90, 0xD0, 255);
+            immVal.text = Mathf.RoundToInt(shownImm) + " / 255";
+        }
+
         void UpdateTip()
         {
             if (Time.time > tipUntil) { tipIndex++; tipUntil = Time.time + 8f; RefreshTip(); }
@@ -729,7 +748,7 @@ namespace SennenKazoku.Game
         {
             var alive = session.Family.Members.FindAll(m => m.Alive); if (alive.Count == 0) return;
             int i = alive.FindIndex(m => m.Id == selectedId);
-            selectedId = alive[((i + dir) % alive.Count + alive.Count) % alive.Count].Id; follow = true; RefreshBar(); RefreshDialog();
+            selectedId = alive[((i + dir) % alive.Count + alive.Count) % alive.Count].Id; follow = true; shownImm = -1; RefreshBar(); RefreshDialog();
         }
 
         // =============================================================== 매 프레임
@@ -740,6 +759,7 @@ namespace SennenKazoku.Game
             if (titleHouse != null && titleRoot.gameObject.activeSelf) { var u = titleHouse.uvRect; u.x += Time.deltaTime * 0.01f; titleHouse.uvRect = u; }
             if (!playing || session == null) return;
             UpdateActors();
+            UpdateGauge();
             UpdateTip();
             if (popupOpen || session.Paused || EffectiveSpeed == 0) return;
             acc += Time.deltaTime * EffectiveSpeed;
@@ -798,9 +818,10 @@ namespace SennenKazoku.Game
                 var s = art.Ui(key); barHearts[i].sprite = s ?? UiKit.Circle;
                 barHearts[i].color = s != null ? Color.white : (key == "heart_full" ? Color.red : key == "heart_half" ? new Color(1, 0.5f, 0.6f) : new Color(0.4f, 0.5f, 1f));
             }
-            barPlanned.text = p.Age(session.Family.Today) + "세 · 몰입도 " + p.Immersion;
+            barPlanned.text = p.Age(session.Family.Today) + "세" + (p.ArrowUntil >= session.Family.Today && !string.IsNullOrEmpty(p.ArrowId) ? " · " + Interventions.Find(p.ArrowId).Name + " 효과 중" : "");
+            if (shownImm < 0) shownImm = p.Immersion;
             var g = art.Ui(p.Immersion >= 170 ? "gauge_full" : p.Immersion >= 85 ? "gauge_mid" : "gauge_empty");
-            barGauge.sprite = g; barGauge.enabled = g != null;
+            barGauge.sprite = g; barGauge.enabled = g != null;     // 원작 게이지 그림(작게) — 큰 막대는 immFill
             RefreshEffects();
         }
 

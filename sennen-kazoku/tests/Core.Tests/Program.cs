@@ -22,7 +22,12 @@ namespace SennenKazoku.Tests
     {
         static string PacksDir;
         static string Tmp() { var d = Path.Combine(Path.GetTempPath(), "sk_" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(d); return d; }
-        static string Read(string name) { return File.ReadAllText(Path.Combine(PacksDir, name + ".json")); }
+        static string Read(string name)
+        {
+            // nova.pack001 은 게임에 넣지 않는 확장 구조 시험용 팩(선택지 이벤트 — 원작에는 이런 이벤트가 없다)
+            var fx = Path.Combine(AppContext.BaseDirectory, "../../../Fixtures", name + ".json");
+            return File.ReadAllText(File.Exists(fx) ? fx : Path.Combine(PacksDir, name + ".json"));
+        }
 
         static Pack LoadPack(string json)
         {
@@ -125,6 +130,20 @@ namespace SennenKazoku.Tests
                 T.True(s.LastChanges.Exists(c => c.Key == "mood" && c.Delta == 12), "사건 결과: 무드 +12");
                 T.True(s.LastChanges.Exists(c => c.Key == "hearts" && c.PersonId == f.Members[0].Id && c.Delta == 24), "사건 결과: 하트 +24");
                 T.True(f.History[0].Changes.Contains("무드↑") && f.History[0].Changes.Contains("하트↑"), "기록에 변화 요약: " + f.History[0].Changes);
+            });
+            T.Run("열중 게이지: 힘내라 +95(최대 255) · 진정해 → 0 → 관심사를 접는다", () => {
+                var cat = Cat(Bundled()); var f = NewGame.Create(11); var s = new GameSession(f, cat); s.EventRateNum = 0;
+                var p = f.Members[0];
+                T.Eq(Interventions.Use(f, p, "arrow.encourage"), null); T.True(p.Immersion >= 82 + 95 - 1 || p.Immersion == 255, "힘내라 +95");
+                T.True(Interventions.Use(f, p, "arrow.encourage") != null, "효과 지속 중에는 다시 못 쏨(원작 안내 문구)");
+                p.ArrowUntil = -1; Interventions.Use(f, p, "arrow.encourage"); T.Eq(p.Immersion, 255, "최대 255");
+                // 관심사를 하나 걸어 두고 진정해 → 기한이 오면 접는다
+                foreach (var st in cat.States.Values) { p.PlannedStateId = st.Id; break; }
+                p.PlannedDue = f.Today + 3;
+                p.ArrowUntil = -1; Interventions.Use(f, p, "arrow.calm"); T.Eq(p.Immersion, 0, "진정해 0");
+                for (int i = 0; i < 4; i++) s.StepDay();
+                T.True(string.IsNullOrEmpty(p.PlannedStateId) || p.PlannedDue > f.Today, "진정해 맞은 관심사는 기한에 접힘");
+                T.True(s.Log.Exists(l => l.Contains("관심을 접었다")), "기록");
             });
             T.Run("쿨다운·최대 횟수 준수", () => {
                 var cat = Cat(Bundled()); var f = NewGame.Create(7); var s = new GameSession(f, cat); s.EventRateNum = 1; s.EventRateDen = 1;

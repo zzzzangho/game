@@ -98,6 +98,7 @@ namespace SennenKazoku.Core
         public void ReplaceCatalog(ContentCatalog c) { Catalog = c; }
 
         public bool Paused { get { return Family.Active != null; } }
+        public const int ImmersionDefault = 82;
 
         // ---------- 하루 진행 ----------
         /// <summary>하루 진행. 이벤트가 진행 중이면 아무 것도 하지 않는다. 이벤트가 시작되면 true.</summary>
@@ -126,12 +127,23 @@ namespace SennenKazoku.Core
                 var pick = PickState(p);
                 if (pick != null)
                 {
-                    p.PlannedStateId = pick.Id;
+                    p.PlannedStateId = pick.Id; p.Immersion = ImmersionDefault;   // 새 관심사는 기본 열중으로 시작(추정)
                     p.PlannedDue = Family.Today + pick.DelayMin + Rng.Next(Math.Max(1, pick.DelayMax - pick.DelayMin + 1));
                 }
                 return;
             }
+            // 열중 게이지(현재 관심 몰입도 0~255, 기본 82 — 공략 데이터로 확인)와 관심사 진행.
+            // 임시 규칙(원작 수식 미해명): 열중 170 이상이면 3일마다 하루 앞당겨지고, 게이지는 이틀에 1씩 기본값 82 쪽으로 돌아간다.
+            if (p.Immersion >= 170 && Family.Today % 3 == 0 && p.PlannedDue > Family.Today) p.PlannedDue--;
+            if (Family.Today % 2 == 0) p.Immersion += p.Immersion < ImmersionDefault ? 1 : p.Immersion > ImmersionDefault ? -1 : 0;
             if (p.PlannedDue > Family.Today) return;
+            // 임시 규칙: 열중이 32 미만이면 그만큼 확률로 관심을 접는다(진정해의 화살 = 0 → 반드시 접음)
+            if (p.Immersion < 32 && Rng.Next(32) >= p.Immersion)
+            {
+                Log.Add(p.Name + ": 관심을 접었다 (" + p.PlannedStateId + ")");
+                p.PlannedStateId = ""; p.PlannedDue = -1; p.PlannedTitle = ""; p.Immersion = ImmersionDefault;
+                return;
+            }
             PlannedStateDef st;
             Catalog.States.TryGetValue(p.PlannedStateId, out st);
             p.PlannedStateId = ""; p.PlannedDue = -1;

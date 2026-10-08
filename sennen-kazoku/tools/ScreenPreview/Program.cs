@@ -33,9 +33,7 @@ static class P
                 { "ranks", new List<object> { Stat.Rank(p.Stats[0]), Stat.Rank(p.Stats[1]), Stat.Rank(p.Stats[2]), Stat.Rank(p.Stats[3]) } }, { "hearts", p.Hearts }, { "imm", p.Immersion },
                 { "character", p.Character }, { "planned", p.PlannedTitle }, { "head", p.Id == f.HeadId }, { "job", p.Job } });
             var idle = new Dictionary<string, object> { { "date", GameDate.Format(f.Today) }, { "mood", Family.MoodLevel(f.Mood) }, { "assets", f.Assets }, { "family", f.Name }, { "members", members }, { "text", idleText } };
-            s.ForceStart("nova.picnic.001", 1); s.Advance(); s.Advance(); var v = s.View();
-            var ch = new List<object>(); foreach (var c in v.Choices) ch.Add(c.Text);
-            var ev = new Dictionary<string, object> { { "title", v.Title }, { "speaker", v.Speaker }, { "text", v.Text }, { "choices", ch }, { "badge", "신규 이벤트 · 규칙 임시 · 임시 문구" } };
+            object ev = null;   // 원작에는 선택지 이벤트가 없다 — 미리보기는 평소 화면(열중 게이지)만
             outList.Add(new Dictionary<string, object> {
                 { "w", (int)w }, { "h", (int)h }, { "safeTop", d[2] }, { "safeBottom", d[3] }, { "dp", (double)lay.Dp },
                 { "rects", new Dictionary<string, object> { { "top", R(lay.TopBar) }, { "strip", R(lay.FamilyStrip) }, { "scene", R(lay.Scene) }, { "panel", R(lay.EventPanel) }, { "controls", R(lay.Controls) } } },

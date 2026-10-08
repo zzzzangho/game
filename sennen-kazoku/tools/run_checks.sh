@@ -3,4 +3,4 @@
 set -e
 cd "$(dirname "$0")/.."
 dotnet run --project tests/Core.Tests -v q
-dotnet run --project tools/PackLintCli -v q -- unity/Assets/Resources/BundledPacks unity/Assets/Resources/BundledPacks/nova.pack001.json --preview nova.picnic.001
+dotnet run --project tools/PackLintCli -v q -- unity/Assets/Resources/BundledPacks tests/Core.Tests/Fixtures/nova.pack001.json --preview nova.picnic.001
