@@ -102,7 +102,8 @@ namespace SennenKazoku.Core
             foreach (var m in Members)
             {
                 var p = new Person { Id = f.NextPersonId++, Name = m.Name, Gender = m.Gender, BirthDay = m.BirthDay, Job = m.Job,
-                    Hearts = Person.HeartUnit * 3 / 2, Immersion = 82, Look = m.Look == null ? null : m.Look.Clone(), Blood = m.Blood, Personality = m.Personality };
+                    Hearts = Person.HeartUnit * 3 / 2, Immersion = 82, Look = m.Look == null ? null : m.Look.Clone(), Blood = m.Blood, Personality = m.Personality,
+                    PersonalityCode = m.Personality == 0 ? 1 : m.Personality == 1 ? 0 : 2 };   // 원작 저장 코드: 내향적 1 · 보통 0 · 외향적 2 (확인됨)
                 int age = p.Age(StartDay);
                 for (int s = 0; s < 4; s++) p.Stats[s] = StartStat(s, m.AbilityRank[s], age, rng);
                 ids[m] = p; f.Members.Add(p);

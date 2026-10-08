@@ -100,8 +100,13 @@ namespace SennenKazoku.Core
     public sealed class PlannedStateDef
     {
         public string Id = "", Title = "", PackId = "", Desc = "";
-        public int MinAge, MaxAge = 120, Weight = 10, DelayMin = 20, DelayMax = 60;
+        public int MinAge, MaxAge = 120, Weight = 10;
         public List<string> Outcomes = new List<string>();   // 표 순서대로 검사, 처음 통과한 것을 선택 (확인됨: first_matching_variant_in_table_order)
+        // ---- 원작 관심사 정보 (ROM 0x085BD4A0[표][번호] 해독) ----
+        public int Type;                                       // +0x0F 관심사 유형(0 공통·1·2) — 성격 코드와 같으면 오름 기간 12일, 다르면 10일, 어느 쪽이 0 이면 11일
+        public int MaxDayMode = 3, MinDayMode = 3;             // MAX/MIN 사건 정보 +1: 3 아무 날 · 2 직업 근무 요일 · 1 그 밖의 요일
+        public List<string> MaxOutcomes = new List<string>();  // 게이지 255 일 때 검사하는 결과 목록 (공략 데이터 'MAX 이벤트')
+        public List<string> MinOutcomes = new List<string>();  // 게이지 0 일 때 (공략 데이터 'MIN 이벤트')
         public string Certainty = "placeholder";
         public object Eligible;                               // 배정 대상 조건(나이·성별·혼인 등). 원작의 "대상 분류"에 해당
 
@@ -109,9 +114,12 @@ namespace SennenKazoku.Core
         {
             var s = new PlannedStateDef { Id = J.Str(d, "id"), Title = J.Str(d, "title"), MinAge = J.Int(d, "minAge", 0),
                 MaxAge = J.Int(d, "maxAge", 120), Weight = J.Int(d, "weight", 10), Certainty = J.Str(d, "certainty", "placeholder"), Eligible = J.Get(d, "eligible"), Desc = J.Str(d, "desc") };
-            var dl = J.List(d, "delay");
-            if (dl.Count == 2) { s.DelayMin = Convert.ToInt32(dl[0]); s.DelayMax = Convert.ToInt32(dl[1]); }
             foreach (var o in J.List(d, "outcomes")) s.Outcomes.Add((string)o);
+            s.Type = J.Int(d, "type"); s.MaxDayMode = J.Int(d, "maxDayMode", 3); s.MinDayMode = J.Int(d, "minDayMode", 3);
+            foreach (var o in J.List(d, "maxOutcomes")) s.MaxOutcomes.Add((string)o);
+            foreach (var o in J.List(d, "minOutcomes")) s.MinOutcomes.Add((string)o);
+            foreach (var o in s.MaxOutcomes) if (!s.Outcomes.Contains(o)) s.Outcomes.Add(o);     // 전체 목록(검사·도구용)
+            foreach (var o in s.MinOutcomes) if (!s.Outcomes.Contains(o)) s.Outcomes.Add(o);
             return s;
         }
     }
@@ -167,6 +175,7 @@ namespace SennenKazoku.Core
         public List<EventDef> Events = new List<EventDef>();
         public List<PlannedStateDef> States = new List<PlannedStateDef>();
         public List<MapDef> Maps = new List<MapDef>();
+        public Dictionary<int, int> JobDayMasks = new Dictionary<int, int>();   // 직업 코드 → 근무 요일 비트(bit0 일요일) — ROM 0x0889D3B8[직업]+4
         public string Sha256 = "";
         public string RawJson = "";
 
@@ -198,10 +207,12 @@ namespace SennenKazoku.Core
             {
                 var s = PlannedStateDef.Parse(J.Obj(o)); s.PackId = p.PackId;
                 if (string.IsNullOrEmpty(s.Id)) errors.Add("plannedState id 없음");
-                if (s.Outcomes.Count == 0) errors.Add("plannedState[" + s.Id + "]: outcomes 비어 있음");
+                if (s.MaxOutcomes.Count == 0 && s.MinOutcomes.Count == 0) errors.Add("plannedState[" + s.Id + "]: maxOutcomes·minOutcomes 비어 있음 (원작 구조: 게이지 255 → MAX, 0 → MIN)");
                 if (s.Eligible != null) Rules.ValidateCondition(s.Eligible, "plannedState[" + s.Id + "].eligible", errors);
                 p.States.Add(s);
             }
+            var jm = J.Child(d, "jobDayMasks");
+            if (jm != null) foreach (var kv in jm) { int code; if (int.TryParse(kv.Key, out code)) p.JobDayMasks[code] = Convert.ToInt32(kv.Value) & 0x7F; }
             foreach (var o in J.List(d, "maps"))
             {
                 var m = MapDef.Parse(J.Obj(o)); m.PackId = p.PackId; errors.AddRange(m.Validate()); p.Maps.Add(m);
@@ -227,6 +238,7 @@ namespace SennenKazoku.Core
         public readonly Dictionary<string, EventDef> Events = new Dictionary<string, EventDef>();
         public readonly Dictionary<string, PlannedStateDef> States = new Dictionary<string, PlannedStateDef>();
         public readonly Dictionary<string, MapDef> Maps = new Dictionary<string, MapDef>();
+        public readonly Dictionary<int, int> JobDayMasks = new Dictionary<int, int>();
         public readonly List<Pack> Packs = new List<Pack>();
 
         /// <summary>팩 집합 전체의 교차 검증(id 중복, 참조, 의존). 오류가 있으면 null.</summary>
@@ -256,6 +268,7 @@ namespace SennenKazoku.Core
                 {
                     if (c.Maps.ContainsKey(m.Id)) errors.Add("맵 id 충돌: " + m.Id); else c.Maps[m.Id] = m;
                 }
+                foreach (var kv in p.JobDayMasks) c.JobDayMasks[kv.Key] = kv.Value;
                 foreach (var s in p.States)
                 {
                     if (c.States.ContainsKey(s.Id)) errors.Add("예정 상태 id 충돌: " + s.Id);

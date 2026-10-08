@@ -43,21 +43,24 @@ events = [
             [mast(3), hearts(-48)], [page("self", "{self:은는} 지쳐 버렸다. (임시 문구)")]),
 ]
 
-def state(sid, src, title, minage, maxage, elig, outs):
-    return {"id": sid, "title": title, "minAge": minage, "maxAge": maxage, "weight": 10, "delay": [20, 60],
-            "eligible": elig, "outcomes": outs, "certainty": "estimated",
-            "note": "결과 선택 규칙·조건은 원작 분석(" + src + ")에 근거. 연령대 경계와 대상 분류, 지연 일수는 임시값."}
+def state(sid, src, rom_ref, max_mode, title, minage, maxage, elig, outs):
+    # 원작 구조: 열중 게이지 255 → MAX 사건(이 관심사의 변형들), 0 → MIN 사건(여러 관심사가 함께 쓰는 공용 사건 — 샘플에는 없음)
+    # type·maxDayMode 는 ROM 관심사 표(0x085BD4A0) 값, MAX 변형 = 공략 데이터 결과 2개 (판정 함수 주소로 대조)
+    return {"id": sid, "title": title, "minAge": minage, "maxAge": maxage, "weight": 10, "romRef": rom_ref,
+            "type": 0, "maxDayMode": max_mode, "minDayMode": 3, "maxOutcomes": outs, "minOutcomes": [],
+            "eligible": elig, "certainty": "estimated",
+            "note": "MAX 변형·조건은 원작 분석(" + src + "), 유형·요일 조건은 ROM. 대상 분류·연령 경계로 관심사를 고르는 부분은 미해독(임시)."}
 
 single = cmp_("self.married", "==", 0)
 g = lambda n: cmp_("self.gender", "==", n)
 states = [
-    state("sk.ps.family-nag", "planned-0072FD80", "[원작 구조] 가족의 간섭이 신경 쓰임", 18, 29, {"op": "and", "args": [single, g(1)]}, ["sk.s1.good", "sk.s1.fallback"]),
-    state("sk.ps.job-hunt", "planned-006E0BAC", "[원작 구조] 가족의 시선이 부담됨", 18, 29, {"op": "and", "args": [single, g(1)]}, ["sk.s2.good", "sk.s2.fallback"]),
-    state("sk.ps.training", "planned-006E311C", "[원작 구조] 기술 연마 중", 18, 29, {"op": "and", "args": [single, g(0)]}, ["sk.s3.good", "sk.s3.fallback"]),
+    state("sk.ps.family-nag", "planned-0072FD80", [2, 39], 3, "[원작 구조] 가족의 간섭이 신경 쓰임", 18, 29, {"op": "and", "args": [single, g(1)]}, ["sk.s1.good", "sk.s1.fallback"]),
+    state("sk.ps.job-hunt", "planned-006E0BAC", [1, 343], 3, "[원작 구조] 가족의 시선이 부담됨", 18, 29, {"op": "and", "args": [single, g(1)]}, ["sk.s2.good", "sk.s2.fallback"]),
+    state("sk.ps.training", "planned-006E311C", [1, 396], 1, "[원작 구조] 기술 연마 중", 18, 29, {"op": "and", "args": [single, g(0)]}, ["sk.s3.good", "sk.s3.fallback"]),
 ]
 
 sk = {"format": 1, "packId": "sk.sample", "version": 1, "title": "원작 규칙 구조 샘플 (임시 문구)", "kind": "base", "origin": "original",
-      "minContract": 1, "events": events, "plannedStates": states}
+      "minContract": 3, "events": events, "plannedStates": states}
 
 nova = {"format": 1, "packId": "nova.pack001", "version": 1, "title": "신규 이벤트 팩 1 (임시)", "kind": "expansion", "origin": "new",
         "minContract": 1, "requires": [{"packId": "sk.sample", "minVersion": 1}],
@@ -77,7 +80,9 @@ nova = {"format": 1, "packId": "nova.pack001", "version": 1, "title": "신규 �
             "effects": [{"op": "set_flag", "scope": "family", "name": "nova.picnic.done"}]}]}
 
 out = sys.argv[1]; os.makedirs(out, exist_ok=True)
-for name, obj in (("sk.sample", sk), ("nova.pack001", nova)):
-    with open(os.path.join(out, name + ".json"), "w", encoding="utf8", newline="\n") as f:
+# sk.sample → 게임 번들, nova.pack001 → 테스트 픽스처(원작에 없는 선택지 이벤트라 게임에 넣지 않는다)
+fixtures = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "Core.Tests", "Fixtures")
+for name, obj, d in (("sk.sample", sk, out), ("nova.pack001", nova, fixtures)):
+    with open(os.path.join(d, name + ".json"), "w", encoding="utf8", newline="\n") as f:
         json.dump(obj, f, ensure_ascii=False, indent=1); f.write("\n")
 print("ok", out)

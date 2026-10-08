@@ -19,6 +19,19 @@ static void quiet(struct mLogger* l, int cat, enum mLogLevel lv, const char* fmt
     if (getenv("CAP_LOG") && (strstr(fmt, "SWI") || strstr(fmt, "DMA"))) { printf("[%ld] ", g_frame); vprintf(fmt, a); printf("\n"); }
 }
 
+#include <mgba/debugger/debugger.h>
+/* ---- 쓰기 감시점: 원작 코드가 특정 RAM 을 쓰는 순간의 PC·LR·값 기록 (규칙 역분석용) ---- */
+static FILE* g_wlog; static struct mCore* g_core;
+static void wp_entered(struct mDebugger* d, enum mDebuggerEntryReason r, struct mDebuggerEntryInfo* info) {
+    if (g_wlog && info && r == DEBUGGER_ENTER_WATCHPOINT) {
+        uint32_t pc = 0, lr = 0; g_core->readRegister(g_core, "pc", &pc); g_core->readRegister(g_core, "lr", &lr);
+        fprintf(g_wlog, "%ld %08x pc=%08x lr=%08x %u->%u\n", g_frame, info->address, pc, lr, info->type.wp.oldValue, info->type.wp.newValue);
+    }
+    d->state = DEBUGGER_RUNNING;
+}
+static void wp_paused(struct mDebugger* d) { d->state = DEBUGGER_RUNNING; }
+static struct mDebugger g_dbg;
+
 int main(int argc, char** argv) {
     static struct mLogger lg = { .log = quiet }; mLogSetDefaultLogger(&lg);
     if (argc < 4) { fprintf(stderr, "usage\n"); return 2; }
@@ -32,10 +45,10 @@ int main(int argc, char** argv) {
         char cmd[32], arg[200]; int n = 0, keys = 0;
         if (sscanf(line, "%31s", cmd) != 1 || cmd[0] == '#') continue;
         if (!strcmp(cmd, "run") && sscanf(line, "%*s %d %i", &n, &keys) >= 1) {
-            for (int i = 0; i < n; i++) { c->setKeys(c, keys); c->runFrame(c); frame++; g_frame = frame; }
+            for (int i = 0; i < n; i++) { c->setKeys(c, keys); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; }
         } else if (!strcmp(cmd, "tap") && sscanf(line, "%*s %i %d", &keys, &n) >= 1) {   /* 키 6프레임 누르고 n프레임 대기 */
-            for (int i = 0; i < 6; i++) { c->setKeys(c, keys); c->runFrame(c); frame++; g_frame = frame; }
-            for (int i = 0; i < (n ? n : 30); i++) { c->setKeys(c, 0); c->runFrame(c); frame++; g_frame = frame; }
+            for (int i = 0; i < 6; i++) { c->setKeys(c, keys); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; }
+            for (int i = 0; i < (n ? n : 30); i++) { c->setKeys(c, 0); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; }
         } else if (!strcmp(cmd, "shot") && sscanf(line, "%*s %199s", arg) == 1) {
             char p[512]; snprintf(p, sizeof p, "%s/%s.ppm", argv[2], arg);
             FILE* f = fopen(p, "wb"); fprintf(f, "P6 240 160 255\n");
@@ -53,7 +66,7 @@ int main(int argc, char** argv) {
         } else if (!strcmp(cmd, "rundump")) {   /* rundump <프레임> <키> <간격> <접두어> : 간격마다 메모리 덤프 */
             int every = 1; if (sscanf(line, "%*s %d %i %d %199s", &n, &keys, &every, arg) != 4) continue;
             for (int i = 0; i < n; i++) {
-                c->setKeys(c, keys); c->runFrame(c); frame++; g_frame = frame;
+                c->setKeys(c, keys); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame;
                 if (i % every == 0) {
                     char p[512]; snprintf(p, sizeof p, "%s/%s_%06ld.mem", argv[2], arg, frame); FILE* f = fopen(p, "wb");
                     for (unsigned a = 0x05000000; a < 0x05000400; a++) fputc(c->busRead8(c, a), f);
@@ -63,10 +76,59 @@ int main(int argc, char** argv) {
                     fclose(f);
                 }
             }
+        } else if (!strcmp(cmd, "rtc")) {   /* rtc <0 없음|1 고정|2 가짜 기점|3 실제시계+차이> <값(ms)> : 카트리지 시계 덮어쓰기 */
+            long long v = 0; if (sscanf(line, "%*s %d %lld", &n, &v) != 2) continue;
+            c->rtc.override = (enum mRTCGenericType)n; c->rtc.value = v;
+            printf("rtc %d %lld\n", n, v);
+        } else if (!strcmp(cmd, "watch")) {   /* watch <주소> <파일> : 쓰기 감시점 추가(이후 run/autolog 중 기록) */
+            unsigned addr = 0; if (sscanf(line, "%*s %i %199s", &addr, arg) != 2) continue;
+            if (!g_dbg.platform) {
+                memset(&g_dbg, 0, sizeof g_dbg); g_dbg.entered = wp_entered; g_dbg.paused = wp_paused; g_core = c;
+                mDebuggerAttach(&g_dbg, c); g_dbg.state = DEBUGGER_RUNNING;
+                char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); g_wlog = fopen(p, "w");
+            }
+            struct mWatchpoint wp; memset(&wp, 0, sizeof wp); wp.address = addr; wp.segment = -1; wp.type = WATCHPOINT_WRITE;
+            g_dbg.platform->setWatchpoint(g_dbg.platform, &wp);
+            printf("watch %08x\n", addr);
+        } else if (!strcmp(cmd, "autolog")) {
+            /* autolog <프레임> <누르고 있을 키> <간격> <주소> <길이> <파일> : 화면 아래쪽에 흰 글상자가 보일 때만 A 를 눌러
+               대사를 넘긴다(본화면에서 A 는 활쏘기라 누르지 않는다). 간격마다 RAM 구간 기록. */
+            unsigned addr = 0, len = 0; int every = 1, hold = 0;
+            if (sscanf(line, "%*s %d %i %d %i %i %199s", &n, &hold, &every, &addr, &len, arg) != 6) continue;
+            char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); FILE* f = fopen(p, "ab");
+            int press = 0, presses = 0;
+            for (int i = 0; i < n; i++) {
+                if (press == 0 && i % 20 == 0) {
+                    int white = 0;
+                    for (int y = 112; y < 158; y++) for (int x = 8; x < 232; x++) {
+                        unsigned v = pix[y * 240 + x]; if ((v & 0xFF) > 230 && ((v >> 8) & 0xFF) > 230 && ((v >> 16) & 0xFF) > 230) white++;
+                    }
+                    if (white > 4500) { press = 12; presses++; }
+                }
+                c->setKeys(c, hold | (press > 6 ? 1 : 0)); if (press) press--;
+                (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame;
+                if (i % every == 0) {
+                    unsigned fr = (unsigned)frame; fwrite(&fr, 4, 1, f);
+                    for (unsigned a = addr; a < addr + len; a++) fputc(c->busRead8(c, a), f);
+                }
+            }
+            fclose(f); printf("autolog presses %d\n", presses);
+        } else if (!strcmp(cmd, "ramlog")) {   /* ramlog <프레임> <키> <간격> <주소> <길이> <파일> : 간격마다 RAM 구간을 [u32 프레임][바이트] 로 이어 붙인다 */
+            unsigned addr = 0, len = 0; int every = 1;
+            if (sscanf(line, "%*s %d %i %d %i %i %199s", &n, &keys, &every, &addr, &len, arg) != 6) continue;
+            char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); FILE* f = fopen(p, "ab");
+            for (int i = 0; i < n; i++) {
+                c->setKeys(c, keys); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame;
+                if (i % every == 0) {
+                    unsigned fr = (unsigned)frame; fwrite(&fr, 4, 1, f);
+                    for (unsigned a = addr; a < addr + len; a++) fputc(c->busRead8(c, a), f);
+                }
+            }
+            fclose(f);
         } else if (!strcmp(cmd, "runshot")) {   /* runshot <프레임> <키> <간격> <접두어> : 간격마다 화면 저장 */
             int every = 1; if (sscanf(line, "%*s %d %i %d %199s", &n, &keys, &every, arg) != 4) continue;
             for (int i = 0; i < n; i++) {
-                c->setKeys(c, keys); c->runFrame(c); frame++; g_frame = frame;
+                c->setKeys(c, keys); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame;
                 if (i % every == 0) {
                     char p[512]; snprintf(p, sizeof p, "%s/%s_%06ld.ppm", argv[2], arg, frame);
                     FILE* f = fopen(p, "wb"); fprintf(f, "P6 240 160 255\n");
@@ -87,7 +149,7 @@ int main(int argc, char** argv) {
                     char sp[512]; snprintf(sp, sizeof sp, "%s/%s.state", argv[2], getenv("SWEEP_RELOAD"));
                     struct VFile* vf = VFileOpen(sp, O_RDONLY); mCoreLoadStateNamed(c, vf, SAVESTATE_ALL); vf->close(vf);
                 }
-                for (int k = 0; k < (getenv("SWEEP_SETTLE") ? atoi(getenv("SWEEP_SETTLE")) : 3); k++) { c->busWrite16(c, addr, (uint16_t)v); if (getenv("SWEEP_ALL")) { c->busWrite16(c, addr - 4, (uint16_t)v); c->busWrite16(c, addr - 8, (uint16_t)v); c->busWrite16(c, 0x03007dd8, (uint16_t)v); } c->setKeys(c, 0); c->runFrame(c); frame++; g_frame = frame; }
+                for (int k = 0; k < (getenv("SWEEP_SETTLE") ? atoi(getenv("SWEEP_SETTLE")) : 3); k++) { c->busWrite16(c, addr, (uint16_t)v); if (getenv("SWEEP_ALL")) { c->busWrite16(c, addr - 4, (uint16_t)v); c->busWrite16(c, addr - 8, (uint16_t)v); c->busWrite16(c, 0x03007dd8, (uint16_t)v); } c->setKeys(c, 0); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; }
                 char p[512]; snprintf(p, sizeof p, "%s/%s_%05d.ppm", argv[2], arg, v);
                 FILE* f = fopen(p, "wb"); fprintf(f, "P6 240 160 255\n");
                 for (int k = 0; k < 240 * 160; k++) { unsigned q = pix[k]; unsigned char rgb[3] = { q & 0xFF, (q >> 8) & 0xFF, (q >> 16) & 0xFF }; fwrite(rgb, 1, 3, f); }

@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """공략 사이트 데이터(bwah-leaf/sennen-kazoku-guide)에서 '예정 상태 → 결과 이벤트' 팩을 생성한다.
 
-  python3 -I import_original_pack.py <guide 저장소 디렉터리> <출력 json> [--no-text]
+  python3 -I import_original_pack.py <guide 저장소 디렉터리> <출력 json> [--no-text] [--rom <천년가족.gba>]
+
+  --rom 을 주면 원작 ROM 의 관심사 표(0x085BD4A0)에서 관심사 유형·MAX/MIN 사건·요일 조건을 읽고,
+  사건 변형의 판정 함수 주소를 공략 데이터의 variant_predicates 와 맞춰 MAX/MIN 결과 목록을 정확히 만든다.
+  직업 근무 요일표(0x0889D3B8)도 함께 넣는다. (--rom 없이는 원작 구조를 만들 수 없어 오류로 끝난다)
 
 중요
 - 출력물에는 원작 번역 대사가 들어간다. 반드시 로컬에서만 쓰고 저장소에 커밋·공개하지 말 것
@@ -200,11 +204,42 @@ def script_to_pages(script):
     return [{"speaker": "", "text": p} for p in pages if p]
 
 
+# ---------------- 원작 ROM 표 (해독: docs/08_원작규칙해독.md) ----------------
+STATE_TABLE, JOB_TABLE = 0x085BD4A0, 0x0889D3B8
+
+class Rom:
+    def __init__(self, path): self.b = open(path, "rb").read()
+    def u8(self, a): return self.b[a - 0x08000000]
+    def u32(self, a): return int.from_bytes(self.b[a - 0x08000000:a - 0x08000000 + 4], "little")
+    def ok(self, p): return 0x08000000 <= p < 0x08000000 + len(self.b)
+    def state(self, table, index):
+        return self.u32(self.u32(STATE_TABLE + 4 * table) + 4 * index)
+    def event_info(self, ev):
+        """MAX/MIN 사건 항목: +1 요일 조건, +0x24 변형 목록(→ [판정 함수, 대본]) """
+        mode = self.u8(ev + 1); lst = self.u32(ev + 0x24); preds = []
+        while self.ok(lst) and len(preds) < 32:
+            v = self.u32(lst)
+            if not self.ok(v): break
+            f = self.u32(v)
+            if not (self.ok(f) and f & 1 and 0x08100000 <= f < 0x08300000): break   # 변형 항목 = [판정 함수(Thumb), 대본]
+            preds.append("0x%08X" % f); lst += 4
+        return mode, preds
+    def job_masks(self, n):
+        out = {}
+        for j in range(n):
+            p = self.u32(JOB_TABLE + 4 * j)
+            if not self.ok(p) or self.u8(p + 7) != j: break      # 항목 +7 = 자기 직업 코드 (확인용)
+            out[str(j)] = self.u8(p + 4) & 0x7F
+        return out
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__); return 2
     repo, out = sys.argv[1], sys.argv[2]
     with_text = "--no-text" not in sys.argv
+    if "--rom" not in sys.argv:
+        print("--rom <천년가족.gba> 가 필요합니다 (원작 관심사 표를 읽어야 MAX/MIN 구조를 만들 수 있음)"); return 2
+    rom = Rom(sys.argv[sys.argv.index("--rom") + 1])
     data = os.path.join(repo, "assets", "data")
     ps = json.load(open(os.path.join(data, "planned-states.json"), encoding="utf8"))
     scripts = {}
@@ -213,46 +248,69 @@ def main():
             scripts[e["id"]] = e["script_ko"]
     events, states = {}, []
     why = collections.Counter()
+
+    def make_event(o):
+        """공략 데이터 결과 하나 → 이벤트 정의 (조건은 변형 조건 + 발생 조건)."""
+        occ = [x for x in o["occurrence_conditions"] if x != "상위 추가 조건 없음"]
+        occ_cond = [text_to_cond(x) for x in occ]
+        sa = o["selection_analysis"]
+        if sa.get("unresolved_internal_checks"): raise Unmodeled("미해명 내부 판정")
+        if sa.get("probability_tree"): cond = tree_to_cond(sa["probability_tree"])
+        else:
+            extra = [v for v in o["variant_conditions"] if v != "상위 추가 조건 없음"]
+            if not extra: cond = {"op": "always"}
+            elif len(extra) == 1: cond = text_to_cond(extra[0])
+            else: raise Unmodeled("복수 변형 조건")
+        if occ_cond: cond = {"op": "and", "args": occ_cond + ([cond] if cond != {"op": "always"} else [])}
+        effects, skipped = parse_effects(o["effects"])
+        oid = o["id"]
+        ev = {"id": oid, "version": 1, "origin": "original", "certainty": "confirmed" if not skipped else "estimated",
+              "textSource": "original-translation" if with_text and oid in scripts else "placeholder", "sourceRef": oid,
+              "kind": "outcome", "title": o["title_ko"] if with_text else "[원작 " + oid + "]", "category": "관심사 결과",
+              "trigger": {"condition": cond}, "effects": effects,
+              "pages": script_to_pages(scripts[oid]) if with_text and oid in scripts else [{"speaker": "", "text": "(문구 없음)"}]}
+        if not ev["pages"]: ev["pages"] = [{"speaker": "", "text": "(문구 없음)"}]
+        if skipped: ev["unmodeledEffects"] = skipped
+        return ev
+
+    # 판정 함수 주소 → 공략 데이터 결과 (MIN 사건은 여러 관심사가 함께 쓰므로 전체에서 찾는다)
+    by_pred = {}
+    for s in ps["states"]:
+        for o in s["outcomes"]:
+            for g in o.get("route_groups", []):
+                for f in g.get("variant_predicates", []): by_pred.setdefault(f.upper().replace("0X", "0x"), o)
+    nomap = collections.Counter()
     for s in ps["states"]:
         try:
-            if s["selection_model"]["mode"] != "first_matching_variant_in_table_order" or len(s["selection_model"]["paths"]) != 1:
-                raise Unmodeled("다중 후보 경로")
-            order = s["selection_model"]["paths"][0]["outcome_ids"]
-            byid = {o["id"]: o for o in s["outcomes"]}
-            lo, hi, elig = eligible_of(s["outcomes"][0]["family_type"])
-            evs = []
-            for oid in order:
-                o = byid[oid]
-                occ = [x for x in o["occurrence_conditions"] if x != "상위 추가 조건 없음"]
-                occ_cond = [text_to_cond(x) for x in occ]
-                sa = o["selection_analysis"]
-                if sa.get("unresolved_internal_checks"):
-                    raise Unmodeled("미해명 내부 판정")
-                if sa.get("probability_tree"):
-                    cond = tree_to_cond(sa["probability_tree"])
-                else:
-                    extra = [v for v in o["variant_conditions"] if v != "상위 추가 조건 없음"]
-                    if not extra: cond = {"op": "always"}
-                    elif len(extra) == 1: cond = text_to_cond(extra[0])
-                    else: raise Unmodeled("복수 변형 조건")
-                if occ_cond:
-                    cond = {"op": "and", "args": occ_cond + ([cond] if cond != {"op": "always"} else [])}
-                effects, skipped = parse_effects(o["effects"])
-                ev = {"id": oid, "version": 1, "origin": "original", "certainty": "confirmed" if not skipped else "estimated",
-                      "textSource": "original-translation" if with_text and oid in scripts else "placeholder", "sourceRef": oid,
-                      "kind": "outcome", "title": o["title_ko"] if with_text else "[원작 " + oid + "]", "category": "예정 상태 결과",
-                      "trigger": {"condition": cond}, "effects": effects,
-                      "pages": script_to_pages(scripts[oid]) if with_text and oid in scripts else [{"speaker": "", "text": "(문구 없음)"}]}
-                if not ev["pages"]: ev["pages"] = [{"speaker": "", "text": "(문구 없음)"}]
-                if skipped: ev["unmodeledEffects"] = skipped
-                evs.append(ev)
+            refs = s.get("save_refs") or []
+            if not refs: raise Unmodeled("ROM 위치 없음")
+            t, i = refs[0]["table"], refs[0]["index"]
+            sp = rom.state(t, i)
+            if not rom.ok(sp): raise Unmodeled("ROM 위치 없음")
+            stype = rom.u8(sp + 0x0F)
+            lists, modes = {}, {}
+            for key, off in (("max", 0x1C), ("min", 0x20)):
+                ep = rom.u32(sp + off)
+                if not rom.ok(ep): lists[key] = []; modes[key] = 3; continue
+                mode, preds = rom.event_info(ep); modes[key] = mode; ids = []
+                for f in preds:
+                    o = by_pred.get(f)
+                    if o is None: nomap[key] += 1; raise Unmodeled("변형 연결 없음")
+                    ev = make_event(o); events.setdefault(ev["id"], ev); ids.append(ev["id"])
+                lists[key] = ids
+            if not lists["max"] and not lists["min"]: raise Unmodeled("MAX·MIN 결과 없음")
+            lo, hi, elig = eligible_of(s["outcomes"][0]["family_type"]) if s["outcomes"] else (0, 120, None)
         except Unmodeled as ex:
             why[str(ex).split(" ")[0] if not str(ex).startswith("대상") else "대상 분류"] += 1; continue
-        for ev in evs: events[ev["id"]] = ev
-        states.append({"id": s["id"], "title": s["title_ko"] if with_text else s["id"], "minAge": lo, "maxAge": hi, "weight": 10,
-                       "delay": [20, 60], "certainty": "estimated", "eligible": elig, "outcomes": order})
-    pack = {"format": 1, "packId": "sk.original.local", "version": 1, "title": "원작 규칙 (로컬 생성, 비공개)", "kind": "base", "origin": "original",
-            "minContract": 2 if USED["relation"] else 1, "events": list(events.values()), "plannedStates": states}
+        states.append({"id": s["id"], "title": s["title_ko"] if with_text else s["id"], "romRef": [t, i],
+                       "type": stype, "maxDayMode": modes["max"], "minDayMode": modes["min"],
+                       "maxOutcomes": lists["max"], "minOutcomes": lists["min"],
+                       "minAge": lo, "maxAge": hi, "weight": 10, "certainty": "confirmed", "eligible": elig,
+                       "note": "MAX/MIN·요일·유형은 ROM 해독. 대상 조건(eligible)·나이 경계로 관심사를 고르는 부분은 미해독(임시)"})
+    if nomap: print("변형 함수가 공략 데이터에 없는 사건:", dict(nomap))
+    pack = {"format": 1, "packId": "sk.original.local", "version": 2, "title": "원작 규칙 (로컬 생성, 비공개)", "kind": "base", "origin": "original",
+            "minContract": 3, "events": list(events.values()), "plannedStates": states,
+            "jobDayMasks": rom.job_masks(len(json.load(open(os.path.join(data, "family-save-layout.json"), encoding="utf8"))["jobs"]))}
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w", encoding="utf8", newline="\n") as f:
         json.dump(pack, f, ensure_ascii=False)

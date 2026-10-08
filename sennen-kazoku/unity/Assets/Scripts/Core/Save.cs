@@ -215,7 +215,7 @@ namespace SennenKazoku.Core
                 if (b.Count == 3) p.BirthDay = GameDate.Make(Convert.ToInt32(b[0]), Convert.ToInt32(b[1]), Convert.ToInt32(b[2]));
                 var st = J.List(m, "stats"); for (int i = 0; i < 4 && i < st.Count; i++) p.Stats[i] = Convert.ToInt32(st[i]);
                 foreach (var k in J.List(m, "skills")) p.Skills.Add(Convert.ToInt32(k));
-                if (p.PlannedStateId.Length > 0) p.PlannedDue = f.Today + 10 + rng.Next(30);
+                p.Gauge = J.Int(m, "gauge", 136); p.InterestDay = J.Int(m, "interestDay", 1); p.ArrowFlags = J.Int(m, "arrowFlags"); p.PersonalityCode = J.Int(m, "pcode", 0);
                 f.Members.Add(p);
             }
             if (f.Members.Count > 0)

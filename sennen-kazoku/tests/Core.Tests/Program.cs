@@ -131,28 +131,42 @@ namespace SennenKazoku.Tests
                 T.True(s.LastChanges.Exists(c => c.Key == "hearts" && c.PersonId == f.Members[0].Id && c.Delta == 24), "사건 결과: 하트 +24");
                 T.True(f.History[0].Changes.Contains("무드↑") && f.History[0].Changes.Contains("하트↑"), "기록에 변화 요약: " + f.History[0].Changes);
             });
-            T.Run("열중 게이지: 힘내라 +95(최대 255) · 진정해 → 0 → 관심사를 접는다", () => {
+            T.Run("원작 난수기: seed×0x6D+0x3FD (ROM 0x08000614)", () => {
+                var r = new Rng(1); T.Eq(r.NextU32(), 1u * 0x6Du + 0x3FDu); T.Eq(r.NextU32(), unchecked((1u * 0x6Du + 0x3FDu) * 0x6Du + 0x3FDu));
+            });
+            T.Run("원작 열중 게이지 하루 규칙 (ROM 0x08027E78 해독)", () => {
+                T.Eq(GameSession.ThresholdDays(0, 2), 11); T.Eq(GameSession.ThresholdDays(1, 0), 11);
+                T.Eq(GameSession.ThresholdDays(2, 2), 12); T.Eq(GameSession.ThresholdDays(1, 2), 10);
                 var cat = Cat(Bundled()); var f = NewGame.Create(11); var s = new GameSession(f, cat); s.EventRateNum = 0;
-                var p = f.Members[0];
-                T.Eq(Interventions.Use(f, p, "arrow.encourage"), null); T.True(p.Immersion >= 82 + 95 - 1 || p.Immersion == 255, "힘내라 +95");
-                T.True(Interventions.Use(f, p, "arrow.encourage") != null, "효과 지속 중에는 다시 못 쏨(원작 안내 문구)");
-                p.ArrowUntil = -1; Interventions.Use(f, p, "arrow.encourage"); T.Eq(p.Immersion, 255, "최대 255");
-                // 관심사를 하나 걸어 두고 진정해 → 기한이 오면 접는다
-                foreach (var st in cat.States.Values) { p.PlannedStateId = st.Id; break; }
-                p.PlannedDue = f.Today + 3;
-                p.ArrowUntil = -1; Interventions.Use(f, p, "arrow.calm"); T.Eq(p.Immersion, 0, "진정해 0");
-                for (int i = 0; i < 4; i++) s.StepDay();
-                T.True(string.IsNullOrEmpty(p.PlannedStateId) || p.PlannedDue > f.Today, "진정해 맞은 관심사는 기한에 접힘");
-                T.True(s.Log.Exists(l => l.Contains("관심을 접었다")), "기록");
+                var p = f.Members[0]; PlannedStateDef st = null; foreach (var x in cat.States.Values) { st = x; break; }
+                p.PlannedStateId = st.Id; p.Gauge = 136; p.InterestDay = 1; p.ArrowFlags = 0; p.PersonalityCode = st.Type;
+                // 오르는 기간: 매일 +4~+19
+                var rr = new Rng(f.RngState); s.StepDay();
+                T.True(p.Gauge >= 140 && p.Gauge <= 155, "오름 +(난수&15)+4: " + p.Gauge); T.Eq(p.InterestDay, 2, "날짜 +1");
+                // 힘내라: 화살 표시 3, 매일 +32, 효과 중 재사용 불가
+                T.True(Interventions.Use(f, p, "arrow.encourage") == null); T.Eq(p.ArrowFlags, 3);
+                T.True(Interventions.Use(f, p, "arrow.calm") != null, "효과 중 재사용 불가(원작 문구)");
+                int g0 = p.Gauge; s.StepDay(); T.Eq(p.Gauge, Math.Min(255, g0 + 32), "힘내라 +32");
+                // 진정해: 표시 5, 매일 -64 → 0 이면 MIN 사건 차례
+                p.ArrowFlags = 0; T.True(Interventions.Use(f, p, "arrow.calm") == null); T.Eq(p.ArrowFlags, 5);
+                for (int i = 0; i < 6 && p.Gauge > 0; i++) s.StepDay();
+                T.Eq(p.Gauge, 0, "진정해 -64 로 0");
+                // 오름 기간이 지나면 −((난수&31)+48)
+                p.ArrowFlags = 0; p.Gauge = 200; p.InterestDay = 20; s.StepDay();
+                T.True(p.Gauge >= 200 - 79 && p.Gauge <= 200 - 48, "내림 −((난수&31)+48): " + p.Gauge);
+                // 255 → MAX 사건: 관심사 종료, 게이지 136·날짜 1·화살 표시 0 으로 다시 시작
+                p.Gauge = 255; p.ArrowFlags = 3; var before = p.PlannedStateId;
+                for (int i = 0; i < 8 && p.PlannedStateId == before; i++) { s.StepDay(); while (s.Paused) s.Advance(); }
+                T.True(p.PlannedStateId != before || p.Gauge == 136, "MAX 사건 후 새로 시작"); T.Eq(p.ArrowFlags & 1, 0, "화살 표시 풀림");
             });
             T.Run("결과 예고: 지금 관심사가 이루어지면 무엇이 오르고 내리는지 (실제 가족은 그대로)", () => {
                 var cat = Cat(Bundled()); int checkedN = 0;
                 foreach (var st in cat.States.Values)
                 {
                     var f = NewGame.Create(5); var s = new GameSession(f, cat); s.EventRateNum = 0;
-                    var p = f.Members[0]; p.PlannedStateId = st.Id; p.PlannedDue = f.Today + 1; p.Immersion = 200;
+                    var p = f.Members[0]; p.PlannedStateId = st.Id; p.Gauge = 255; p.ArrowFlags = 0;
                     int mood0 = f.Mood, h0 = p.Hearts;
-                    var pr = s.Predict(p.Id);
+                    var pr = s.Predict(p.Id, true);
                     T.True(pr != null, "예고 있음"); T.Eq(f.Mood, mood0, "예고는 가족을 바꾸지 않음"); T.Eq(p.Hearts, h0, "예고는 하트를 바꾸지 않음");
                     if (pr.HasRandom || pr.OutcomeId == "") continue;
                     for (int i = 0; i < 3 && !s.Paused; i++) s.StepDay();
@@ -302,13 +316,10 @@ namespace SennenKazoku.Tests
                 T.Eq(GameDate.AgeYears(GameDate.Make(1987, 10, 12), d), 17);    // 원작 도입: 잇세이(17세)
                 T.Eq(GameDate.Format(GameDate.Make(2005, 2, 30)), "2005년 2월 28일(월)");
             });
-            T.Run("화살: 시작 보유 각 5, 힘내라 +95(상한 255)·진정해 0, 효과 중 재사용 불가", () => {
+            T.Run("화살: 시작 보유 각 5, 미구현 화살 거부", () => {
                 var f = NewGame.Create(1); var p = f.Members[0];
                 T.Eq(Interventions.Count(f, "arrow.encourage"), 5); T.Eq(Interventions.Count(f, "arrow.calm"), 5);
-                p.Immersion = 200; T.True(Interventions.Use(f, p, "arrow.encourage") == null); T.Eq(p.Immersion, 255); T.Eq(Interventions.Count(f, "arrow.encourage"), 4);
-                var r = Interventions.Use(f, p, "arrow.calm"); T.True(r != null && r.Contains("계속")); T.Eq(p.Immersion, 255);
-                var s = new GameSession(f, Cat(Bundled())); for (int i = 0; i < Interventions.ArrowDays + 1; i++) { s.StepDay(); while (s.Paused) { var v = s.View(); if (v.NeedsChoice) s.Choose(v.Choices[0].Id); else s.Advance(); } }
-                T.True(Interventions.Use(f, p, "arrow.calm") == null); T.Eq(p.Immersion, 0);
+                T.True(Interventions.Use(f, p, "arrow.encourage") == null); T.Eq(Interventions.Count(f, "arrow.encourage"), 4);
                 T.True(Interventions.Use(f, p, "arrow.love") != null, "미구현 화살은 거부");
             });
             T.Run("아이템: 고리 +800(상한 5000), 행복 상자 무드 한 단계", () => {

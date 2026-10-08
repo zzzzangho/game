@@ -3,19 +3,19 @@ using System.Collections.Generic;
 
 namespace SennenKazoku.Core
 {
-    /// <summary>결정적이고 저장 가능한 난수기. (임시 구현: 원작 난수 알고리즘은 미해명)</summary>
+    /// <summary>
+    /// 원작 난수기 (ROM 0x08000614 해독): seed = seed × 0x6D + 0x3FD (32비트), 새 seed 를 그대로 돌려준다.
+    /// 원작은 (값 &amp; 15), (값 &amp; 31) 처럼 아래 비트를 쓴다 → Next(2^k) 가 같은 값이 된다. 시작 seed 값은 미해독.
+    /// </summary>
     public sealed class Rng
     {
-        ulong s;
-        public Rng(ulong seed) { s = seed == 0 ? 0x9E3779B97F4A7C15UL : seed; }
-        public ulong State { get { return s; } set { s = value == 0 ? 1UL : value; } }
-        public ulong NextU64()
-        {
-            s ^= s >> 12; s ^= s << 25; s ^= s >> 27;
-            return s * 0x2545F4914F6CDD1DUL;
-        }
-        public int Next(int n) { return n <= 1 ? 0 : (int)(NextU64() % (ulong)n); }
-        public double NextDouble() { return (NextU64() >> 11) / (double)(1UL << 53); }
+        uint s;
+        public Rng(ulong seed) { s = (uint)seed; }
+        public ulong State { get { return s; } set { s = (uint)value; } }
+        public uint NextU32() { s = unchecked(s * 0x6Du + 0x3FDu); return s; }
+        public ulong NextU64() { return ((ulong)NextU32() << 32) | NextU32(); }
+        public int Next(int n) { return n <= 1 ? 0 : (int)(NextU32() % (uint)n); }
+        public double NextDouble() { return NextU32() / 4294967296.0; }
         /// <summary>num/den 확률 판정.</summary>
         public bool Chance(int num, int den)
         {
@@ -94,8 +94,13 @@ namespace SennenKazoku.Core
         public HashSet<string> Flags = new HashSet<string>();
         public const int HeartUnit = 96, HeartMax = HeartUnit * 3;
         public string Dream = "";           // 꿈 (원작 상세 화면 항목)
-        public string ArrowId = "";         // 맞은 화살
-        public int ArrowUntil = -1;
+        public string ArrowId = "";         // 맞은 화살 (표시용)
+        public int ArrowUntil = -1;         // 사용 안 함(이전 저장 호환). 원작 화살은 기간이 아니라 관심사가 끝날 때까지
+        // ---- 원작 인물 레코드에서 해독한 관심사 진행값 ----
+        public int Gauge = 136;             // +0x5A 열중 게이지 0~255. 새 관심사는 136 에서 시작 (원작 관찰·코드 확인)
+        public int InterestDay = 1;         // +0x48 지금 관심사의 날짜 수
+        public int ArrowFlags;              // +0x69 bit0 화살 효과 중 · bit1 힘내라 · bit2 진정해 (ROM 0x080244A0 해독)
+        public int PersonalityCode = 1;     // +0x32 하위 4비트: 보통 0 · 내향적 1 · 외향적 2 (원작 가족 만들기로 확인)
         public string Character = "";      // 그래픽 id (LocalArt manifest)
         public string PlannedTitle = "";   // 카탈로그에 없는 원작 예정 상태의 표시용 제목
         public CharacterLook Look;          // 원작 파트 조합 외형 (null = 아직 정하지 않음)
@@ -117,7 +122,8 @@ namespace SennenKazoku.Core
                 {"planned", PlannedStateId}, {"plannedDue", PlannedDue}, {"alive", Alive},
                 {"flags", new List<object>(new List<string>(Flags).ConvertAll(x => (object)x))},
                 {"dream", Dream}, {"arrow", ArrowId}, {"arrowUntil", ArrowUntil}, {"character", Character}, {"plannedTitle", PlannedTitle},
-                {"look", Look == null ? null : Look.ToJson()}, {"blood", Blood}, {"personality", Personality}
+                {"look", Look == null ? null : Look.ToJson()}, {"blood", Blood}, {"personality", Personality},
+                {"gauge", Gauge}, {"interestDay", InterestDay}, {"arrowFlags", ArrowFlags}, {"pcode", PersonalityCode}
             };
         }
         public static Person FromJson(Dictionary<string, object> d)
@@ -136,6 +142,7 @@ namespace SennenKazoku.Core
             p.Character = J.Str(d, "character"); p.PlannedTitle = J.Str(d, "plannedTitle");
             p.Look = CharacterLook.FromJson(J.Child(d, "look"));
             p.Blood = J.Str(d, "blood", "?"); p.Personality = J.Int(d, "personality", 1);
+            p.Gauge = J.Int(d, "gauge", 136); p.InterestDay = J.Int(d, "interestDay", 1); p.ArrowFlags = J.Int(d, "arrowFlags"); p.PersonalityCode = J.Int(d, "pcode", 1);
             return p;
         }
     }

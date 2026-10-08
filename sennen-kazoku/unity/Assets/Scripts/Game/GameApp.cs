@@ -33,7 +33,9 @@ namespace SennenKazoku.Game
         LayoutCalculator.Result lay; Vector2 lastScreen; Rect lastSafe; float dp = 1f, hs = 4f;
 
         // ---- 상태 ----
-        int speed = 1; float acc; const float SecondsPerDay = 0.6f;   // 임시 진행 속도(원작은 실시간 시계 기반으로 보이나 미확인)
+        int speed = 1; float acc;
+        // 원작 측정(에뮬레이터, 사건 없는 날): 하루 = 5,220~5,280 프레임 ≈ 5,250 / 59.7275fps ≈ 87.9초. R 을 누르고 있으면 780~840 프레임 → ×6.48
+        const float SecondsPerDay = 5250f / 59.7275f, HoldSpeed = 5250f / 810f;
         bool playing, popupOpen, follow = true; int lastAutoDay; float toastUntil;
         int selectedId = -1; float scrollX;                             // GBA px
         sealed class Actor { public int Id; public float X, Target; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; }
@@ -128,9 +130,9 @@ namespace SennenKazoku.Game
             tipText = UiKit.Label(tipBox.transform, "t", "", 13, UiKit.Ink, TextAnchor.MiddleCenter);
             tips = new[] {
                 "가족을 누르면 자세히 볼 수 있어!", "머리 위에 ! 가 뜨면 곧 무슨 일이 생겨",
-                "오른쪽 위 배속을 누르고 있으면 시간이 빨리 가", "힘내라의 화살을 쏘면 열중 게이지가 올라가",
-                "진정해의 화살을 쏘면 열중 게이지가 0이 돼", "열중이 높으면 지금 관심사에 푹 빠져",
-                "◀ ▶ 로 지켜볼 사람을 바꿔 봐", "푹 빠져 있으면 무엇이 오르고 내릴지 알려 줄게",
+                "오른쪽 위 배속을 누르고 있으면 시간이 빨리 가", "힘내라의 화살을 쏘면 열중 게이지가 매일 쑥쑥 올라가",
+                "진정해의 화살을 쏘면 열중 게이지가 매일 뚝뚝 떨어져", "게이지가 꽉 차거나 바닥나면 무슨 일이 생겨",
+                "◀ ▶ 로 지켜볼 사람을 바꿔 봐", "아래 줄은 게이지가 255·0 이 되면 바뀌는 것",
                 "집을 좌우로 끌면 다른 방도 볼 수 있어" };
             // 장면 코너 버튼: 왼쪽 아래 아이템, 오른쪽 아래 활, 오른쪽 위 배속
             itemCorner = Corner(scene, "아이템", new Color32(0xF0, 0xA0, 0x40, 235), () => OpenTools("item"));
@@ -681,7 +683,7 @@ namespace SennenKazoku.Game
                 float dx = Mod(a.X - scrollX, W); if (dx > viewW + 32) dx -= W;
                 UiKit.SetPx(a.Rt, dx * hs, floorTop * hs, 32 * hs, 64 * hs);
                 // 머리 위 말풍선: 사건 직전(예정 상태 2일 이내)엔 "!", 평소엔 가끔 원작 감정 말풍선(음표·zzz 등)
-                bool soon = !string.IsNullOrEmpty(p.PlannedStateId) && p.PlannedDue - session.Family.Today <= 2;
+                bool soon = !string.IsNullOrEmpty(p.PlannedStateId) && (p.Gauge >= 255 || p.Gauge <= 0);   // 게이지 끝 = MAX/MIN 사건 차례
                 bool emote = !soon && Mathf.Repeat(Time.time + a.Id * 2.3f, 9f) < 1.6f;
                 if (soon) { a.Bubble.sprite = null; a.Bubble.color = new Color(1, 1, 1, 0.95f); a.BubbleText.text = "!"; a.BubbleText.color = new Color32(0xE0, 0x30, 0x30, 255); }
                 else if (emote)
@@ -730,7 +732,7 @@ namespace SennenKazoku.Game
         void UpdateGauge()
         {
             var p = Sel(); if (p == null || immFill == null) return;
-            shownImm = shownImm < 0 ? p.Immersion : Mathf.MoveTowards(shownImm, p.Immersion, Time.deltaTime * 180f);
+            shownImm = shownImm < 0 ? p.Gauge : Mathf.MoveTowards(shownImm, p.Gauge, Time.deltaTime * 180f);
             float w = immBg.rectTransform.sizeDelta.x, h = immBg.rectTransform.sizeDelta.y;
             UiKit.SetPx(immFill.rectTransform, 0, 0, w * Mathf.Clamp01(shownImm / 255f), h);
             immFill.color = shownImm >= 170 ? new Color32(0xF0, 0x50, 0x30, 255) : shownImm >= 85 ? new Color32(0xF0, 0x80, 0x30, 255) : new Color32(0x70, 0x90, 0xD0, 255);
@@ -787,14 +789,14 @@ namespace SennenKazoku.Game
         // =============================================================== 표시 갱신
         void RefreshAll() { RefreshHud(); RefreshBar(); RefreshDialog(); }
 
-        int EffectiveSpeed { get { return holdingSpeed ? 4 : speed; } }
+        float EffectiveSpeed { get { return speed == 0 ? 0f : holdingSpeed ? HoldSpeed : 1f; } }
 
         void RefreshHud()
         {
             var f = session.Family;
             hudText.text = f.Name + "  소지금 " + f.Assets.ToString("N0") + "엔";
             hudSub.text = "무드 포인트 " + f.Mood + " (" + Family.MoodLevel(f.Mood) + "단계)   " + f.YearsAsFamily + "년가족 · " + GameDate.Format(f.Today);
-            speedText.text = holdingSpeed ? "▶▶▶\n×4" : speed == 0 ? "⏸\n배속" : "배속";
+            speedText.text = holdingSpeed ? "▶▶▶" : speed == 0 ? "⏸\n배속" : "배속";
             speedCorner.color = holdingSpeed ? new Color32(0xE8, 0x70, 0x40, 255) : new Color32(0x3A, 0x6E, 0xC8, 255);
         }
 
@@ -818,39 +820,43 @@ namespace SennenKazoku.Game
                 var s = art.Ui(key); barHearts[i].sprite = s ?? UiKit.Circle;
                 barHearts[i].color = s != null ? Color.white : (key == "heart_full" ? Color.red : key == "heart_half" ? new Color(1, 0.5f, 0.6f) : new Color(0.4f, 0.5f, 1f));
             }
-            barPlanned.text = p.Age(session.Family.Today) + "세" + (p.ArrowUntil >= session.Family.Today && !string.IsNullOrEmpty(p.ArrowId) ? " · " + Interventions.Find(p.ArrowId).Name + " 효과 중" : "");
-            if (shownImm < 0) shownImm = p.Immersion;
-            var g = art.Ui(p.Immersion >= 170 ? "gauge_full" : p.Immersion >= 85 ? "gauge_mid" : "gauge_empty");
+            barPlanned.text = p.Age(session.Family.Today) + "세" + ((p.ArrowFlags & 1) != 0 && !string.IsNullOrEmpty(p.ArrowId) ? " · " + Interventions.Find(p.ArrowId).Name + " 효과 중" : "");
+            if (shownImm < 0) shownImm = p.Gauge;
+            var g = art.Ui(p.Gauge >= 170 ? "gauge_full" : p.Gauge >= 85 ? "gauge_mid" : "gauge_empty");     // 원작 게이지 그림 3단계(경계는 그림 고르기용)
             barGauge.sprite = g; barGauge.enabled = g != null;     // 원작 게이지 그림(작게) — 큰 막대는 immFill
             RefreshEffects();
         }
 
         /// <summary>
-        /// 결과 예고: 선택한 사람이 지금 관심사에 푹 빠져 있으면(열중 높음) 그 관심사가 이루어질 때 무엇이 오르고 내리는지 보여 준다.
-        /// 계산은 GameSession.Predict(같은 규칙으로 복제 가족에 적용해 본 차이). "푹 빠져 있음" 경계 170 은 원작 측정 전 임시값.
+        /// 결과 예고: 지금 관심사의 열중 게이지가 255 가 되면 일어날 MAX 사건, 0 이 되면 일어날 MIN 사건의 변화.
+        /// 원작 규칙(GameSession.Predict — 같은 규칙으로 복제 가족에 적용)으로 계산. 힘내라 = 255 쪽, 진정해 = 0 쪽.
         /// </summary>
-        const int ImmersedFrom = 170;
         string predKey = "";
         void RefreshEffects()
         {
             var p = Sel();
-            if (p == null || string.IsNullOrEmpty(p.PlannedStateId) || p.Immersion < ImmersedFrom) { effectText.text = ""; predKey = ""; return; }
-            string key = p.Id + "|" + p.PlannedStateId + "|" + session.Family.Today + "|" + p.Immersion;
+            if (p == null || string.IsNullOrEmpty(p.PlannedStateId)) { effectText.text = ""; predKey = ""; return; }
+            string key = p.Id + "|" + p.PlannedStateId + "|" + session.Family.Today;
             if (key == predKey) return;
             predKey = key;
-            var pr = session.Predict(p.Id);
-            if (pr == null || pr.Changes.Count == 0) { effectText.text = pr != null && pr.OutcomeId != "" ? "푹 빠져 있어! → 큰 변화는 없을 것 같아" : ""; return; }
-            var sb = new StringBuilder("푹 빠져 있어! → "); int shown = 0;
+            effectText.text = PredText("255", session.Predict(p.Id, true), p) + "   " + PredText("0", session.Predict(p.Id, false), p);
+        }
+
+        string PredText(string label, Prediction pr, Person p)
+        {
+            var sb = new StringBuilder("<color=#FFC040>" + label + "</color> ");
+            if (pr == null || pr.OutcomeId == "") return sb.Append("?").ToString();
+            if (pr.Changes.Count == 0) return sb.Append("변화 없음").ToString();
+            int shown = 0;
             foreach (var c in pr.Changes)
             {
-                if (shown >= 4) { sb.Append(" …"); break; }
+                if (shown >= 3) { sb.Append("…"); break; }
                 var who = session.Family.Get(c.PersonId);
-                string col = c.Delta > 0 ? "#FF9090" : "#90B8FF";
-                sb.Append(who != null && who.Id != p.Id ? who.Name + " " : "").Append(c.Label).Append("<color=").Append(col).Append(">").Append(c.Arrow).Append("</color>  ");
+                sb.Append(who != null && who.Id != p.Id ? who.Name + " " : "").Append(c.Label).Append("<color=").Append(c.Delta > 0 ? "#FF9090" : "#90B8FF").Append(">").Append(c.Arrow).Append("</color> ");
                 shown++;
             }
-            if (pr.HasRandom) sb.Append("<size=" + Px(11) + ">(운에 따라 달라짐)</size>");
-            effectText.text = sb.ToString();
+            if (pr.HasRandom) sb.Append("(운)");
+            return sb.ToString();
         }
 
         void RefreshTip()
@@ -874,7 +880,7 @@ namespace SennenKazoku.Game
             if (v == null)
             {
                 var p = Sel(); dlgTitle.text = ""; dlgSpeaker.text = "";
-                bool soon = p != null && !string.IsNullOrEmpty(p.PlannedStateId) && p.PlannedDue - session.Family.Today <= 2;
+                bool soon = p != null && !string.IsNullOrEmpty(p.PlannedStateId) && (p.Gauge >= 255 || p.Gauge <= 0);
                 dlgText.text = p == null ? "" : "<color=#1E46C8>" + p.Name + "</color>는 이런 생각을 하는 모양이야" + (soon ? " <color=#E04040>!</color>" : "") + "\n「" + PlannedTitle(p) + "」";
                 nextBtn.gameObject.SetActive(false); LayoutDialog(); return;
             }
@@ -939,7 +945,7 @@ namespace SennenKazoku.Game
             var age = UiKit.Label(body, "age", p.Age(f.Today) + "세", Px(16), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold); UiKit.SetPx(age.rectTransform, 0, Px(150), Px(96), Px(24));
             float x = Px(106), cw = w - x;
             Line(body, "꿈", string.IsNullOrEmpty(p.Dream) ? "지금은 없어…" : p.Dream, x, 0, cw);
-            Line(body, "화살", string.IsNullOrEmpty(p.ArrowId) ? "맞은 화살 없음" : Interventions.Find(p.ArrowId).Name + " (" + (p.ArrowUntil - f.Today + 1) + "일 남음)", x, Px(34), cw);
+            Line(body, "화살", (p.ArrowFlags & 1) == 0 || string.IsNullOrEmpty(p.ArrowId) ? "맞은 화살 없음" : Interventions.Find(p.ArrowId).Name + " (지금 관심사가 끝날 때까지)", x, Px(34), cw);
             string[] nm = { "지력", "체력", "매력", "운" };
             float sw = cw / 4f;
             for (int i = 0; i < 4; i++)
@@ -1004,9 +1010,9 @@ namespace SennenKazoku.Game
         void OpenSettings()
         {
             var body = Window("설정", 600); float w = BodyW(body), bw = (w - Px(18)) / 4f, y = 0;
-            var sl = UiKit.Label(body, "sl", "진행 속도 (배속 코너를 누르고 있으면 ×4)", Px(13), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(sl.rectTransform, 0, y, w, Px(22)); y += Px(24);
-            string[] l = { "정지", "×1", "×2", "×4" }; int[] sp = { 0, 1, 2, 4 };
-            for (int i = 0; i < 4; i++)
+            var sl = UiKit.Label(body, "sl", "진행 (원작: 하루 약 88초, 배속 코너를 누르고 있으면 약 ×6.5)", Px(13), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(sl.rectTransform, 0, y, w, Px(22)); y += Px(24);
+            string[] l = { "멈춤", "진행" }; int[] sp = { 0, 1 }; bw = (w - Px(6)) / 2f;
+            for (int i = 0; i < 2; i++)
             {
                 int v = sp[i];
                 var b = UiKit.Btn(body, "s" + i, l[i], Px(16), speed == v ? new Color32(0xE8, 0x70, 0x40, 255) : new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => { speed = v; OpenSettings(); });

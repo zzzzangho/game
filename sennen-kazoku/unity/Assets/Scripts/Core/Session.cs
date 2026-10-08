@@ -105,7 +105,6 @@ namespace SennenKazoku.Core
         public void ReplaceCatalog(ContentCatalog c) { Catalog = c; }
 
         public bool Paused { get { return Family.Active != null; } }
-        public const int ImmersionDefault = 82;
 
         // ---------- 하루 진행 ----------
         /// <summary>하루 진행. 이벤트가 진행 중이면 아무 것도 하지 않는다. 이벤트가 시작되면 true.</summary>
@@ -126,46 +125,75 @@ namespace SennenKazoku.Core
             return false;
         }
 
+        /// <summary>
+        /// 원작 인물별 하루 처리 중 관심사 부분 — ROM 0x08027E78 해독을 그대로 옮김.
+        ///  ① 게이지 255 → MAX 사건, 0 → MIN 사건 (해당 요일 조건을 만족할 때만; 아니면 아무 일 없음)
+        ///  ② 아니면 게이지 갱신: 힘내라 +32(상한 255) · 진정해 −64(하한 0) · 관심 날짜 &lt; T 이면 +(난수&amp;15)+4 · 아니면 −((난수&amp;31)+48)
+        ///     T = 성격 코드와 관심사 유형이 같으면 12, 어느 쪽이 0 이면 11, 다르면 10 (ROM 0x080288A8)
+        ///  ③ 관심 날짜 +1
+        /// 사건이 일어나면 게이지 136 · 날짜 1 · 화살 표시 0 으로 새로 시작 (ROM 0x08028830/0x0802886A 관찰).
+        /// 미해독(원작과 다를 수 있음): 사건이 실제로 일어나는 때를 정하는 인물 행동 루틴(0x08011D30 등 — 외출·귀가 상태), 다음 관심사 선택.
+        /// </summary>
         void TickPlanned(Person p)
         {
-            int age = p.Age(Family.Today);
             if (string.IsNullOrEmpty(p.PlannedStateId))
             {
-                var pick = PickState(p);
-                if (pick != null)
-                {
-                    p.PlannedStateId = pick.Id; p.Immersion = ImmersionDefault;   // 새 관심사는 기본 열중으로 시작(추정)
-                    p.PlannedDue = Family.Today + pick.DelayMin + Rng.Next(Math.Max(1, pick.DelayMax - pick.DelayMin + 1));
-                }
-                return;
-            }
-            // 열중 게이지(현재 관심 몰입도 0~255, 기본 82 — 공략 데이터로 확인)와 관심사 진행.
-            // 임시 규칙(원작 수식 미해명): 열중 170 이상이면 3일마다 하루 앞당겨지고, 게이지는 이틀에 1씩 기본값 82 쪽으로 돌아간다.
-            if (p.Immersion >= 170 && Family.Today % 3 == 0 && p.PlannedDue > Family.Today) p.PlannedDue--;
-            if (Family.Today % 2 == 0) p.Immersion += p.Immersion < ImmersionDefault ? 1 : p.Immersion > ImmersionDefault ? -1 : 0;
-            if (p.PlannedDue > Family.Today) return;
-            // 임시 규칙: 열중이 32 미만이면 그만큼 확률로 관심을 접는다(진정해의 화살 = 0 → 반드시 접음)
-            if (p.Immersion < 32 && Rng.Next(32) >= p.Immersion)
-            {
-                Log.Add(p.Name + ": 관심을 접었다 (" + p.PlannedStateId + ")");
-                p.PlannedStateId = ""; p.PlannedDue = -1; p.PlannedTitle = ""; p.Immersion = ImmersionDefault;
+                var pick = PickState(p);                 // 미해독: 원작의 다음 관심사 선택 (아래 PickState 주석)
+                if (pick != null) { p.PlannedStateId = pick.Id; p.Gauge = 136; p.InterestDay = 1; p.ArrowFlags = 0; }
                 return;
             }
             PlannedStateDef st;
-            Catalog.States.TryGetValue(p.PlannedStateId, out st);
-            p.PlannedStateId = ""; p.PlannedDue = -1;
-            if (st == null) return; // 콘텐츠에서 제거된 상태: 조용히 해제
-            foreach (var oid in st.Outcomes)
+            if (!Catalog.States.TryGetValue(p.PlannedStateId, out st)) { ClearInterest(p); return; }   // 콘텐츠에서 사라진 관심사
+            if (p.Gauge >= 255 || p.Gauge <= 0)
             {
-                EventDef e; if (!Catalog.Events.TryGetValue(oid, out e)) continue;
-                var cx = Resolve(e, p);
-                if (cx == null || !Allowed(e, p)) continue;
-                if (!Rules.Eval(e.Condition, cx)) continue;
-                Enqueue(e, cx);
-                return;                       // 처음 통과한 결과 하나만 선택
+                bool max = p.Gauge >= 255;
+                if (!DayAllowed(max ? st.MaxDayMode : st.MinDayMode, p.Job)) return;     // 그날은 사건 없음(게이지 유지)
+                var list = max ? st.MaxOutcomes : st.MinOutcomes;
+                ClearInterest(p);
+                foreach (var oid in list)
+                {
+                    EventDef e; if (!Catalog.Events.TryGetValue(oid, out e)) continue;
+                    var cx = Resolve(e, p);
+                    if (cx == null || !Allowed(e, p)) continue;
+                    if (!Rules.Eval(e.Condition, cx)) continue;
+                    Enqueue(e, cx);
+                    return;                       // 처음 통과한 결과 하나만 (확인됨: first_matching_variant_in_table_order)
+                }
+                return;
             }
+            int t = ThresholdDays(p.PersonalityCode, st.Type);
+            if ((p.ArrowFlags & 2) != 0) p.Gauge = Math.Min(255, p.Gauge + 32);
+            else if ((p.ArrowFlags & 4) != 0) p.Gauge = Math.Max(0, p.Gauge - 64);
+            else if (p.InterestDay < t) p.Gauge = Math.Min(255, p.Gauge + (int)(Rng.NextU32() & 15) + 4);
+            else p.Gauge = Math.Max(0, p.Gauge - ((int)(Rng.NextU32() & 31) + 48));
+            p.InterestDay++;
         }
 
+        void ClearInterest(Person p)
+        {
+            p.PlannedStateId = ""; p.PlannedTitle = ""; p.PlannedDue = -1;
+            p.Gauge = 136; p.InterestDay = 1; p.ArrowFlags = 0; p.ArrowId = "";
+        }
+
+        /// <summary>ROM 0x080288A8: 성격 코드(a)·관심사 유형(b) → 게이지가 오르는 날 수.</summary>
+        public static int ThresholdDays(int a, int b) { return a == 0 || b == 0 ? 11 : a == b ? 12 : 10; }
+
+        /// <summary>
+        /// MAX/MIN 사건이 그날 가능한가 (ROM 0x080281E8~). mode 3 = 아무 날, 2 = 직업의 근무 요일 비트, 1 = 그 반대.
+        /// 요일 비트는 bit0 = 일요일. 직업 요일표가 팩에 없으면(원작 표 미추출) 아무 날로 본다.
+        /// </summary>
+        bool DayAllowed(int mode, int job)
+        {
+            int mask;
+            if (mode == 3 || !Catalog.JobDayMasks.TryGetValue(job, out mask)) mask = 0x7F;
+            else if (mode == 1) mask ^= 0x7F;
+            return (mask & (1 << GameDate.Weekday(Family.Today))) != 0;
+        }
+
+        /// <summary>
+        /// 미해독: 원작에서 사건 직후 바로 다음 관심사가 정해진다(관찰). 정하는 루틴은 아직 해독하지 못해
+        /// 팩의 대상 조건(eligible)·나이로 고른다 — 이 부분은 원작 규칙이 아니다.
+        /// </summary>
         PlannedStateDef PickState(Person p)
         {
             int age = p.Age(Family.Today);
@@ -384,7 +412,10 @@ namespace SennenKazoku.Core
         /// 가족을 복제해 같은 규칙(표 순서 첫 통과 결과)으로 결과를 골라 효과를 적용해 본 뒤 차이를 돌려준다. 실제 가족은 바뀌지 않는다.
         /// 조건에 난수가 섞인 결과는 지금 난수 상태 기준의 한 가지 경우다(HasRandom).
         /// </summary>
-        public Prediction Predict(int personId)
+        public Prediction Predict(int personId) { return Predict(personId, true); }
+
+        /// <param name="max">true = 게이지 255 에서 검사하는 MAX 목록, false = 0 에서의 MIN 목록</param>
+        public Prediction Predict(int personId, bool max)
         {
             var p = Family.Get(personId);
             if (p == null || string.IsNullOrEmpty(p.PlannedStateId)) return null;
@@ -392,7 +423,7 @@ namespace SennenKazoku.Core
             var clone = SaveSystem.FromJson(J.Obj(MiniJson.Parse(MiniJson.Serialize(SaveSystem.ToJson(Family, Catalog, SaveSystem.CurrentSchema)))));
             var sim = new GameSession(clone, Catalog); sim.Rng.State = Rng.State;
             var cp = clone.Get(personId);
-            foreach (var oid in st.Outcomes)
+            foreach (var oid in max ? st.MaxOutcomes : st.MinOutcomes)
             {
                 EventDef e; if (!Catalog.Events.TryGetValue(oid, out e)) continue;
                 var cx = sim.Resolve(e, cp);

@@ -139,7 +139,9 @@ def parse_family(raw, layout):
                        "stats": [struct.unpack_from("<H", rec, o)[0] for o in P["stats"]], "job": rec[P["job_raw"]],
                        "status": rec[P["status_code"]], "interest": rec[P["interest"]], "mastery": rec[P["job_mastery"]],
                        "skills": [x for x in rec[P["skills"]:P["skills"] + P["skill_count"]] if x != 255],
-                       "planned": list(struct.unpack_from("<HH", rec, P["planned_table"]))})
+                       "planned": list(struct.unpack_from("<HH", rec, P["planned_table"])),
+                       # 원작 코드 해독으로 찾은 칸 (docs/08): 열중 게이지 +0x5A, 관심 날짜 +0x48, 화살 표시 +0x69, 성격 코드 +0x32 하위 4비트
+                       "gauge": rec[0x5A], "interestDay": struct.unpack_from("<H", rec, 0x48)[0], "arrowFlags": rec[0x69], "pcode": rec[0x32] & 15})
     d = raw[cd] | raw[cd + 1] << 8 | raw[cd + 2] << 16
     return {"date": gdate(d), "head": raw[fb + F["household_head_id"]], "mood": raw[fb + F["mood"]], "house": raw[fb + F["house_grade"]],
             "assets": struct.unpack_from("<I", raw, fb + F["assets"])[0], "members": people,

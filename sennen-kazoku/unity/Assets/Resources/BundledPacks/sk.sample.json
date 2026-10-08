@@ -5,7 +5,7 @@
  "title": "원작 규칙 구조 샘플 (임시 문구)",
  "kind": "base",
  "origin": "original",
- "minContract": 1,
+ "minContract": 3,
  "events": [
   {
    "id": "sk.s1.good",
@@ -242,10 +242,18 @@
    "minAge": 18,
    "maxAge": 29,
    "weight": 10,
-   "delay": [
-    20,
-    60
+   "romRef": [
+    2,
+    39
    ],
+   "type": 0,
+   "maxDayMode": 3,
+   "minDayMode": 3,
+   "maxOutcomes": [
+    "sk.s1.good",
+    "sk.s1.fallback"
+   ],
+   "minOutcomes": [],
    "eligible": {
     "op": "and",
     "args": [
@@ -263,12 +271,8 @@
      }
     ]
    },
-   "outcomes": [
-    "sk.s1.good",
-    "sk.s1.fallback"
-   ],
    "certainty": "estimated",
-   "note": "결과 선택 규칙·조건은 원작 분석(planned-0072FD80)에 근거. 연령대 경계와 대상 분류, 지연 일수는 임시값."
+   "note": "MAX 변형·조건은 원작 분석(planned-0072FD80), 유형·요일 조건은 ROM. 대상 분류·연령 경계로 관심사를 고르는 부분은 미해독(임시)."
   },
   {
    "id": "sk.ps.job-hunt",
@@ -276,10 +280,18 @@
    "minAge": 18,
    "maxAge": 29,
    "weight": 10,
-   "delay": [
-    20,
-    60
+   "romRef": [
+    1,
+    343
    ],
+   "type": 0,
+   "maxDayMode": 3,
+   "minDayMode": 3,
+   "maxOutcomes": [
+    "sk.s2.good",
+    "sk.s2.fallback"
+   ],
+   "minOutcomes": [],
    "eligible": {
     "op": "and",
     "args": [
@@ -297,12 +309,8 @@
      }
     ]
    },
-   "outcomes": [
-    "sk.s2.good",
-    "sk.s2.fallback"
-   ],
    "certainty": "estimated",
-   "note": "결과 선택 규칙·조건은 원작 분석(planned-006E0BAC)에 근거. 연령대 경계와 대상 분류, 지연 일수는 임시값."
+   "note": "MAX 변형·조건은 원작 분석(planned-006E0BAC), 유형·요일 조건은 ROM. 대상 분류·연령 경계로 관심사를 고르는 부분은 미해독(임시)."
   },
   {
    "id": "sk.ps.training",
@@ -310,10 +318,18 @@
    "minAge": 18,
    "maxAge": 29,
    "weight": 10,
-   "delay": [
-    20,
-    60
+   "romRef": [
+    1,
+    396
    ],
+   "type": 0,
+   "maxDayMode": 1,
+   "minDayMode": 3,
+   "maxOutcomes": [
+    "sk.s3.good",
+    "sk.s3.fallback"
+   ],
+   "minOutcomes": [],
    "eligible": {
     "op": "and",
     "args": [
@@ -331,12 +347,8 @@
      }
     ]
    },
-   "outcomes": [
-    "sk.s3.good",
-    "sk.s3.fallback"
-   ],
    "certainty": "estimated",
-   "note": "결과 선택 규칙·조건은 원작 분석(planned-006E311C)에 근거. 연령대 경계와 대상 분류, 지연 일수는 임시값."
+   "note": "MAX 변형·조건은 원작 분석(planned-006E311C), 유형·요일 조건은 ROM. 대상 분류·연령 경계로 관심사를 고르는 부분은 미해독(임시)."
   }
  ]
 }

@@ -7,7 +7,7 @@ namespace SennenKazoku.Core
     public static class Capabilities
     {
         /// <summary>데이터 계약 버전. 새 op/변수를 추가하면 올린다.</summary>
-        public const int Contract = 2;
+        public const int Contract = 3;   // v3: 관심사 MAX/MIN 목록·유형·요일 조건·직업 요일표 (원작 열중 게이지 구조)
         public static readonly HashSet<string> CondOps = new HashSet<string> {
             "always", "and", "or", "not", "cmp", "chance", "has_skill", "flag", "has_role", "relation" };
         public static readonly HashSet<string> ExprOps = new HashSet<string> { "add", "sub", "mul", "div" };
@@ -233,7 +233,7 @@ namespace SennenKazoku.Core
                         else if (t != null) { if (set) t.Flags.Add(n); else t.Flags.Remove(n); }
                         break;
                     case "set_planned_state":
-                        if (t != null) { t.PlannedStateId = J.Str(d, "id"); t.PlannedDue = cx.Family.Today + Math.Max(1, J.Int(d, "delayDays", 30)); }
+                        if (t != null) { t.PlannedStateId = J.Str(d, "id"); t.Gauge = 136; t.InterestDay = 1; t.ArrowFlags = 0; }
                         break;
                     case "log": if (log != null) log.Add(J.Str(d, "text")); break;
                 }
