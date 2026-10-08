@@ -34,6 +34,7 @@ namespace SennenKazoku.Game
         LayoutCalculator.Result lay;
         Vector2 lastScreen; Rect lastSafe;
         float dp = 1f;
+        float panelH;                        // 이벤트 패널의 현재 높이 (선택지가 많으면 장면 위로 확장)
 
         // ---- 진행 ----
         int speed = 1;                       // 0 정지, 1/2/4 배속
@@ -95,7 +96,7 @@ namespace SennenKazoku.Game
             dp = lay.Dp;
             foreach (var rt in new[] { titleRoot, gameRoot, menuRoot }) UiKit.SetPx(rt, 0, 0, w, h);
             UiKit.SetPx(topBar, lay.TopBar); UiKit.SetPx(strip, lay.FamilyStrip); UiKit.SetPx(scene, lay.Scene);
-            UiKit.SetPx(eventPanel, lay.EventPanel); UiKit.SetPx(controls, lay.Controls);
+            SetPanel(lay.EventPanel.H); UiKit.SetPx(controls, lay.Controls);
             LayoutTop(); LayoutScene(); LayoutEventPanel(); LayoutControls();
             if (playing) { RefreshStrip(); RefreshEvent(); }
             if (titleRoot.gameObject.activeSelf) ShowTitle();
@@ -132,7 +133,7 @@ namespace SennenKazoku.Game
             nextBtn = UiKit.Btn(eventPanel, "next", "다음 ▶", 18, UiKit.Accent, Color.white, OnNext);
 
             var cb = UiKit.Box(controls, "bg", UiKit.Soft); UiKit.Stretch(cb.rectTransform, 0, 0, 0, 0);
-            pauseBtn = UiKit.Btn(controls, "pause", "⏸", 20, UiKit.AccentDark, Color.white, () => { speed = 0; RefreshControls(); });
+            pauseBtn = UiKit.Btn(controls, "pause", "정지", 20, UiKit.AccentDark, Color.white, () => { speed = 0; RefreshControls(); });
             speedBtn = UiKit.Btn(controls, "speed", "▶ ×1", 18, UiKit.Accent, Color.white, CycleSpeed);
             menuBtn = UiKit.Btn(controls, "menu", "메뉴", 18, UiKit.AccentDark, Color.white, () => OpenMenu(menuTab));
 
@@ -157,9 +158,17 @@ namespace SennenKazoku.Game
             UiKit.SetPx(sceneFigures.GetComponent<RectTransform>(), 0, 0, lay.Scene.W, lay.Scene.H);
         }
 
+        /// <summary>이벤트 패널을 아래쪽 고정, 위쪽으로 h 만큼 키운다.</summary>
+        void SetPanel(float h)
+        {
+            panelH = h;
+            UiKit.SetPx(eventPanel, lay.EventPanel.X, lay.EventPanel.Bottom - h, lay.EventPanel.W, h);
+        }
+
         void LayoutEventPanel()
         {
-            float pad = Px(14), w = lay.EventPanel.W, h = lay.EventPanel.H;
+            if (panelH <= 0) panelH = lay.EventPanel.H;
+            float pad = Px(14), w = lay.EventPanel.W, h = panelH;
             eventBadge.fontSize = Px(11); eventTitle.fontSize = Px(16); eventSpeaker.fontSize = Px(13); eventText.fontSize = Px(16);
             UiKit.SetPx(eventBadge.rectTransform, pad, Px(4), w - 2 * pad, Px(16));
             UiKit.SetPx(eventTitle.rectTransform, pad, Px(20), w - 2 * pad, Px(24));
@@ -316,7 +325,7 @@ namespace SennenKazoku.Game
             {
                 var p = alive[i]; int age = p.Age(session.Family.Today);
                 float size = fw * (age < 6 ? 0.6f : age < 15 ? 0.8f : 1f);
-                float x = w * 0.1f + step * i + (step - size) / 2f, baseY = h * 0.55f - size * 0.2f;
+                float x = w * 0.1f + step * i + (step - size) / 2f, baseY = Mathf.Min(h * 0.55f - size * 0.2f, h - Px(36) - size);
                 var im = UiKit.Box(sceneFigures, "fig" + p.Id, p.Gender == 0 ? new Color32(0x5B, 0x8F, 0xC9, 255) : new Color32(0xD9, 0x6A, 0x8A, 255), UiKit.Circle);
                 UiKit.SetPx(im.rectTransform, x, baseY, size, size);
                 im.gameObject.AddComponent<FigureTag>().BaseY = baseY;
@@ -363,18 +372,19 @@ namespace SennenKazoku.Game
                 nextBtn.gameObject.SetActive(false);
                 float pad = Px(14), w = lay.EventPanel.W - 2 * pad, bh = Px(48), gap = Px(6);
                 float total = v.Choices.Count * (bh + gap);
-                UiKit.SetPx(choiceHost, pad, lay.EventPanel.H - total - gap, w, total);
+                SetPanel(Mathf.Max(lay.EventPanel.H, Px(64) + Px(66) + total + gap * 2));   // 선택지가 많으면 장면 위로 확장
+                UiKit.SetPx(choiceHost, pad, panelH - total - gap, w, total);
                 for (int i = 0; i < v.Choices.Count; i++)
                 {
                     var c = v.Choices[i]; string id = c.Id;
                     var b = UiKit.Btn(choiceHost, "c" + i, c.Text, Px(15), UiKit.Accent, Color.white, () => { session.Choose(id); AfterEventStep(); });
                     UiKit.SetPx(b.GetComponent<RectTransform>(), 0, i * (bh + gap), w, bh);
                 }
-                UiKit.SetPx(eventText.rectTransform, Px(14), Px(64), lay.EventPanel.W - Px(28), Mathf.Max(Px(40), lay.EventPanel.H - Px(64) - total - gap * 2));
+                UiKit.SetPx(eventText.rectTransform, Px(14), Px(64), lay.EventPanel.W - Px(28), Mathf.Max(Px(40), panelH - Px(64) - total - gap * 2));
             }
             else
             {
-                LayoutEventPanel(); nextBtn.gameObject.SetActive(true);
+                SetPanel(lay.EventPanel.H); LayoutEventPanel(); nextBtn.gameObject.SetActive(true);
             }
         }
 
