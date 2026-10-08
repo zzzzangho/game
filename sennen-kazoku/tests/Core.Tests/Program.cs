@@ -255,6 +255,48 @@ namespace SennenKazoku.Tests
                 File.WriteAllText(Path.Combine(root, "active.json"), "garbage"); cat = store.LoadCatalog(bundled, new List<string>()); T.True(cat.Events.ContainsKey("sk.s1.good"));
             });
 
+            Console.WriteLine("[원작 화면 대조]");
+            T.Run("달력: 2005-01-01 은 토요일 (원작 HUD '2005년 1월 1일(토)'), 만 나이", () => {
+                int d = GameDate.Make(2005, 1, 1); T.Eq(GameDate.Format(d), "2005년 1월 1일(토)");
+                T.Eq(GameDate.AgeYears(GameDate.Make(1956, 6, 3), d), 48);      // 원작 상세: 카즈유키 48세
+                T.Eq(GameDate.AgeYears(GameDate.Make(1987, 10, 12), d), 17);    // 원작 도입: 잇세이(17세)
+                T.Eq(GameDate.Format(GameDate.Make(2005, 2, 30)), "2005년 2월 28일(월)");
+            });
+            T.Run("화살: 시작 보유 각 5, 힘내라 +95(상한 255)·진정해 0, 효과 중 재사용 불가", () => {
+                var f = NewGame.Create(1); var p = f.Members[0];
+                T.Eq(Interventions.Count(f, "arrow.encourage"), 5); T.Eq(Interventions.Count(f, "arrow.calm"), 5);
+                p.Immersion = 200; T.True(Interventions.Use(f, p, "arrow.encourage") == null); T.Eq(p.Immersion, 255); T.Eq(Interventions.Count(f, "arrow.encourage"), 4);
+                var r = Interventions.Use(f, p, "arrow.calm"); T.True(r != null && r.Contains("계속")); T.Eq(p.Immersion, 255);
+                var s = new GameSession(f, Cat(Bundled())); for (int i = 0; i < Interventions.ArrowDays + 1; i++) { s.StepDay(); while (s.Paused) { var v = s.View(); if (v.NeedsChoice) s.Choose(v.Choices[0].Id); else s.Advance(); } }
+                T.True(Interventions.Use(f, p, "arrow.calm") == null); T.Eq(p.Immersion, 0);
+                T.True(Interventions.Use(f, p, "arrow.love") != null, "미구현 화살은 거부");
+            });
+            T.Run("아이템: 고리 +800(상한 5000), 행복 상자 무드 한 단계", () => {
+                var f = NewGame.Create(1); var p = f.Members[0]; f.Items["item.ring.int"] = 2; f.Items["item.happiness_box"] = 1;
+                p.Stats[0] = 4500; T.True(Interventions.Use(f, p, "item.ring.int") == null); T.Eq(p.Stats[0], 5000);
+                f.Mood = 100; T.True(Interventions.Use(f, p, "item.happiness_box") == null); T.Eq(Family.MoodLevel(f.Mood), 4);
+                T.True(Interventions.Use(f, p, "item.happiness_box") != null, "보유 0 이면 거부");
+            });
+            T.Run("저장 v1 → v2 실제 마이그레이션(시작일·세대주·화살 5개 보충)", () => {
+                var dir = Tmp(); var cat = Cat(Bundled()); var f = NewGame.Create(3);
+                var v1 = SaveSystem.ToJson(f, cat, 1); var fam = J.Child(v1, "family");
+                foreach (var k in new[] { "startDay", "gratitude", "head", "items" }) fam.Remove(k);
+                File.WriteAllText(Path.Combine(dir, "save_slot1.json"), MiniJson.Serialize(v1));
+                var r = new SaveSystem(dir).Load("slot1"); T.Eq(r.FromSchema, 1);
+                T.Eq(r.Family.StartDay, f.Today); T.Eq(Interventions.Count(r.Family, "arrow.calm"), 5); T.Eq(r.Family.HeadId, f.Members[0].Id);
+            });
+            T.Run("원작 시작 가족 형식(start_family.json) 불러오기 + 관계 추정", () => {
+                var json = "{\"date\":[2005,1,1],\"head\":0,\"mood\":128,\"house\":2,\"assets\":5000,\"members\":[" +
+                    "{\"name\":\"가\",\"birth\":[1956,6,3],\"gender\":0,\"stats\":[2173,2408,1617,3400],\"job\":24,\"character\":\"c1\",\"plannedStateId\":\"planned-X\",\"plannedTitle\":\"고민 중\"}," +
+                    "{\"name\":\"나\",\"birth\":[1957,12,14],\"gender\":1,\"stats\":[1,2,3,4],\"job\":26}," +
+                    "{\"name\":\"다\",\"birth\":[1987,10,12],\"gender\":0,\"stats\":[1,2,3,4],\"job\":10}]}";
+                var f = NewGame.FromOriginal(J.Obj(MiniJson.Parse(json)), 9);
+                T.Eq(f.Name, "가 가"); T.Eq(f.Members[0].SpouseId, f.Members[1].Id); T.Eq(f.Members[2].FatherId, f.Members[0].Id); T.Eq(f.Members[2].MotherId, f.Members[1].Id);
+                T.Eq(Stat.Rank(f.Members[0].Stats[3]), "A"); T.Eq(f.Members[0].Character, "c1"); T.Eq(f.Members[0].PlannedTitle, "고민 중");
+                var s = new GameSession(f, Cat(Bundled())); for (int i = 0; i < 60; i++) { s.StepDay(); while (s.Paused) { var v = s.View(); if (v.NeedsChoice) s.Choose(v.Choices[0].Id); else s.Advance(); } }
+                T.True(f.Members[0].PlannedStateId != "planned-X", "카탈로그에 없는 원작 예정 상태는 기한 뒤 해제");
+            });
+
             Console.WriteLine("[화면 비율]");
             T.Run("세로 비율별 레이아웃 (16:9 ~ 9:21, 소형·대형, 노치 안전영역)", () => {
                 var cases = new[] { // w,h px, dpi, 안전영역 inset(top,bottom)
@@ -266,11 +308,11 @@ namespace SennenKazoku.Tests
                     var r = LayoutCalculator.Compute(c[0], c[1], 0, c[3], c[0], c[1] - c[3] - c[4], c[2]);
                     string tag = c[0] + "x" + c[1];
                     T.True(r.Valid, tag + " 장면 영역 부족 scene=" + r.Scene.H / r.Dp + "dp");
-                    var seq = new[] { r.TopBar, r.FamilyStrip, r.Scene, r.EventPanel, r.Controls };
+                    var seq = new[] { r.TopBar, r.Scene, r.FamilyStrip, r.EventPanel, r.Controls };
                     float y = c[3]; foreach (var q in seq) { T.True(Math.Abs(q.Y - y) < 0.01f, tag + " 영역 간 틈/겹침"); y += q.H; }
                     T.True(Math.Abs(y - (c[1] - c[4])) < 0.5f, tag + " 안전영역을 채우지 못함");
                     T.True(r.Controls.H / r.Dp >= LayoutCalculator.MinTouchDp, tag + " 조작 바 높이 < 48dp");
-                    T.True(r.EventPanel.H / r.Dp >= 170f, tag + " 이벤트 패널 너무 낮음");
+                    T.True(r.EventPanel.H / r.Dp >= 120f, tag + " 대화창 너무 낮음"); T.True(r.HouseScale >= c[0] / 240f * 0.74f, tag + " 집 그림이 너무 작음");
                 }
             });
 

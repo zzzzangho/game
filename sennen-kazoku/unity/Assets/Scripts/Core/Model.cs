@@ -26,20 +26,34 @@ namespace SennenKazoku.Core
         }
     }
 
-    /// <summary>날짜. 임시 규칙: 1년=12개월×30일 (원작 달력 규칙은 미해명). dayIndex 0 = 시작 연도 1월 1일.</summary>
+    /// <summary>
+    /// 날짜: 그레고리력(원작은 실제 달력·요일을 쓰고 시작 연월일을 플레이어가 정한다 — 원작 화면에서 확인).
+    /// dayIndex 0 = 1900-01-01. 하루 = 1틱(진행 속도는 미해명).
+    /// </summary>
     public static class GameDate
     {
-        public const int StartYear = 1980;
-        public const int DaysPerMonth = 30, DaysPerYear = 360;
-        public static int Year(int d) { return StartYear + Floor(d, DaysPerYear); }
-        public static int Month(int d) { return Mod(d, DaysPerYear) / DaysPerMonth + 1; }
-        public static int Day(int d) { return Mod(d, DaysPerMonth) + 1; }
+        static readonly DateTime Epoch = new DateTime(1900, 1, 1);
+        public const int DaysPerYear = 365;
+        public static readonly string[] WeekdayKo = { "일", "월", "화", "수", "목", "금", "토" };
+        static DateTime D(int d) { return Epoch.AddDays(d); }
+        public static int Year(int d) { return D(d).Year; }
+        public static int Month(int d) { return D(d).Month; }
+        public static int Day(int d) { return D(d).Day; }
+        public static int Weekday(int d) { return (int)D(d).DayOfWeek; }
         public static int Make(int year, int month, int day)
-        { return (year - StartYear) * DaysPerYear + (month - 1) * DaysPerMonth + (day - 1); }
-        public static int AgeYears(int birth, int today) { return Math.Max(0, Floor(today - birth, DaysPerYear)); }
-        public static string Format(int d) { return Year(d) + "년 " + Month(d) + "월 " + Day(d) + "일"; }
-        static int Floor(int a, int b) { int q = a / b; return (a % b != 0 && (a < 0)) ? q - 1 : q; }
-        static int Mod(int a, int b) { int m = a % b; return m < 0 ? m + b : m; }
+        {
+            day = Math.Max(1, Math.Min(day, DateTime.DaysInMonth(year, month)));
+            return (int)(new DateTime(year, month, day) - Epoch).TotalDays;
+        }
+        /// <summary>만 나이.</summary>
+        public static int AgeYears(int birth, int today)
+        {
+            var b = D(birth); var t = D(today);
+            int age = t.Year - b.Year;
+            if (t.Month < b.Month || (t.Month == b.Month && t.Day < b.Day)) age--;
+            return Math.Max(0, age);
+        }
+        public static string Format(int d) { return Year(d) + "년 " + Month(d) + "월 " + Day(d) + "일(" + WeekdayKo[Weekday(d)] + ")"; }
     }
 
     public static class Stat
@@ -68,7 +82,7 @@ namespace SennenKazoku.Core
         public int Gender;                 // 0 남, 1 여
         public int BirthDay;
         public int[] Stats = new int[4];   // 0..5000 (확인됨: 범위·등급)
-        public int Hearts;                 // 임시: 0..HeartMax (원작 하트 단위 미해명)
+        public int Hearts;                 // 0..HeartMax. 원작 화면은 하트 3칸(부분 채움) — 칸당 단위는 미해명(임시 96)
         public int Immersion;              // 0..255 (확인됨: 범위)
         public int Job;                    // 직업 코드 (이름표 미확보)
         public int JobMastery;
@@ -78,7 +92,12 @@ namespace SennenKazoku.Core
         public int PlannedDue = -1;
         public bool Alive = true;
         public HashSet<string> Flags = new HashSet<string>();
-        public const int HeartMax = 1000;
+        public const int HeartUnit = 96, HeartMax = HeartUnit * 3;
+        public string Dream = "";           // 꿈 (원작 상세 화면 항목)
+        public string ArrowId = "";         // 맞은 화살
+        public int ArrowUntil = -1;
+        public string Character = "";      // 그래픽 id (LocalArt manifest)
+        public string PlannedTitle = "";   // 카탈로그에 없는 원작 예정 상태의 표시용 제목
 
         public int Age(int today) { return GameDate.AgeYears(BirthDay, today); }
         public void AddStat(int i, int v) { Stats[i] = Math.Max(0, Math.Min(Stat.Max, Stats[i] + v)); }
@@ -93,7 +112,8 @@ namespace SennenKazoku.Core
                 {"skills", new List<object>(Skills.ConvertAll(x => (object)x))},
                 {"spouse", SpouseId}, {"father", FatherId}, {"mother", MotherId},
                 {"planned", PlannedStateId}, {"plannedDue", PlannedDue}, {"alive", Alive},
-                {"flags", new List<object>(new List<string>(Flags).ConvertAll(x => (object)x))}
+                {"flags", new List<object>(new List<string>(Flags).ConvertAll(x => (object)x))},
+                {"dream", Dream}, {"arrow", ArrowId}, {"arrowUntil", ArrowUntil}, {"character", Character}, {"plannedTitle", PlannedTitle}
             };
         }
         public static Person FromJson(Dictionary<string, object> d)
@@ -108,6 +128,8 @@ namespace SennenKazoku.Core
             for (int i = 0; i < 4 && i < st.Count; i++) p.Stats[i] = Convert.ToInt32(st[i]);
             foreach (var s in J.List(d, "skills")) p.Skills.Add(Convert.ToInt32(s));
             foreach (var f in J.List(d, "flags")) p.Flags.Add((string)f);
+            p.Dream = J.Str(d, "dream"); p.ArrowId = J.Str(d, "arrow"); p.ArrowUntil = J.Int(d, "arrowUntil", -1);
+            p.Character = J.Str(d, "character"); p.PlannedTitle = J.Str(d, "plannedTitle");
             return p;
         }
     }
@@ -154,6 +176,11 @@ namespace SennenKazoku.Core
         public long Assets;
         public int HouseGrade;
         public int NextPersonId = 1;
+        public int StartDay;                                   // 가족 시작일 → 상단 "N년가족"
+        public int Gratitude;                                  // 신님에게 감사 (개수)
+        public int HeadId = -1;                                // 세대주
+        public Dictionary<string, int> Items = new Dictionary<string, int>();   // 화살·아이템 보유 수
+        public int YearsAsFamily { get { return GameDate.AgeYears(StartDay, Today); } }
         public List<Person> Members = new List<Person>();
         public HashSet<string> Flags = new HashSet<string>();
         public Dictionary<string, int> LastFired = new Dictionary<string, int>();     // 이벤트id|인물 -> 일자

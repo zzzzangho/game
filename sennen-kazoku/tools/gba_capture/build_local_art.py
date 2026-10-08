@@ -10,7 +10,7 @@
   ③ 셀 분류 → manifest.json
 모든 그림은 PNG 를 '.png.bytes'(TextAsset) 로 저장한다. Unity 가 런타임에 Texture2D.LoadImage 로 읽는다.
 """
-import os, sys, json, glob, hashlib, subprocess, shutil, tempfile
+import os, sys, json, glob, hashlib, subprocess, shutil, tempfile, struct
 import numpy as np
 from PIL import Image
 
@@ -104,19 +104,66 @@ def find_rooms(img):
     return rooms
 
 
+def state_raw(path):
+    """mGBA 상태 파일(PNG 래핑, gbAs 청크 zlib)에서 원시 직렬화 바이트를 꺼낸다."""
+    import zlib
+    st = open(path, "rb").read(); i = 8
+    while i < len(st):
+        ln = struct.unpack(">I", st[i:i + 4])[0]; ty = st[i + 4:i + 8]
+        if ty == b"gbAs": return zlib.decompress(st[i + 8:i + 8 + ln])
+        i += 12 + ln
+    raise ValueError("gbAs 청크 없음")
+
+
+def gdate(v):
+    """원작 날짜 3바이트: 연<<9 | 월<<5 | 일 (메인 화면·상세 화면 나이와 대조해 확인)."""
+    return [v >> 9, (v >> 5) & 15, v & 31]
+
+
+def parse_family(raw, layout):
+    """공략 사이트의 세이브 레이아웃(family-save-layout.json)으로 상태 안의 가족 레코드를 읽는다."""
+    tm = {e["code"]: e["char"] for e in layout["text_map"]}
+    fmt = layout["formats"]["mgba_state"]; fb = fmt["family_base"]; rb = fmt["record_base"]; cd = fmt["current_date"]   # 모두 상태 내 절대 오프셋
+    P = layout["person"]; F = layout["family"]
+    people = []
+    for i in range(P["count"]):
+        rec = raw[rb + i * P["stride"]: rb + (i + 1) * P["stride"]]
+        if rec[P["gender"]] == 255: continue
+        nb = rec[P["name"]:P["name"] + P["name_size"]]; name = ""
+        for k in range(0, len(nb) - 1, 2):
+            c = (nb[k] << 8) | nb[k + 1]
+            if c in (0, 0xFFFF) or c & 0xFF00 == 0: break
+            name += tm.get(c, "?")
+        b = rec[P["birth_date"]] | rec[P["birth_date"] + 1] << 8 | rec[P["birth_date"] + 2] << 16
+        people.append({"slot": i, "name": name, "birth": gdate(b), "gender": rec[P["gender"]], "appearance": rec[P["appearance"]],
+                       "stats": [struct.unpack_from("<H", rec, o)[0] for o in P["stats"]], "job": rec[P["job_raw"]],
+                       "status": rec[P["status_code"]], "interest": rec[P["interest"]], "mastery": rec[P["job_mastery"]],
+                       "skills": [x for x in rec[P["skills"]:P["skills"] + P["skill_count"]] if x != 255],
+                       "planned": list(struct.unpack_from("<HH", rec, P["planned_table"]))})
+    d = raw[cd] | raw[cd + 1] << 8 | raw[cd + 2] << 16
+    return {"date": gdate(d), "head": raw[fb + F["household_head_id"]], "mood": raw[fb + F["mood"]], "house": raw[fb + F["house_grade"]],
+            "assets": struct.unpack_from("<I", raw, fb + F["assets"])[0], "members": people,
+            "note": "원작 기본 시작 가족(로컬 ROM 실행 결과). 배포 금지"}
+
+
 def collect_cels(exe, rom, work):
     d = os.path.join(work, "dump"); os.makedirs(d); shutil.copy(os.path.join(work, "main.state"), d)
-    L = ["loadstate main"]
-    for i in range(10):                       # 선택 인물을 바꿔 가며(초상화) + 시간 경과(걷기·애니메이션)
-        L += ["tap 16 30", "rundump 400 0 5 a%02d" % i]
+    L = ["loadstate main", "rundump 2 0 1 sel00"]
+    for i in range(1, 10):                    # → 로 선택 인물을 바꿔 가며(초상화) + 시간 경과(걷기·애니메이션)
+        L += ["tap 16 30", "rundump 2 0 1 sel%02d" % i, "rundump 400 0 5 a%02d" % i]
     run(exe, rom, d, L)
+    sel = []                                  # 선택 순번별 하단 바 초상화(32x32, 화면 아래쪽 왼편)
+    for i in range(10):
+        f = sorted(glob.glob(os.path.join(d, "sel%02d_*.mem" % i)))[0]
+        por = [img for _, x, y, w, h, img in decode(open(f, "rb").read()) if (w, h) == (32, 32) and y >= 112 and x < 48]
+        sel.append(hashlib.md5(por[0].tobytes()).hexdigest()[:12] if por else None)
     cels = {}
     for f in sorted(glob.glob(os.path.join(d, "*.mem"))):
         for _, x, y, w, h, img in decode(open(f, "rb").read()):
             if img.getbbox() is None: continue
             k = hashlib.md5(img.tobytes()).hexdigest()[:12]
             if k not in cels: cels[k] = img
-    return cels
+    return cels, sel
 
 
 def colors(img):
@@ -222,7 +269,7 @@ def main():
     work = tempfile.mkdtemp(prefix="sk_art_", dir=os.environ.get("ART_TMP"))
     exe = build_capture(work)
     print("1/4 메인 화면까지 진행…"); run(exe, rom, work, intro_script())
-    print("2/4 스프라이트 수집…"); cels = collect_cels(exe, rom, work)
+    print("2/4 스프라이트 수집…"); cels, sel = collect_cels(exe, rom, work)
     print("   고유 셀", len(cels))
     print("3/4 집 파노라마…"); pano, period, perr = panorama(exe, rom, work)
     print("   순환 폭 %dpx (정합 오차 %.3f)" % (period, perr))
@@ -241,6 +288,29 @@ def main():
                                 "portrait": ("cel_" + c["portrait"]) if c["portrait"] else None} for c in chars],
                 "cupid": ["cel_" + k for k in cupid], "unclassified": ["cel_" + k for k in other]}
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf8") as f: json.dump(manifest, f, ensure_ascii=False, indent=1)
+    # 시작 가족: 상태에서 읽고, 선택 순서(처음 선택 = 0번 인물, → 마다 다음 인물)로 초상화 → 캐릭터 연결
+    layout = os.environ.get("GUIDE_LAYOUT")
+    if layout and os.path.exists(layout):
+        fam = parse_family(state_raw(os.path.join(work, "main.state")), json.load(open(layout, encoding="utf8")))
+        by_portrait = {c["portrait"]: c["id"] for c in chars if c["portrait"]}
+        n = len(fam["members"])
+        for i, h in enumerate(sel):
+            if h and n: fam["members"][i % n].setdefault("character", by_portrait.get(h))
+        left = [c["id"] for c in chars if c["id"] not in {m.get("character") for m in fam["members"]}]
+        for m in fam["members"]:                          # 화살 효과로 초상화 색이 바뀐 경우 등: 남은 캐릭터 배정
+            if not m.get("character") and left: m["character"] = left.pop(0)
+        ps_path = os.path.join(os.path.dirname(layout), "planned-states.json")
+        if os.path.exists(ps_path):                       # 원작 예정 상태 (표, 순번) → 예정 상태 id
+            refs = {}
+            for st in json.load(open(ps_path, encoding="utf8"))["states"]:
+                for r in st.get("save_refs", []): refs[(r["table"], r["index"])] = (st["id"], st["title_ko"])
+            for m in fam["members"]:
+                hit = refs.get(tuple(m["planned"]))
+                if hit: m["plannedStateId"], m["plannedTitle"] = hit
+        with open(os.path.join(out, "start_family.json"), "w", encoding="utf8") as f: json.dump(fam, f, ensure_ascii=False, indent=1)
+        print("   시작 가족:", ", ".join("%s(%s)" % (m["name"], m.get("character")) for m in fam["members"]))
+    else:
+        print("   (GUIDE_LAYOUT 미지정: 시작 가족 추출 생략 — family-save-layout.json 경로를 지정하면 원작 가족을 씁니다)")
     print("완료:", out, "| 캐릭터", len(chars), "| 큐피트 프레임", len(cupid), "| UI", len(ui), "| 미분류", len(other))
     if not os.environ.get("KEEP_WORK"): shutil.rmtree(work, ignore_errors=True)
     else: print("작업 폴더:", work)

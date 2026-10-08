@@ -196,6 +196,7 @@ namespace SennenKazoku.Core
         {
             var v = Get(d, k);
             if (v is long l) return l;
+            if (v is int i) return i;
             if (v is double x) return (long)x;
             return def;
         }

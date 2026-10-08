@@ -92,6 +92,7 @@ namespace SennenKazoku.Core
             if (Family.Active != null) return false;
             if (Family.Queue.Count > 0) { StartNext(); return true; }
             Family.Today++;
+            Interventions.Tick(Family);
             foreach (var p in Family.Members.ToArray())
             {
                 if (!p.Alive) continue;

@@ -99,7 +99,7 @@ namespace SennenKazoku.Core
 
     public sealed class PlannedStateDef
     {
-        public string Id = "", Title = "", PackId = "";
+        public string Id = "", Title = "", PackId = "", Desc = "";
         public int MinAge, MaxAge = 120, Weight = 10, DelayMin = 20, DelayMax = 60;
         public List<string> Outcomes = new List<string>();   // 표 순서대로 검사, 처음 통과한 것을 선택 (확인됨: first_matching_variant_in_table_order)
         public string Certainty = "placeholder";
@@ -108,7 +108,7 @@ namespace SennenKazoku.Core
         public static PlannedStateDef Parse(Dictionary<string, object> d)
         {
             var s = new PlannedStateDef { Id = J.Str(d, "id"), Title = J.Str(d, "title"), MinAge = J.Int(d, "minAge", 0),
-                MaxAge = J.Int(d, "maxAge", 120), Weight = J.Int(d, "weight", 10), Certainty = J.Str(d, "certainty", "placeholder"), Eligible = J.Get(d, "eligible") };
+                MaxAge = J.Int(d, "maxAge", 120), Weight = J.Int(d, "weight", 10), Certainty = J.Str(d, "certainty", "placeholder"), Eligible = J.Get(d, "eligible"), Desc = J.Str(d, "desc") };
             var dl = J.List(d, "delay");
             if (dl.Count == 2) { s.DelayMin = Convert.ToInt32(dl[0]); s.DelayMax = Convert.ToInt32(dl[1]); }
             foreach (var o in J.List(d, "outcomes")) s.Outcomes.Add((string)o);

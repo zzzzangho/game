@@ -43,12 +43,31 @@ namespace SennenKazoku.Core
     public sealed class SaveSystem
     {
         /// <summary>현재 저장 스키마. 저장 구조를 바꿀 때마다 올리고 SaveMigrator 단계를 추가한다.</summary>
-        public const int CurrentSchema = 1;
+        public const int CurrentSchema = 2;
         public static readonly string[] Slots = { "auto", "slot1", "slot2", "slot3" };
 
         readonly string dir;
-        public readonly SaveMigrator Migrator = new SaveMigrator(CurrentSchema);
+        public readonly SaveMigrator Migrator = DefaultMigrator();
         public SaveSystem(string dir) { this.dir = dir; Directory.CreateDirectory(dir); }
+
+        /// <summary>실제 마이그레이션 체인. v1→v2: 가족 시작일·세대주·신님에게 감사·화살/아이템 보유(원작 시작값 각 5) 추가.</summary>
+        public static SaveMigrator DefaultMigrator()
+        {
+            var m = new SaveMigrator(CurrentSchema);
+            m.Register(1, root =>
+            {
+                var fam = J.Child(root, "family");
+                if (fam != null)
+                {
+                    if (!fam.ContainsKey("startDay")) fam["startDay"] = J.Int(fam, "today");
+                    if (!fam.ContainsKey("gratitude")) fam["gratitude"] = 0;
+                    if (!fam.ContainsKey("head")) { var ms = J.List(fam, "members"); fam["head"] = ms.Count > 0 ? J.Int(J.Obj(ms[0]), "id") : -1; }
+                    if (!fam.ContainsKey("items")) fam["items"] = new Dictionary<string, object> { { "arrow.encourage", 5L }, { "arrow.calm", 5L } };
+                }
+                return root;
+            });
+            return m;
+        }
         public SaveSystem(string dir, SaveMigrator m) { this.dir = dir; Directory.CreateDirectory(dir); Migrator = m; }
 
         string PathOf(string slot) { return Path.Combine(dir, "save_" + slot + ".json"); }
@@ -73,8 +92,14 @@ namespace SennenKazoku.Core
                     { "name", f.Name }, { "today", f.Today }, { "mood", f.Mood }, { "assets", f.Assets }, { "house", f.HouseGrade },
                     { "nextPersonId", f.NextPersonId }, { "members", members }, { "flags", flags }, { "history", hist },
                     { "lastFired", last }, { "fireCount", cnt }, { "rng", f.RngState.ToString() },
-                    { "active", f.Active != null ? f.Active.ToJson() : null }, { "queue", queue } } }
+                    { "active", f.Active != null ? f.Active.ToJson() : null }, { "queue", queue },
+                    { "startDay", f.StartDay }, { "gratitude", f.Gratitude }, { "head", f.HeadId }, { "items", ItemsJson(f) } } }
             };
+        }
+
+        static Dictionary<string, object> ItemsJson(Family f)
+        {
+            var d = new Dictionary<string, object>(); foreach (var kv in f.Items) d[kv.Key] = kv.Value; return d;
         }
 
         public static Family FromJson(Dictionary<string, object> root)
@@ -95,6 +120,8 @@ namespace SennenKazoku.Core
             ulong rng; if (ulong.TryParse(J.Str(d, "rng"), out rng)) f.RngState = rng;
             var act = J.Child(d, "active"); if (act != null) f.Active = ActiveEvent.FromJson(act);
             foreach (var o in J.List(d, "queue")) f.Queue.Add(ActiveEvent.FromJson(J.Obj(o)));
+            f.StartDay = J.Int(d, "startDay", f.Today); f.Gratitude = J.Int(d, "gratitude"); f.HeadId = J.Int(d, "head", -1);
+            var it = J.Child(d, "items"); if (it != null) foreach (var kv in it) f.Items[kv.Key] = Convert.ToInt32(kv.Value);
             return f;
         }
 
@@ -152,28 +179,81 @@ namespace SennenKazoku.Core
         }
     }
 
-    /// <summary>새 게임 시작 가족. 이름·능력치는 임시 값이다(원작 시작 가족 데이터는 미확보).</summary>
+    /// <summary>
+    /// 새 게임. ① 원작 시작 가족(로컬 추출 start_family.json)이 있으면 그 이름·생일·능력치·직업·예정 상태를 쓴다.
+    /// ② 없으면 임시 가족. 가족 관계(부부·자녀)는 원작 레코드의 관계 필드가 미해명이라 나이·성별로 추정한다.
+    /// </summary>
     public static class NewGame
     {
         public static Family Create(ulong seed)
         {
             var rng = new Rng(seed);
-            var f = new Family { Name = "다나카 가", Today = GameDate.Make(1985, 4, 1), Mood = 128, Assets = 300000, HouseGrade = 1, RngState = seed };
-            Add(f, rng, "타로", 0, 1955, 3, 2000, 2600);
-            Add(f, rng, "하나코", 1, 1958, 8, 2100, 2800);
+            var f = new Family { Name = "다나카 가", Today = GameDate.Make(2005, 1, 1), Mood = 128, Assets = 5000, HouseGrade = 2, RngState = seed };
+            Add(f, rng, "타로", 0, 1956, 6, 2000, 2600);
+            Add(f, rng, "하나코", 1, 1957, 12, 2100, 2800);
+            var son = Add(f, rng, "켄지", 0, 2002, 6, 1500, 1500);
+            var dau = Add(f, rng, "유키", 1, 2003, 2, 1200, 1700);
             f.Members[0].SpouseId = f.Members[1].Id; f.Members[1].SpouseId = f.Members[0].Id;
             f.Members[0].Job = 5; f.Members[1].Job = 3;
-            var son = Add(f, rng, "켄지", 0, 1982, 6, 1500, 1500); son.FatherId = 1; son.MotherId = 2;
-            var dau = Add(f, rng, "유키", 1, 1984, 2, 1200, 1700); dau.FatherId = 1; dau.MotherId = 2;
-            f.RngState = rng.State;
+            son.FatherId = dau.FatherId = 1; son.MotherId = dau.MotherId = 2;
+            Finish(f, rng);
             return f;
+        }
+
+        public static Family FromOriginal(Dictionary<string, object> sf, ulong seed)
+        {
+            var rng = new Rng(seed);
+            var date = J.List(sf, "date");
+            var f = new Family { Name = "가족", Mood = J.Int(sf, "mood", 128), Assets = J.Long(sf, "assets"), HouseGrade = J.Int(sf, "house"), RngState = seed };
+            f.Today = date.Count == 3 ? GameDate.Make(Convert.ToInt32(date[0]), Convert.ToInt32(date[1]), Convert.ToInt32(date[2])) : GameDate.Make(2005, 1, 1);
+            foreach (var o in J.List(sf, "members"))
+            {
+                var m = J.Obj(o); var b = J.List(m, "birth");
+                var p = new Person { Id = f.NextPersonId++, Name = J.Str(m, "name"), Gender = J.Int(m, "gender"), Job = J.Int(m, "job"),
+                    JobMastery = J.Int(m, "mastery"), Immersion = J.Int(m, "interest", 82), Character = J.Str(m, "character"),
+                    PlannedStateId = J.Str(m, "plannedStateId"), PlannedTitle = J.Str(m, "plannedTitle"), Hearts = Person.HeartUnit * 3 / 2 };
+                if (b.Count == 3) p.BirthDay = GameDate.Make(Convert.ToInt32(b[0]), Convert.ToInt32(b[1]), Convert.ToInt32(b[2]));
+                var st = J.List(m, "stats"); for (int i = 0; i < 4 && i < st.Count; i++) p.Stats[i] = Convert.ToInt32(st[i]);
+                foreach (var k in J.List(m, "skills")) p.Skills.Add(Convert.ToInt32(k));
+                if (p.PlannedStateId.Length > 0) p.PlannedDue = f.Today + 10 + rng.Next(30);
+                f.Members.Add(p);
+            }
+            if (f.Members.Count > 0)
+            {
+                int headSlot = J.Int(sf, "head", 0);
+                var head = f.Members[Math.Min(headSlot, f.Members.Count - 1)];
+                f.Name = head.Name + " 가";
+                // 추정: 세대주와 나이 차 15세 미만인 이성 성인 = 배우자, 세대주보다 18세 이상 어린 사람 = 자녀
+                foreach (var p in f.Members)
+                {
+                    if (p == head) continue;
+                    int gap = System.Math.Abs(GameDate.Year(p.BirthDay) - GameDate.Year(head.BirthDay));
+                    if (head.SpouseId < 0 && p.Gender != head.Gender && gap < 15 && p.Age(f.Today) >= 18) { head.SpouseId = p.Id; p.SpouseId = head.Id; }
+                }
+                foreach (var p in f.Members)
+                    if (GameDate.Year(p.BirthDay) - GameDate.Year(head.BirthDay) >= 18)
+                    {
+                        if (head.Gender == 0) { p.FatherId = head.Id; if (head.SpouseId >= 0) p.MotherId = head.SpouseId; }
+                        else { p.MotherId = head.Id; if (head.SpouseId >= 0) p.FatherId = head.SpouseId; }
+                    }
+                f.HeadId = head.Id;
+            }
+            Finish(f, rng);
+            return f;
+        }
+
+        static void Finish(Family f, Rng rng)
+        {
+            f.StartDay = f.Today; if (f.HeadId < 0 && f.Members.Count > 0) f.HeadId = f.Members[0].Id;
+            Interventions.GiveStarting(f);
+            f.RngState = rng.State;
         }
 
         static Person Add(Family f, Rng rng, string name, int gender, int y, int m, int baseStat, int charm)
         {
             var p = new Person { Id = f.NextPersonId++, Name = name, Gender = gender, BirthDay = GameDate.Make(y, m, 1 + rng.Next(28)) };
             p.Stats[0] = baseStat + rng.Next(600); p.Stats[1] = baseStat + rng.Next(600); p.Stats[2] = charm + rng.Next(400) - 200; p.Stats[3] = 1500 + rng.Next(1500);
-            p.Hearts = 300; p.Immersion = 82;
+            p.Hearts = Person.HeartUnit * 3 / 2; p.Immersion = 82;
             f.Members.Add(p);
             return p;
         }

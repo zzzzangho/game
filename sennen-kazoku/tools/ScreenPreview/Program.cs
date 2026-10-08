@@ -24,10 +24,14 @@ static class P
         {
             float w = d[0], h = d[1];
             var lay = LayoutCalculator.Compute(w, h, 0, d[2], w, h - d[2] - d[3], 160f * (w / 360f));
-            var f = NewGame.Create(7); var s = new GameSession(f, cat);
-            for (int i = 0; i < 40; i++) s.StepDay();
+            var sfPath = a.Length > 1 ? a[1] : "";
+            var f = File.Exists(sfPath) ? NewGame.FromOriginal(J.Obj(MiniJson.Parse(File.ReadAllText(sfPath))), 7) : NewGame.Create(7);
+            var s = new GameSession(f, cat);
+            for (int i = 0; i < 3; i++) s.StepDay();
             string idleText = "시간이 흘러가고 있습니다…"; var members = new List<object>();
-            foreach (var p in f.Members) members.Add(new Dictionary<string, object> { { "name", p.Name }, { "age", p.Age(f.Today) }, { "rank", Stat.Rank(p.Stats[0]) }, { "g", p.Gender } });
+            foreach (var p in f.Members) members.Add(new Dictionary<string, object> { { "name", p.Name }, { "age", p.Age(f.Today) }, { "rank", Stat.Rank(p.Stats[0]) }, { "g", p.Gender },
+                { "ranks", new List<object> { Stat.Rank(p.Stats[0]), Stat.Rank(p.Stats[1]), Stat.Rank(p.Stats[2]), Stat.Rank(p.Stats[3]) } }, { "hearts", p.Hearts }, { "imm", p.Immersion },
+                { "character", p.Character }, { "planned", p.PlannedTitle }, { "head", p.Id == f.HeadId }, { "job", p.Job } });
             var idle = new Dictionary<string, object> { { "date", GameDate.Format(f.Today) }, { "mood", Family.MoodLevel(f.Mood) }, { "assets", f.Assets }, { "family", f.Name }, { "members", members }, { "text", idleText } };
             s.ForceStart("nova.picnic.001", 1); s.Advance(); s.Advance(); var v = s.View();
             var ch = new List<object>(); foreach (var c in v.Choices) ch.Add(c.Text);
@@ -35,7 +39,8 @@ static class P
             outList.Add(new Dictionary<string, object> {
                 { "w", (int)w }, { "h", (int)h }, { "safeTop", d[2] }, { "safeBottom", d[3] }, { "dp", (double)lay.Dp },
                 { "rects", new Dictionary<string, object> { { "top", R(lay.TopBar) }, { "strip", R(lay.FamilyStrip) }, { "scene", R(lay.Scene) }, { "panel", R(lay.EventPanel) }, { "controls", R(lay.Controls) } } },
-                { "idle", idle }, { "event", ev } });
+                { "idle", idle }, { "event", ev }, { "houseScale", (double)lay.HouseScale }, { "years", f.YearsAsFamily },
+                { "arrows", new List<object> { Interventions.Count(f, "arrow.encourage"), Interventions.Count(f, "arrow.calm") } } });
         }
         Console.WriteLine(MiniJson.Serialize(outList));
         return 0;
