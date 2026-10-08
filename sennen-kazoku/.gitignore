@@ -7,3 +7,7 @@
 /local/
 bin/
 obj/
+# 에뮬레이터 캡처·추출 에셋(원작 그래픽)은 로컬 전용
+/local_capture/
+*.ppm
+*.state
