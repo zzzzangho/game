@@ -97,6 +97,18 @@ namespace SennenKazoku.Tests
                 T.True(!Rules.Eval(MiniJson.Parse("{\"op\":\"cmp\",\"l\":\"spouse.age\",\"cmp\":\">\",\"r\":1}"), cx));
             });
 
+            T.Run("관계 판정(추정 코드 15/28/16/18) 및 검증", () => {
+                var f = NewGame.Create(1); var tar = f.Members[0]; var kid = f.Members[2];
+                T.True(Relations.Has(f, tar, "spouse")); T.True(!Relations.Has(f, kid, "spouse"));
+                T.True(!Relations.Has(f, tar, "child_spouse")); T.True(!Relations.Has(f, tar, "grandchild"));
+                kid.Flags.Add("lover"); T.True(Relations.Has(f, kid, "lover")); kid.SpouseId = 2; T.True(!Relations.Has(f, kid, "lover"));   // 결혼하면 연인 아님
+                T.True(Relations.Has(f, tar, "child_spouse"));                                   // 자녀(켄지)가 결혼 → 며느리/사위
+                var gk = new Person { Id = 99, Name = "손주", FatherId = kid.Id }; f.Members.Add(gk); T.True(Relations.Has(f, tar, "grandchild"));
+                var cx = new RuleContext { Family = f, Rng = new Rng(1) }; cx.Roles["self"] = tar;
+                T.True(Rules.Eval(MiniJson.Parse("{\"op\":\"relation\",\"name\":\"spouse\"}"), cx));
+                var errs = new List<string>(); Rules.ValidateCondition(MiniJson.Parse("{\"op\":\"relation\",\"name\":\"sibling\"}"), "x", errs); T.True(errs.Count == 1);
+            });
+
             Console.WriteLine("[세션/이벤트]");
             T.Run("신규 이벤트 진행: 페이지 → 선택 → 결과 → 효과·기록", () => {
                 var cat = Cat(Bundled()); var f = NewGame.Create(7); var s = new GameSession(f, cat);

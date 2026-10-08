@@ -21,7 +21,7 @@ STAT_KEYS = {"person_s0_a0": "self.int", "person_s0_a1": "self.stamina", "person
 LABELS = {"이벤트 발생 본인의 지력": "self.int", "이벤트 발생 본인의 체력": "self.stamina", "이벤트 발생 본인의 매력": "self.charm",
           "이벤트 발생 본인의 운": "self.luck", "이벤트 발생 본인의 하트": "self.hearts", "이벤트 발생 본인의 직업 숙련도": "self.mastery",
           "이벤트 발생 본인의 연령": "self.age", "이벤트 발생 본인의 성별 코드": "self.gender", "이벤트 발생 본인의 직업 코드": "self.job",
-          "가족 무드": "family.mood", "가족 자산": "family.assets", "주택 등급": "family.house"}
+          "가족 무드": "family.mood", "현재 연도": "date.year", "가족 자산": "family.assets", "주택 등급": "family.house"}
 # 나이 경계는 임시값(원작의 분류 경계는 미해명). '유아: 1~3세'처럼 명시된 것은 그 값을 쓴다.
 STAGES = {"유아": (1, 3), "아동": (4, 6), "초등": (7, 12), "중등": (13, 15), "청년": (16, 24), "젊은이": (25, 39), "중년": (40, 59), "노년": (60, 120)}
 
@@ -77,28 +77,64 @@ def tree_to_cond(t):
 
 ATOM_RAND = re.compile(r"^난수 확률 (\d+)/(\d+)$")
 ATOM_CMP = re.compile(r"^(.+?) (<=|>=|==|!=|<|>) \(?(\d+)\)?$")
+ATOM_CODE = re.compile(r"^이벤트 발생 본인의 관계/상태 코드 (\d+)( 아님)?$")
+ATOM_SLOT15 = re.compile(r"^인물 슬롯 15의 유효 상태( 아님)?$")
+# 관계/상태 코드 → 관계 (의미 추정, docs/06_관계상태코드_추정.md). 근거가 약한 코드(1~10,20~22,27 등)는 일부러 제외한다.
+CODE_REL = {15: "spouse", 28: "lover", 16: "child_spouse", 18: "grandchild"}
+USED = {"relation": False}
+
+
+def split_top(s, word):
+    """괄호 깊이 0 에서 ' word ' 로 분리."""
+    parts, depth, cur, i = [], 0, "", 0
+    tok = " " + word + " "
+    while i < len(s):
+        ch = s[i]
+        if ch == "(": depth += 1
+        elif ch == ")": depth -= 1
+        if depth == 0 and s.startswith(tok, i):
+            parts.append(cur); cur = ""; i += len(tok); continue
+        cur += ch; i += 1
+    parts.append(cur)
+    return parts
+
+
+def strip_parens(s):
+    s = s.strip()
+    while s.startswith("(") and s.endswith(")"):
+        depth = 0
+        for i, ch in enumerate(s):
+            depth += ch == "("; depth -= ch == ")"
+            if depth == 0 and i < len(s) - 1: return s
+        s = s[1:-1].strip()
+    return s
 
 
 def text_to_cond(s):
-    """트리가 없는 결과: 'A 그리고 B' 로 이어진 단순 원자 조건만 허용."""
-    if "또는" in s:
-        raise Unmodeled("or-text")
-    atoms = []
-    for part in s.split(" 그리고 "):
-        part = part.strip()
-        while part.startswith("(") and part.endswith(")") and part.count("(") == part.count(")") and ")(" not in part:
-            inner = part[1:-1]
-            if inner.count("(") != inner.count(")"):
-                break
-            part = inner.strip()
-        m = ATOM_RAND.match(part)
-        if m:
-            atoms.append({"op": "chance", "num": int(m.group(1)), "den": int(m.group(2))}); continue
-        m = ATOM_CMP.match(part)
-        if m and m.group(1).strip("() ") in LABELS:
-            atoms.append(cmp_(LABELS[m.group(1).strip("() ")], m.group(2), int(m.group(3)))); continue
-        raise Unmodeled("atom " + part[:40])
-    return atoms[0] if len(atoms) == 1 else {"op": "and", "args": atoms}
+    """한국어 조건문 → 조건 JSON. 괄호 밖 '또는' 으로 먼저 나누고, 다음 '그리고' 로 나눈다(그리고가 더 강하게 결합)."""
+    s = strip_parens(s)
+    ors = split_top(s, "또는")
+    if len(ors) > 1: return {"op": "or", "args": [text_to_cond(x) for x in ors]}
+    ands = split_top(s, "그리고")
+    if len(ands) > 1: return {"op": "and", "args": [text_to_cond(x) for x in ands]}
+    m = ATOM_RAND.match(s)
+    if m: return {"op": "chance", "num": int(m.group(1)), "den": int(m.group(2))}
+    m = ATOM_CODE.match(s)
+    if m:
+        code = int(m.group(1))
+        if code not in CODE_REL: raise Unmodeled("code %d" % code)
+        USED["relation"] = True
+        c = {"op": "relation", "name": CODE_REL[code]}
+        return {"op": "not", "arg": c} if m.group(2) else c
+    m = ATOM_SLOT15.match(s)
+    if m:
+        USED["relation"] = True
+        c = {"op": "relation", "name": "spouse"}
+        return c if not m.group(1) else {"op": "not", "arg": c}
+    m = ATOM_CMP.match(s)
+    if m and strip_parens(m.group(1)) in LABELS:
+        return cmp_(LABELS[strip_parens(m.group(1))], m.group(2), int(m.group(3)))
+    raise Unmodeled("atom " + s[:40])
 
 
 EFF = re.compile(r"^(이벤트 대상의|가족) ?(.*?) (조금 )?(상승|하락)\(기본([+-]\d+)\)")
@@ -187,8 +223,8 @@ def main():
             evs = []
             for oid in order:
                 o = byid[oid]
-                if o["occurrence_conditions"] != ["상위 추가 조건 없음"]:
-                    raise Unmodeled("상위 조건")
+                occ = [x for x in o["occurrence_conditions"] if x != "상위 추가 조건 없음"]
+                occ_cond = [text_to_cond(x) for x in occ]
                 sa = o["selection_analysis"]
                 if sa.get("unresolved_internal_checks"):
                     raise Unmodeled("미해명 내부 판정")
@@ -199,6 +235,8 @@ def main():
                     if not extra: cond = {"op": "always"}
                     elif len(extra) == 1: cond = text_to_cond(extra[0])
                     else: raise Unmodeled("복수 변형 조건")
+                if occ_cond:
+                    cond = {"op": "and", "args": occ_cond + ([cond] if cond != {"op": "always"} else [])}
                 effects, skipped = parse_effects(o["effects"])
                 ev = {"id": oid, "version": 1, "origin": "original", "certainty": "confirmed" if not skipped else "estimated",
                       "textSource": "original-translation" if with_text and oid in scripts else "placeholder", "sourceRef": oid,
@@ -214,7 +252,7 @@ def main():
         states.append({"id": s["id"], "title": s["title_ko"] if with_text else s["id"], "minAge": lo, "maxAge": hi, "weight": 10,
                        "delay": [20, 60], "certainty": "estimated", "eligible": elig, "outcomes": order})
     pack = {"format": 1, "packId": "sk.original.local", "version": 1, "title": "원작 규칙 (로컬 생성, 비공개)", "kind": "base", "origin": "original",
-            "minContract": 1, "events": list(events.values()), "plannedStates": states}
+            "minContract": 2 if USED["relation"] else 1, "events": list(events.values()), "plannedStates": states}
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w", encoding="utf8", newline="\n") as f:
         json.dump(pack, f, ensure_ascii=False)

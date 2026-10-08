@@ -7,9 +7,9 @@ namespace SennenKazoku.Core
     public static class Capabilities
     {
         /// <summary>데이터 계약 버전. 새 op/변수를 추가하면 올린다.</summary>
-        public const int Contract = 1;
+        public const int Contract = 2;
         public static readonly HashSet<string> CondOps = new HashSet<string> {
-            "always", "and", "or", "not", "cmp", "chance", "has_skill", "flag", "has_role" };
+            "always", "and", "or", "not", "cmp", "chance", "has_skill", "flag", "has_role", "relation" };
         public static readonly HashSet<string> ExprOps = new HashSet<string> { "add", "sub", "mul", "div" };
         public static readonly HashSet<string> EffectOps = new HashSet<string> {
             "add_stat", "add_hearts", "add_immersion", "add_job_mastery", "set_job", "add_skill", "remove_skill",
@@ -53,8 +53,9 @@ namespace SennenKazoku.Core
                 case "chance":
                     if (J.Int(d, "den") <= 0 || J.Int(d, "num") < 0) errors.Add(path + ": chance num/den 오류"); break;
                 case "has_skill": case "flag": case "has_role": break;
+                case "relation": if (!Relations.Names.Contains(J.Str(d, "name"))) errors.Add(path + ": 알 수 없는 관계 '" + J.Str(d, "name") + "'"); break;
             }
-            if (op == "has_role" || op == "has_skill" || op == "flag")
+            if (op == "has_role" || op == "has_skill" || op == "flag" || op == "relation")
             {
                 string role = J.Str(d, "role", "self");
                 if (!Capabilities.Roles.Contains(role) && !(op == "flag" && J.Str(d, "scope") == "family"))
@@ -124,6 +125,8 @@ namespace SennenKazoku.Core
                     return false;
                 case "chance": return cx.Rng.Chance(J.Int(d, "num"), J.Int(d, "den"));
                 case "has_role": return cx.Roles.ContainsKey(J.Str(d, "role", "self"));
+                case "relation":
+                    Person rp; return cx.Roles.TryGetValue(J.Str(d, "role", "self"), out rp) && Relations.Has(cx.Family, rp, J.Str(d, "name"));
                 case "has_skill":
                     Person p; return cx.Roles.TryGetValue(J.Str(d, "role", "self"), out p) && p.Skills.Contains(J.Int(d, "id"));
                 case "flag":
