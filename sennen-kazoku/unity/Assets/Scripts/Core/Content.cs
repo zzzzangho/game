@@ -116,6 +116,49 @@ namespace SennenKazoku.Core
         }
     }
 
+    /// <summary>맵(사는 곳). 그림은 Art 의 이미지 이름, 방은 x 구간(그림 px)과 용도(kind)로 정의 → 새 맵은 팩 데이터로 추가.</summary>
+    public sealed class MapDef
+    {
+        public static readonly HashSet<string> Kinds = new HashSet<string> { "entrance", "bedroom", "master", "living", "kitchen", "bath", "study", "yard", "outside" };
+        public sealed class Room { public string Id = "", Name = "", Kind = ""; public int X0, X1; }
+        public string Id = "", Name = "", Art = "", PackId = "";
+        public int Width, Height = 160, FloorY = 112; public bool Loops = true;
+        public List<Room> Rooms = new List<Room>();
+
+        public static MapDef Parse(Dictionary<string, object> d)
+        {
+            var m = new MapDef { Id = J.Str(d, "id"), Name = J.Str(d, "name"), Art = J.Str(d, "art"), Width = J.Int(d, "width"), Height = J.Int(d, "height", 160),
+                FloorY = J.Int(d, "floorY", 112), Loops = J.Bool(d, "loops", true) };
+            foreach (var o in J.List(d, "rooms"))
+            {
+                var r = J.Obj(o); var x = J.List(r, "x");
+                m.Rooms.Add(new Room { Id = J.Str(r, "id"), Name = J.Str(r, "name"), Kind = J.Str(r, "kind"),
+                    X0 = x.Count == 2 ? Convert.ToInt32(x[0]) : 0, X1 = x.Count == 2 ? Convert.ToInt32(x[1]) : 0 });
+            }
+            return m;
+        }
+
+        public List<string> Validate()
+        {
+            var e = new List<string>(); string p = "map[" + Id + "]";
+            if (string.IsNullOrEmpty(Id) || string.IsNullOrEmpty(Art)) e.Add(p + ": id/art 필요");
+            if (Width <= 0) e.Add(p + ": width 필요");
+            if (Rooms.Count == 0) e.Add(p + ": 방이 없음");
+            var ids = new HashSet<string>();
+            for (int i = 0; i < Rooms.Count; i++)
+            {
+                var r = Rooms[i];
+                if (!ids.Add(r.Id)) e.Add(p + ": 방 id 중복 " + r.Id);
+                if (!Kinds.Contains(r.Kind)) e.Add(p + ": 알 수 없는 방 용도 '" + r.Kind + "' (앱 업데이트 필요)");
+                if (r.X0 < 0 || r.X1 > Width || r.X1 - r.X0 < 40) e.Add(p + ": 방 " + r.Id + " 범위 오류(폭 40 이상, 맵 안)");
+                for (int k = 0; k < i; k++) if (r.X0 < Rooms[k].X1 && Rooms[k].X0 < r.X1) e.Add(p + ": 방 " + r.Id + " 와 " + Rooms[k].Id + " 겹침");
+            }
+            return e;
+        }
+
+        public Room FirstOfKind(string kind) { foreach (var r in Rooms) if (r.Kind == kind) return r; return null; }
+    }
+
     public sealed class Pack
     {
         public string PackId = "", Title = "", Kind = "expansion", Origin = "new";
@@ -123,6 +166,7 @@ namespace SennenKazoku.Core
         public List<KeyValuePair<string, int>> Requires = new List<KeyValuePair<string, int>>();
         public List<EventDef> Events = new List<EventDef>();
         public List<PlannedStateDef> States = new List<PlannedStateDef>();
+        public List<MapDef> Maps = new List<MapDef>();
         public string Sha256 = "";
         public string RawJson = "";
 
@@ -158,6 +202,10 @@ namespace SennenKazoku.Core
                 if (s.Eligible != null) Rules.ValidateCondition(s.Eligible, "plannedState[" + s.Id + "].eligible", errors);
                 p.States.Add(s);
             }
+            foreach (var o in J.List(d, "maps"))
+            {
+                var m = MapDef.Parse(J.Obj(o)); m.PackId = p.PackId; errors.AddRange(m.Validate()); p.Maps.Add(m);
+            }
             return errors.Count == 0 ? p : null;
         }
 
@@ -178,6 +226,7 @@ namespace SennenKazoku.Core
     {
         public readonly Dictionary<string, EventDef> Events = new Dictionary<string, EventDef>();
         public readonly Dictionary<string, PlannedStateDef> States = new Dictionary<string, PlannedStateDef>();
+        public readonly Dictionary<string, MapDef> Maps = new Dictionary<string, MapDef>();
         public readonly List<Pack> Packs = new List<Pack>();
 
         /// <summary>팩 집합 전체의 교차 검증(id 중복, 참조, 의존). 오류가 있으면 null.</summary>
@@ -202,6 +251,10 @@ namespace SennenKazoku.Core
                 {
                     if (c.Events.ContainsKey(e.Id)) errors.Add("이벤트 id 충돌: " + e.Id + " (" + c.Events[e.Id].PackId + " / " + p.PackId + ")");
                     else c.Events[e.Id] = e;
+                }
+                foreach (var m in p.Maps)
+                {
+                    if (c.Maps.ContainsKey(m.Id)) errors.Add("맵 id 충돌: " + m.Id); else c.Maps[m.Id] = m;
                 }
                 foreach (var s in p.States)
                 {

@@ -297,6 +297,15 @@ namespace SennenKazoku.Tests
                 T.True(f.Members[0].PlannedStateId != "planned-X", "카탈로그에 없는 원작 예정 상태는 기한 뒤 해제");
             });
 
+            T.Run("맵은 팩 데이터: 방 정의 검증(용도·겹침·범위)", () => {
+                string Map(string rooms) { return "{\"format\":1,\"packId\":\"t.maps\",\"version\":1,\"maps\":[{\"id\":\"house\",\"name\":\"집\",\"art\":\"house_day\",\"width\":960,\"rooms\":[" + rooms + "]}]}"; }
+                var ok = new List<string>(); var p = Pack.Load(Map("{\"id\":\"a\",\"kind\":\"bedroom\",\"x\":[0,100]},{\"id\":\"b\",\"kind\":\"living\",\"x\":[100,200]}"), ok);
+                T.True(p != null, string.Join("|", ok)); var c = Cat(new List<Pack> { p }); T.True(c.Maps["house"].FirstOfKind("living") != null);
+                var e1 = new List<string>(); T.True(Pack.Load(Map("{\"id\":\"a\",\"kind\":\"spaceship\",\"x\":[0,100]}"), e1) == null); T.True(e1.Exists(x => x.Contains("spaceship")));
+                var e2 = new List<string>(); T.True(Pack.Load(Map("{\"id\":\"a\",\"kind\":\"bedroom\",\"x\":[0,100]},{\"id\":\"b\",\"kind\":\"living\",\"x\":[90,200]}"), e2) == null); T.True(e2.Exists(x => x.Contains("겹침")));
+                var e3 = new List<string>(); T.True(Pack.Load(Map("{\"id\":\"a\",\"kind\":\"bedroom\",\"x\":[900,1000]}"), e3) == null);
+            });
+
             Console.WriteLine("[화면 비율]");
             T.Run("세로 비율별 레이아웃 (16:9 ~ 9:21, 소형·대형, 노치 안전영역)", () => {
                 var cases = new[] { // w,h px, dpi, 안전영역 inset(top,bottom)
