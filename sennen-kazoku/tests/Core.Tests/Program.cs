@@ -35,6 +35,63 @@ namespace SennenKazoku.Tests
             if (p == null) throw new Exception("팩 로드 실패: " + string.Join("; ", e));
             return p;
         }
+        /// <summary>tools/romlift/make_vectors.py 가 원작 ROM 을 실제 RAM 덤프 위에서 돌린 결과와 C# 이식을 비교한다.</summary>
+        static void OrigVectors(string dir)
+        {
+            var rules = SennenKazoku.Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "orig_rules.json")))));
+            var vec = J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "vectors.json"))));
+            var shared = new SennenKazoku.Core.Orig.OrigMem();
+            var vm0 = rules.CreateVm(shared);
+            var rams = new Dictionary<string, byte[]>();
+            byte[] Ram(string n) { if (!rams.TryGetValue(n, out var b)) rams[n] = b = File.ReadAllBytes(Path.Combine(dir, n)); return b; }
+            SennenKazoku.Core.Orig.OrigMem Fresh(string n)
+            {
+                var m = new SennenKazoku.Core.Orig.OrigMem(); m.ShareRom(shared);
+                Array.Copy(Ram(n), m.Ewram, SennenKazoku.Core.Orig.OrigMem.EwramSize); return m;
+            }
+            int same = 0, total = 0, unm = 0;
+            foreach (var o in J.List(vec, "preds"))
+            {
+                var d = J.Obj(o); var mem = Fresh(J.Str(d, "ram"));
+                SennenKazoku.Core.Orig.OrigFamily.BuildSlots(mem, (uint)J.Int(d, "id"));
+                var vm = rules.CreateVm(mem);
+                var centered = (byte[])mem.Ewram.Clone();
+                var preds = J.List(d, "preds"); var exp = J.List(d, "expect");
+                for (int i = 0; i < preds.Count; i++)
+                {
+                    if (exp[i] == null) continue;
+                    Array.Copy(centered, mem.Ewram, centered.Length);
+                    total++;
+                    try { if (vm.Call((string)preds[i]) == (uint)Convert.ToInt64(exp[i])) same++; }
+                    catch (SennenKazoku.Core.Orig.OrigUnmodeled) { unm++; }
+                }
+            }
+            Console.WriteLine("       판정 함수 " + total + "건 중 원작과 같음 " + same + " (옮기지 못함 " + unm + ")");
+            T.Eq(same, total, "판정 함수 결과가 원작과 다름");
+            int sOk = 0, sN = 0;
+            foreach (var o in J.List(vec, "select"))
+            {
+                var d = J.Obj(o); if (d.ContainsKey("error")) continue;
+                var mem = Fresh(J.Str(d, "ram")); var vm = rules.CreateVm(mem);
+                int n = J.Int(d, "person"); uint p = SennenKazoku.Core.Orig.OrigMem.PersonAddr(n);
+                SennenKazoku.Core.Orig.OrigFamily.BuildSlots(mem, mem.R16(p + 0x3C));
+                mem.W32(SennenKazoku.Core.Orig.OrigMem.Seed, (uint)J.Long(d, "seed"));
+                var before = (byte[])mem.Ewram.Clone();
+                new SennenKazoku.Core.Orig.OrigSelect(mem, vm, rules).Select(p, (uint)J.Int(d, "era"), (uint)J.Int(d, "stage"));
+                var want = new Dictionary<int, byte>();
+                foreach (var w in J.List(d, "writes")) { var l = (List<object>)w; want[(int)(Convert.ToInt64(l[0]) - 0x02000000)] = (byte)Convert.ToInt32(l[1]); }
+                bool ok = true;
+                for (int i = 0; i < before.Length && ok; i++)
+                {
+                    byte expect = want.TryGetValue(i, out var b) ? b : before[i];
+                    if (mem.Ewram[i] != expect) { ok = false; Console.WriteLine("       선택 불일치 " + J.Str(d, "ram") + " 인물" + n + " seed " + J.Long(d, "seed") + " @" + (0x02000000 + i).ToString("X8")); }
+                }
+                sN++; if (ok) sOk++;
+            }
+            Console.WriteLine("       관심사 선택 " + sN + "건 중 원작과 메모리 변화가 같음 " + sOk);
+            T.Eq(sOk, sN, "관심사 선택 결과가 원작과 다름");
+        }
+
         static List<Pack> Bundled() { return new List<Pack> { LoadPack(Read("sk.sample")), LoadPack(Read("nova.pack001")) }; }
         static ContentCatalog Cat(List<Pack> b) { var e = new List<string>(); var c = ContentCatalog.Build(b, e); if (c == null) throw new Exception(string.Join("; ", e)); return c; }
 
@@ -479,6 +536,10 @@ namespace SennenKazoku.Tests
                     T.True(total > 0, "갤러리 캡처 없음");
                     Console.WriteLine("       갤러리 " + total + "명 중 원작과 픽셀 완전 일치 " + exact + "명");
                 });
+
+            var origDir = Environment.GetEnvironmentVariable("SK_ORIG_DIR");
+            if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "vectors.json")))
+                T.Run("원작 규칙 재현: 판정 트리·관계 슬롯·관심사 선택 = 원작 ROM 실행 결과 (로컬 자료 있을 때만)", () => OrigVectors(origDir));
 
             Console.WriteLine("\n통과 " + T.Pass + " / 실패 " + T.Fail);
             return T.Fail == 0 ? 0 : 1;

@@ -56,6 +56,11 @@ int main(int argc, char** argv) {
             fclose(f); printf("shot %s @%ld\n", arg, frame);
         } else if (!strcmp(cmd, "layer") && sscanf(line, "%*s %d %i", &n, &keys) == 2) {   /* layer <0-3 BG, 4 OBJ> <0|1> */
             c->enableVideoLayer(c, n, keys != 0);
+        } else if (!strcmp(cmd, "ramdump") && sscanf(line, "%*s %199s", arg) == 1) {       /* EWRAM(256K)+IWRAM(32K) 덤프 */
+            char p[512]; snprintf(p, sizeof p, "%s/%s.ram", argv[2], arg); FILE* f = fopen(p, "wb");
+            for (unsigned a = 0x02000000; a < 0x02040000; a++) fputc(c->busRead8(c, a), f);
+            for (unsigned a = 0x03000000; a < 0x03008000; a++) fputc(c->busRead8(c, a), f);
+            fclose(f); printf("ramdump %s @%ld\n", arg, frame);
         } else if (!strcmp(cmd, "dump") && sscanf(line, "%*s %199s", arg) == 1) {          /* VRAM·팔레트·OAM·IO 원시 덤프 */
             char p[512]; snprintf(p, sizeof p, "%s/%s.mem", argv[2], arg); FILE* f = fopen(p, "wb");
             for (unsigned a = 0x05000000; a < 0x05000400; a++) fputc(c->busRead8(c, a), f);
