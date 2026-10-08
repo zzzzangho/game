@@ -17,11 +17,15 @@ namespace SennenKazoku.Game
         readonly Dictionary<string, Sprite> cache = new Dictionary<string, Sprite>();
         readonly Dictionary<string, Texture2D> texCache = new Dictionary<string, Texture2D>();
         public readonly List<int[]> Rooms = new List<int[]>();
+        public PartsLibrary Parts = new PartsLibrary();                  // 원작 캐릭터 파트 (LocalArt/parts.json + parts.bin.bytes)
+        readonly Dictionary<string, Sprite> lookCache = new Dictionary<string, Sprite>();
         public int HouseWidth = 960, HouseHeight = 160, FloorY = 112;
 
         public static ArtLibrary Load()
         {
             var a = new ArtLibrary();
+            var pj = Resources.Load<TextAsset>("LocalArt/parts"); var pb = Resources.Load<TextAsset>("LocalArt/parts.bin");
+            if (pj != null && pb != null) a.Parts = PartsLibrary.Load(pj.text, pb.bytes);
             var mt = Resources.Load<TextAsset>("LocalArt/manifest");
             if (mt == null) return a;
             a.Manifest = J.Obj(MiniJson.Parse(mt.text));
@@ -90,6 +94,30 @@ namespace SennenKazoku.Game
             var c = Character(charId); if (c == null) return null;
             var l = J.List(c, set); if (l.Count == 0) l = J.List(c, "front"); if (l.Count == 0) return null;
             return Sprite((string)l[((i % l.Count) + l.Count) % l.Count]);
+        }
+
+        /// <summary>원작 파트 조합 그림 (발 아래 중앙 기준 32x64). 파트 자료가 없으면 null.</summary>
+        public Sprite LookSprite(CharacterLook look, int age = CharacterComposer.AdultAge)
+        {
+            if (look == null || !Parts.Available) return null;
+            var key = MiniJson.Serialize(look.ToJson()) + "|" + age;
+            Sprite s;
+            if (lookCache.TryGetValue(key, out s)) return s;
+            var idx = CharacterComposer.Compose(Parts, look, age); var pal = Parts.Palette(look);
+            int W = CharacterComposer.Width, H = CharacterComposer.Height;
+            var t = new Texture2D(W, H, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            var px = new Color32[W * H];
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    int v = idx[y * W + x], c = pal[v];
+                    px[(H - 1 - y) * W + x] = v == 0 ? new Color32(0, 0, 0, 0)
+                        : new Color32((byte)((c & 31) * 255 / 31), (byte)(((c >> 5) & 31) * 255 / 31), (byte)(((c >> 10) & 31) * 255 / 31), 255);
+                }
+            t.SetPixels32(px); t.Apply();
+            s = UnityEngine.Sprite.Create(t, new Rect(0, 0, W, H), new Vector2(0.5f, 0f), 1f);
+            lookCache[key] = s;
+            return s;
         }
 
         public Sprite Portrait(string charId) { var c = Character(charId); return c == null ? null : Sprite(J.Str(c, "portrait")); }

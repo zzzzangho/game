@@ -233,10 +233,112 @@ namespace SennenKazoku.Game
 
         void StartNew()
         {
+            if (!art.Parts.Available) { BeginNew(false); return; }
+            // 원작 도입부의 신님 질문 (원작 문구 확인됨: docs/07)
+            playing = false;
+            var body = Window("신님", 300); float w = BodyW(body);
+            var q = UiKit.Label(body, "q", "내가 아는 가족을 지켜봐 주지 않겠느냐?", Px(16), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.SetPx(q.rectTransform, 0, 0, w, Px(60));
+            var a = UiKit.Btn(body, "yes", "네, 알겠습니다!", Px(16), new Color32(0xE8, 0x70, 0x40, 255), Color.white, () => BeginNew(false));
+            UiKit.SetPx(a.GetComponent<RectTransform>(), 0, Px(70), w, Px(52));
+            var b = UiKit.Btn(body, "no", "어… 잠깐만요… (내가 아는 가족)", Px(16), new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => BeginNew(true));
+            UiKit.SetPx(b.GetComponent<RectTransform>(), 0, Px(132), w, Px(52));
+        }
+
+        /// <summary>
+        /// 새 가족. custom=false: 신님이 아는 가족 — 구성원 외형을 원작 갤러리 프리셋에서 고른다(원작의 선택 규칙은 미해명, 임시).
+        /// custom=true: 내가 아는 가족 — 구성원마다 원작 순서(체형 → 캐릭터 → 색)로 외형을 고른다.
+        /// 미구현: 가족 구성·이름·생일·혈액형·성격·능력 순위·직업 입력(현재는 시작 가족 구성을 그대로 쓴다).
+        /// </summary>
+        void BeginNew(bool custom)
+        {
             ulong seed = (ulong)DateTime.UtcNow.Ticks;
             var f = art.StartFamily != null ? NewGame.FromOriginal(art.StartFamily, seed) : NewGame.Create(seed);
-            session = new GameSession(f, catalog); EnterGame();
-            Toast(art.StartFamily != null ? "원작 시작 가족으로 시작합니다" : "새 가족이 시작되었습니다");
+            session = new GameSession(f, catalog);
+            if (art.Parts.Available) foreach (var p in f.Members) p.Look = DefaultLook(p);
+            if (!custom) { EnterGame(); Toast(art.StartFamily != null ? "원작 시작 가족으로 시작합니다" : "새 가족이 시작되었습니다"); return; }
+            EditLooks(0);
+        }
+
+        void EditLooks(int i)
+        {
+            var ms = session.Family.Members;
+            if (i >= ms.Count) { EnterGame(); Toast("가족 구성 완료"); return; }
+            OpenLookEditor(ms[i], () => EditLooks(i + 1));
+        }
+
+        // ---- 캐릭터 선택 (원작 '내가 아는 가족' 순서: 체형 → 캐릭터 목록 → 색상 변경 → 이걸로 OK!) ----
+        static readonly string[] BuildNames = { "얇은", "보통", "굵은" };
+        int lookPage;
+
+        string RoleOf(Person p)
+        {
+            int age = p.Age(session.Family.Today);
+            return p.Gender == 0 ? (age >= 25 ? "father" : "son18") : "mother";
+        }
+
+        void OpenLookEditor(Person p, Action done)
+        {
+            if (p.Look == null) p.Look = DefaultLook(p);
+            var L = p.Look; var lib = art.Parts;
+            var body = Window(p.Name + " — 캐릭터 선택", 640); float w = BodyW(body), h = BodyH(body);
+            // 미리보기
+            var fig = UiKit.Box(body, "fig", Color.white, art.LookSprite(L) ?? UiKit.Circle); fig.preserveAspect = true;
+            UiKit.SetPx(fig.rectTransform, 0, 0, Px(84), Px(150));
+            float x = Px(92), cw = w - x, y = 0, rh = Px(40);
+            Action redraw = () => OpenLookEditor(p, done);
+            // ① 체형 (몸통 묶음 대응은 추정)
+            int g = CharacterComposer.GenderOf(L), bd = CharacterComposer.BuildOf(L), of = CharacterComposer.OutfitOf(L);
+            for (int k = 0; k < 3; k++)
+            {
+                int kk = k;
+                var b = UiKit.Btn(body, "bd" + k, BuildNames[k], Px(14), bd == k ? new Color32(0xE8, 0x70, 0x40, 255) : new Color32(0x3A, 0x6E, 0xC8, 255), Color.white,
+                    () => { CharacterComposer.SetBody(L, g, kk, of); redraw(); });
+                UiKit.SetPx(b.GetComponent<RectTransform>(), x + k * cw / 3f, y, cw / 3f - Px(4), rh - Px(4));
+            }
+            y += rh;
+            // ③ 색상 변경
+            Stepper(body, "머리색", L.HairColor < 0 ? "원래" : (L.HairColor + 1) + "/" + lib.HairColors.Count, x, y, cw, rh, d => { L.HairColor = Wrap(L.HairColor + d, lib.HairColors.Count); redraw(); }); y += rh;
+            Stepper(body, "피부색", L.SkinColor < 0 ? "원래" : (L.SkinColor + 1) + "/" + lib.SkinColors.Count, x, y, cw, rh, d => { L.SkinColor = Wrap(L.SkinColor + d, lib.SkinColors.Count); redraw(); }); y += rh;
+            Stepper(body, "의상", (of + 1) + "/4", 0, Px(156), w, rh, d => { CharacterComposer.SetBody(L, g, bd, of + d); redraw(); });
+            Stepper(body, "의상색", L.OutfitColor < 0 ? "원래" : (L.OutfitColor + 1) + "/4", 0, Px(156) + rh, w, rh, d => { L.OutfitColor = Wrap(L.OutfitColor + d, 4); redraw(); });
+            // ② 캐릭터 목록 (원작 갤러리 프리셋, 12개씩 쪽 넘김)
+            var ids = CharacterComposer.PresetIds(lib, RoleOf(p));
+            float gy = Px(156) + 2 * rh + Px(6);
+            int pages = Mathf.Max(1, (ids.Count + 11) / 12); lookPage = Mathf.Clamp(lookPage, 0, pages - 1);
+            float cell = Mathf.Min(w / 6f, (h - gy - Px(100)) / 2f);
+            for (int k = 0; k < 12; k++)
+            {
+                int n = lookPage * 12 + k; if (n >= ids.Count) break;
+                var look = L.Clone(); CharacterComposer.ApplyPreset(lib, look, ids[n]);
+                string id = ids[n];
+                var bg = UiKit.Box(body, "c" + k, L.Preset == id ? new Color32(0xFF, 0xE0, 0x90, 255) : new Color32(0xE4, 0xEC, 0xFF, 255)); bg.raycastTarget = true;
+                UiKit.SetPx(bg.rectTransform, (k % 6) * cell, gy + (k / 6) * cell, cell - Px(3), cell - Px(3));
+                var im = UiKit.Box(bg.transform, "i", Color.white, art.LookSprite(look)); im.preserveAspect = true; UiKit.Stretch(im.rectTransform, 0, 0, 0, 0);
+                bg.gameObject.AddComponent<Button>().onClick.AddListener(() => { CharacterComposer.ApplyPreset(lib, L, id); redraw(); });
+            }
+            float py = gy + 2 * cell + Px(4);
+            Stepper(body, "캐릭터 목록", (lookPage + 1) + " / " + pages + "쪽", 0, py, w, rh, d => { lookPage = Wrap(lookPage + d, pages); redraw(); });
+            // 원작에 없는 추가 기능: 무작위 원작 파트 조합
+            var rnd = UiKit.Btn(body, "rnd", "무작위 조합 (원작 파트 · 추가 기능)", Px(14), new Color32(0x10, 0x4E, 0x6E, 255), Color.white, () => {
+                var r = CharacterComposer.Random(lib, new Rng((ulong)DateTime.UtcNow.Ticks), g); p.Look = r; redraw(); });
+            UiKit.SetPx(rnd.GetComponent<RectTransform>(), 0, py + rh + Px(4), w * 0.5f - Px(4), rh);
+            var ok = UiKit.Btn(body, "ok", "이걸로 OK!", Px(16), new Color32(0xE8, 0x70, 0x40, 255), Color.white, () => { ClearPopup(); RebuildActorsIfPlaying(); done?.Invoke(); });
+            UiKit.SetPx(ok.GetComponent<RectTransform>(), w * 0.5f, py + rh + Px(4), w * 0.5f, rh);
+        }
+
+        void RebuildActorsIfPlaying() { if (playing) { RebuildActors(); RefreshAll(); } }
+
+        static int Wrap(int v, int n) { return n <= 0 ? 0 : ((v % n) + n) % n; }
+
+        void Stepper(RectTransform body, string label, string value, float x, float y, float w, float h, Action<int> step)
+        {
+            var l = UiKit.Label(body, "l" + label, label, Px(14), UiKit.Ink, TextAnchor.MiddleLeft, FontStyle.Bold); UiKit.SetPx(l.rectTransform, x, y, w * 0.34f, h);
+            var a = UiKit.Btn(body, "a" + label, "◀", Px(14), new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => step(-1));
+            UiKit.SetPx(a.GetComponent<RectTransform>(), x + w * 0.34f, y + Px(2), h - Px(4), h - Px(4));
+            var v = UiKit.Label(body, "v" + label, value, Px(14), UiKit.Ink, TextAnchor.MiddleCenter); UiKit.SetPx(v.rectTransform, x + w * 0.34f + h, y, w * 0.66f - 2 * h, h);
+            var b = UiKit.Btn(body, "b" + label, "▶", Px(14), new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => step(1));
+            UiKit.SetPx(b.GetComponent<RectTransform>(), x + w - h + Px(4), y + Px(2), h - Px(4), h - Px(4));
         }
 
         void LoadSlot(string slot)
@@ -289,9 +391,10 @@ namespace SennenKazoku.Game
             foreach (var p in session.Family.Members)
             {
                 if (!p.Alive) continue;
-                if (string.IsNullOrEmpty(p.Character) && ids.Count > 0) p.Character = ids[k++ % ids.Count];
+                if (p.Look == null && art.Parts.Available) p.Look = DefaultLook(p);
+                if (p.Look == null && string.IsNullOrEmpty(p.Character) && ids.Count > 0) p.Character = ids[k++ % ids.Count];
                 var room = Rooms()[HomeRoom(p)];
-                var img = UiKit.Box(figures, "p" + p.Id, Color.white, art.Frame(p.Character, "front", 0));
+                var img = UiKit.Box(figures, "p" + p.Id, Color.white, Figure(p, false, 0));
                 img.raycastTarget = true; img.preserveAspect = true;
                 if (img.sprite == null) { img.sprite = UiKit.Circle; img.color = p.Gender == 0 ? new Color32(0x5B, 0x8F, 0xC9, 255) : new Color32(0xD9, 0x6A, 0x8A, 255); }
                 int pid = p.Id;
@@ -300,6 +403,24 @@ namespace SennenKazoku.Game
                 float x = UnityEngine.Random.Range(room[0] + 4, room[1] - 36);
                 actors[p.Id] = new Actor { Id = p.Id, X = x, Target = x, Rt = img.rectTransform, Img = img, NextMove = Time.time + UnityEngine.Random.Range(2f, 6f), Bubble = bub };
             }
+        }
+
+        /// <summary>인물 그림: 원작 파트 조합(있으면) → 캡처 프레임 → null. 파트 조합의 걸음·뒷모습 프레임은 아직 없다(정면 고정).</summary>
+        Sprite Figure(Person p, bool back, int frame)
+        {
+            var s = art.LookSprite(p.Look);
+            return s ?? art.Frame(p.Character, back ? "back" : "front", frame);
+        }
+
+        /// <summary>
+        /// 외형이 없는 인물에게 원작 갤러리 프리셋을 준다(성인 남 → 아빠 목록, 성인 여 → 엄마 목록, 그 밖 → 아들 18세 목록/엄마 목록).
+        /// 임시 규칙: 원작이 "신님이 아는 가족"에서 외형을 고르는 방식은 미해명. 인물 id 로 고정된 난수라 다시 열어도 같다.
+        /// </summary>
+        CharacterLook DefaultLook(Person p)
+        {
+            ulong h = 1469598103934665603UL; foreach (var ch in session.Family.Name) h = (h ^ ch) * 1099511628211UL;   // 실행마다 같은 해시
+            var rng = new Rng(h ^ (ulong)(p.Id * 2654435761L));
+            return CharacterComposer.FromPreset(art.Parts, rng, RoleOf(p), p.Gender);
         }
 
         void UpdateActors()
@@ -320,7 +441,7 @@ namespace SennenKazoku.Game
                 float d = a.Target - a.X; bool moving = Mathf.Abs(d) > 0.5f;
                 if (moving) a.X += Mathf.Sign(d) * Mathf.Min(Mathf.Abs(d), 18f * Time.deltaTime);
                 a.Anim += Time.deltaTime;
-                var spr = art.Frame(p.Character, moving && d < 0 ? "back" : "front", moving ? (int)(a.Anim * 4) : 0);
+                var spr = Figure(p, moving && d < 0, moving ? (int)(a.Anim * 4) : 0);
                 if (spr != null) a.Img.sprite = spr;
                 float dx = Mod(a.X - scrollX, W); if (dx > viewW + 32) dx -= W;
                 UiKit.SetPx(a.Rt, dx * hs, floorTop * hs, 32 * hs, 64 * hs);
@@ -391,7 +512,7 @@ namespace SennenKazoku.Game
         void RefreshBar()
         {
             var p = Sel(); if (p == null) return;
-            var por = art.Portrait(p.Character);
+            var por = art.LookSprite(p.Look) ?? art.Portrait(p.Character);
             barPortrait.sprite = por ?? UiKit.Circle; barPortrait.color = por != null ? Color.white : (p.Gender == 0 ? new Color32(0x5B, 0x8F, 0xC9, 255) : new Color32(0xD9, 0x6A, 0x8A, 255));
             barName.text = p.Name;
             for (int i = 0; i < 3; i++)
@@ -479,7 +600,7 @@ namespace SennenKazoku.Game
         {
             if (p == null) return;
             var f = session.Family; var body = Window(p.Name + (p.Id == f.HeadId ? "  👑" : ""), 560); float w = BodyW(body);
-            var fig = UiKit.Box(body, "fig", Color.white, art.Frame(p.Character, "front", 0) ?? UiKit.Circle); fig.preserveAspect = true;
+            var fig = UiKit.Box(body, "fig", Color.white, Figure(p, false, 0) ?? UiKit.Circle); fig.preserveAspect = true;
             UiKit.SetPx(fig.rectTransform, 0, 0, Px(96), Px(150));
             var age = UiKit.Label(body, "age", p.Age(f.Today) + "세", Px(16), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold); UiKit.SetPx(age.rectTransform, 0, Px(150), Px(96), Px(24));
             float x = Px(106), cw = w - x;

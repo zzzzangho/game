@@ -98,6 +98,7 @@ namespace SennenKazoku.Core
         public int ArrowUntil = -1;
         public string Character = "";      // 그래픽 id (LocalArt manifest)
         public string PlannedTitle = "";   // 카탈로그에 없는 원작 예정 상태의 표시용 제목
+        public CharacterLook Look;          // 원작 파트 조합 외형 (null = 아직 정하지 않음)
 
         public int Age(int today) { return GameDate.AgeYears(BirthDay, today); }
         public void AddStat(int i, int v) { Stats[i] = Math.Max(0, Math.Min(Stat.Max, Stats[i] + v)); }
@@ -113,7 +114,8 @@ namespace SennenKazoku.Core
                 {"spouse", SpouseId}, {"father", FatherId}, {"mother", MotherId},
                 {"planned", PlannedStateId}, {"plannedDue", PlannedDue}, {"alive", Alive},
                 {"flags", new List<object>(new List<string>(Flags).ConvertAll(x => (object)x))},
-                {"dream", Dream}, {"arrow", ArrowId}, {"arrowUntil", ArrowUntil}, {"character", Character}, {"plannedTitle", PlannedTitle}
+                {"dream", Dream}, {"arrow", ArrowId}, {"arrowUntil", ArrowUntil}, {"character", Character}, {"plannedTitle", PlannedTitle},
+                {"look", Look == null ? null : Look.ToJson()}
             };
         }
         public static Person FromJson(Dictionary<string, object> d)
@@ -130,6 +132,7 @@ namespace SennenKazoku.Core
             foreach (var f in J.List(d, "flags")) p.Flags.Add((string)f);
             p.Dream = J.Str(d, "dream"); p.ArrowId = J.Str(d, "arrow"); p.ArrowUntil = J.Int(d, "arrowUntil", -1);
             p.Character = J.Str(d, "character"); p.PlannedTitle = J.Str(d, "plannedTitle");
+            p.Look = CharacterLook.FromJson(J.Child(d, "look"));
             return p;
         }
     }

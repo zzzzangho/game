@@ -325,6 +325,66 @@ namespace SennenKazoku.Tests
                 }
             });
 
+            T.Run("캐릭터 조합 규칙: 목·얼굴 기준점 배치, 좌우반전, 그리는 순서 (합성 데이터)", () => {
+                // 2x2 파트들로 만든 가짜 라이브러리: 몸통 목=(Ox+0, Oy-16), 얼굴 기준점 표로 눈·코·입·머리 위치 결정
+                string Part(int w, int h, int ax, int ay, int off, params int[] ext) { return "{\"w\":" + w + ",\"h\":" + h + ",\"ax\":" + ax + ",\"ay\":" + ay + ",\"off\":" + off + ",\"ext\":[" + string.Join(",", ext) + "]}"; }
+                string Grp(string part) { return "{\"rom\":\"x\",\"parts\":[" + part + "," + part + "]}"; }
+                var px = new List<byte>();
+                int Add(params byte[] b) { int o = px.Count; px.AddRange(b); return o; }
+                int body = Add(11, 11, 11, 11), face = Add(6, 6, 6, 6), eye = Add(9, 0, 0, 0), hairF = Add(3, 3, 0, 0), hairB = Add(5, 5, 5, 5);
+                var blocks = new List<string>(); for (int i = 0; i < 49; i++) blocks.Add(Grp(Part(2, 2, 1, 0, body, 16, 16)));
+                var json = "{\"categories\":{" +
+                    "\"body\":[" + string.Join(",", blocks) + "]," +
+                    "\"face\":[" + Grp(Part(2, 2, 33, 16, face, 16, 25, 28, 31, 33, 1, 18)) + "]," +
+                    "\"eyes\":[" + Grp(Part(2, 2, 1, 0, eye)) + "],\"nose\":[" + Grp(Part(0, 0, 0, 0, 0)) + "],\"mouth\":[" + Grp(Part(0, 0, 0, 0, 0)) + "]," +
+                    "\"hairfront\":[" + Grp(Part(2, 2, 1, 0, hairF)) + "],\"hairback\":[" + Grp(Part(2, 2, 1, 0, hairB, 16, 0)) + "]}," +
+                    "\"palettes\":{\"base\":[0,0,32767],\"hair\":[[1,2,3]],\"skin\":[[4,5,6,7,8]],\"outfitTable\":[[0,0,0,0],[9,9,9,9]]}}";
+                var lib = PartsLibrary.Load(json, px.ToArray());
+                T.True(lib.Available, "라이브러리 로드");
+                var look = new CharacterLook();
+                var c = CharacterComposer.Compose(lib, look);
+                int W = CharacterComposer.Width;
+                // 몸통: 좌상단 (16-1, 64-16-0) = (15,48)
+                T.Eq((int)c[48 * W + 15], 11, "몸통 위치");
+                // 목 = (16, 48), ref = 48-33 = 15. 얼굴 좌상단 = (16-1, 15+16-2) = (15,29)
+                T.Eq((int)c[29 * W + 15], 6, "얼굴 위치");
+                // 눈 기준점 (16, 15+25=40) → 좌상단 (15,40), 왼쪽 위 픽셀만 9
+                T.Eq((int)c[40 * W + 15], 9, "눈 위치"); T.Eq((int)c[40 * W + 16], 0, "눈 투명 픽셀은 그리지 않음");
+                look.EyesFlip = true; c = CharacterComposer.Compose(lib, look);
+                // 반전: ax = 2-1 = 1 → 좌상단 (15,40), 픽셀은 오른쪽으로
+                T.Eq((int)c[40 * W + 16], 9, "눈 좌우반전"); T.Eq((int)c[40 * W + 15], 0, "눈 좌우반전(원래 자리)");
+                // 앞머리 기준점 (16, 15+16=31) → (15,31) 은 얼굴 위에 그려진다
+                T.Eq((int)c[31 * W + 15], 3, "앞머리가 얼굴 위");
+                // 뒷머리 기준점 (16, 15+16+16-0=47) → (15,47) — 몸통(48행)이 뒷머리 위에 그려져야 한다
+                T.Eq((int)c[47 * W + 15], 5, "뒷머리 위치"); T.Eq((int)c[48 * W + 15], 11, "몸통이 뒷머리 위");
+                var pal = lib.Palette(new CharacterLook { HairColor = 0, SkinColor = 0, OutfitColor = 0, Outfit = 0 });
+                T.Eq(pal[3], 1, "머리색 칸 3"); T.Eq(pal[6], 4, "피부색 칸 6"); T.Eq(pal[11], 9, "의상색 표 항목 1");
+                var back = CharacterLook.FromJson(J.Obj(MiniJson.Parse(MiniJson.Serialize(look.ToJson()))));
+                T.Eq(back.EyesFlip, true, "저장 왕복"); T.Eq(back.HairColor, -1, "색 미지정 유지");
+            });
+
+            var localArt = Environment.GetEnvironmentVariable("SK_LOCAL_ART");
+            var galleryDir = Environment.GetEnvironmentVariable("SK_GALLERY_IDX");
+            if (!string.IsNullOrEmpty(localArt) && File.Exists(Path.Combine(localArt, "parts.json")))
+                T.Run("원작 갤러리 재현: C# 조합 결과 = 파이썬 기준 구현 (로컬 추출물 있을 때만)", () => {
+                    var lib = PartsLibrary.Load(File.ReadAllText(Path.Combine(localArt, "parts.json")), File.ReadAllBytes(Path.Combine(localArt, "parts.bin.bytes")));
+                    T.True(lib.Available && lib.Presets.Count > 0, "파트·프리셋 로드");
+                    int exact = 0, total = 0;
+                    var root = J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(localArt, "parts.json"))));
+                    foreach (var kv in J.Child(root, "presets"))
+                    {
+                        var d = J.Obj(kv.Value); var f = Path.Combine(galleryDir ?? "", kv.Key + ".idx");
+                        if (!File.Exists(f)) continue;
+                        var img = File.ReadAllBytes(f).Skip(4).ToArray();
+                        var c = CharacterComposer.Compose(lib, lib.Presets[kv.Key]);
+                        int diff = 0; for (int i = 0; i < c.Length; i++) if (c[i] != img[i]) diff++;
+                        T.Eq(diff, J.Int(d, "diffPixels"), kv.Key + " 픽셀 차이 수가 파이썬과 다름");
+                        total++; if (diff == 0) exact++;
+                    }
+                    T.True(total > 0, "갤러리 캡처 없음");
+                    Console.WriteLine("       갤러리 " + total + "명 중 원작과 픽셀 완전 일치 " + exact + "명");
+                });
+
             Console.WriteLine("\n통과 " + T.Pass + " / 실패 " + T.Fail);
             return T.Fail == 0 ? 0 : 1;
         }
