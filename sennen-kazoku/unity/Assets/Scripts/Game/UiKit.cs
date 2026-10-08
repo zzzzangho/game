@@ -91,6 +91,21 @@ namespace SennenKazoku.Game
             return b;
         }
 
+        /// <summary>한 줄 글자 입력칸 (모바일 화면 키보드 사용).</summary>
+        public static InputField Input(Transform parent, string name, string text, int size, int maxChars, Action<string> onChange)
+        {
+            var im = Box(parent, name, Color.white); im.raycastTarget = true;
+            var tl = Label(im.transform, "text", "", size, Ink, TextAnchor.MiddleLeft); tl.supportRichText = false;
+            Stretch(tl.rectTransform, 10, 2, 10, 2);
+            var ph = Label(im.transform, "placeholder", "이름 입력", size, new Color(0.6f, 0.6f, 0.6f), TextAnchor.MiddleLeft, FontStyle.Italic);
+            Stretch(ph.rectTransform, 10, 2, 10, 2);
+            var f = im.gameObject.AddComponent<InputField>();
+            f.textComponent = tl; f.placeholder = ph; f.characterLimit = maxChars; f.targetGraphic = im;
+            f.text = text ?? "";
+            f.onValueChanged.AddListener(v => onChange(v));
+            return f;
+        }
+
         public static void SetBtnText(Button b, string s) { b.GetComponentInChildren<Text>().text = s; }
 
         public static void Stretch(RectTransform rt, float l, float t, float r, float b)
