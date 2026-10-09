@@ -754,6 +754,35 @@ namespace SennenKazoku.Tests
             var origDir = Environment.GetEnvironmentVariable("SK_ORIG_DIR");
             if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "vectors.json")))
                 T.Run("원작 규칙 재현: 판정 트리·관계 슬롯·관심사 선택 = 원작 ROM 실행 결과 (로컬 자료 있을 때만)", () => OrigVectors(origDir));
+            var years = Environment.GetEnvironmentVariable("SK_ORIG_YEARS");
+            if (!string.IsNullOrEmpty(origDir) && !string.IsNullOrEmpty(years))
+                T.Run("원작 코드로 새 가족 장기 진행 (로컬)", () =>
+                {
+                    var rules = SennenKazoku.Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(origDir, "orig_rules.json")))));
+                    rules.TreesText = File.ReadAllBytes(Path.Combine(origDir, rules.TreesFile));
+                    var m = new SennenKazoku.Core.Orig.OrigMem(); var vm = rules.CreateVm(m);
+                    SennenKazoku.Core.Orig.OrigNewGame.BlankCartridge(vm);
+                    SennenKazoku.Core.Orig.OrigNewGame.TitleNewGame(vm);
+                    SennenKazoku.Core.Orig.OrigNewGame.Recommended(vm);
+                    var g = new SennenKazoku.Core.Orig.OrigGame(m, rules);
+                    var sw = System.Diagnostics.Stopwatch.StartNew(); int nev = 0, days = int.Parse(years) * 365;
+                    var kinds = new Dictionary<uint, int>();
+                    string Fam() { var l = new List<string>(); for (int k = 0; k < 8; k++) { uint p = SennenKazoku.Core.Orig.OrigMem.PersonAddr(k); if (SennenKazoku.Core.Orig.OrigGame.Present(m, k)) { SennenKazoku.Core.Orig.OrigDate.Get(m, p + 0x2E, out int by, out _, out _); l.Add(m.R16(p + 0x3C) + "(" + (m.R8(p + 0x31) == 0 ? "남" : "여") + by + ")"); } } return string.Join(" ", l); }
+                    string last = Fam(); Console.WriteLine("       시작: " + last);
+                    for (int dd = 0; dd < days; dd++)
+                    {
+                        g.NextDate();
+                        try { foreach (var e in g.TickDay()) { nev++; kinds[e.Type] = kinds.TryGetValue(e.Type, out var c) ? c + 1 : 1; } }
+                        catch (SennenKazoku.Core.Orig.OrigUnmodeled ex)
+                        {
+                            SennenKazoku.Core.Orig.OrigDate.Get(m, SennenKazoku.Core.Orig.OrigMem.Date, out int ey, out int em, out int ed);
+                            Console.WriteLine("       " + ey + "-" + em + "-" + ed + " 멈춤: " + ex.Message); break;
+                        }
+                        var f = Fam();
+                        if (f != last) { SennenKazoku.Core.Orig.OrigDate.Get(m, SennenKazoku.Core.Orig.OrigMem.Date, out int ey, out int em, out int ed); Console.WriteLine("       " + ey + "-" + em + "-" + ed + " 가족: " + f); last = f; }
+                    }
+                    Console.WriteLine("       " + days + "일, 사건 " + nev + " (종류별 " + string.Join(",", kinds.Select(kv => kv.Key + ":" + kv.Value)) + "), " + sw.ElapsedMilliseconds + "ms");
+                });
             var daysDir = Environment.GetEnvironmentVariable("SK_DAYS_DIR");
             if (!string.IsNullOrEmpty(origDir) && !string.IsNullOrEmpty(daysDir) && Directory.Exists(daysDir))
                 T.Run("원작 하루 진행 비교: 날 바뀜 덤프 → C# 하루 → 다음 날 바뀜 덤프 (로컬 자료 있을 때만)", () => OrigDays(origDir, daysDir));

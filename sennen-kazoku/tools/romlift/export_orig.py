@@ -193,7 +193,8 @@ def add_funcs(rom_path, out_path, addrs):
     for line in open(out_path + '.trees', encoding='utf8'):
         a, _, t = line.rstrip('\n').partition('\t'); trees[a] = t
     new = [a for a in addrs if '0x%08X' % a not in trees]
-    t2, f2, _ = lift_all(rom_path, new, procs=4) if new else ({}, [], set())
+    big = '--big' in sys.argv
+    t2, f2, _ = lift_all(rom_path, new, procs=4, big=big) if new else ({}, [], set())
     n = 0
     for a, t in t2.items():
         if a not in trees: trees[a] = json.dumps(t, separators=(',', ':')); n += 1
@@ -431,7 +432,7 @@ if __name__ == '__main__':
     sys.setrecursionlimit(1000000); threading.stack_size(1024 * 1024 * 1024)
     rc = []
     if '--add' in sys.argv:
-        go = lambda: add_funcs(sys.argv[1], sys.argv[2], [int(x, 16) for x in sys.argv[sys.argv.index('--add') + 1:]])
+        go = lambda: add_funcs(sys.argv[1], sys.argv[2], [int(x, 16) for x in sys.argv[sys.argv.index('--add') + 1:] if x != '--big'])
     elif '--respan' in sys.argv:
         go = lambda: respan(sys.argv[1], sys.argv[2])
     else:
