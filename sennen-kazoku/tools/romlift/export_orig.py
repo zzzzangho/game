@@ -204,6 +204,24 @@ def thumb_fn(rom, p):
     return rom.ok(p) and p & 1 and 0x08000000 <= p < 0x08300000
 
 
+def scan_events(rom):
+    """ROM 데이터 영역에서 사건 기록(0x28 바이트) 찾기."""
+    fn = lambda p: rom.ok(p) and p & 1 and 0x08100000 <= p < 0x08300000
+    out = []
+    for a in range(0x08400000, B + len(rom.b) - 0x28, 4):
+        if not (fn(rom.u32(a + 0x18)) and fn(rom.u32(a + 0x1C))): continue
+        lst = rom.u32(a + 0x24)
+        if not rom.ok(lst): continue
+        n = rom.u8(a + 3)
+        if n > 64: continue
+        good = True
+        for k in range(n):
+            v = rom.u32(lst + 4 * k)
+            if not rom.ok(v) or not fn(rom.u32(v)) or not rom.ok(rom.u32(v + 4)): good = False; break
+        if good: out.append(a)
+    return out
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__); return 2
@@ -236,8 +254,30 @@ def main():
                                     "raw": rb[d - B:d - B + 0x30].hex()}
                         if thumb_fn(rom, post): preds[post] = None
                 events[ev] = {"dayMode": rom.u8(ev + 1), "count": n, "variants": vs, "list": lst}
+    # 관심사 밖의 사건 기록(독립·가족·예약 사건 등, 같은 0x28 바이트 배치): ROM 데이터 영역을 훑어 모두 넣는다
+    #   +3 변형 수, +0x18/+0x1C 함수(조건·시작), +0x24 변형 목록 [판정 함수, 결과 기록]
+    for ev in scan_events(rom):
+        if ev in events: continue
+        n = rom.u8(ev + 3); lst = rom.u32(ev + 0x24); vs = []
+        for k in range(n + 1):
+            v = rom.u32(lst + 4 * k) if rom.ok(lst) else 0
+            if not rom.ok(v): vs.append(None); continue
+            pf, d = rom.u32(v), rom.u32(v + 4)
+            vs.append(['0x%08X' % pf if k < n and thumb_fn(rom, pf) else None, '0x%08X' % d if rom.ok(d) else None])
+            if k < n and thumb_fn(rom, pf): preds[pf] = None
+            if rom.ok(d) and rom.ok(d + 0x20) and d not in vdata:
+                pre, post = rom.u32(d + 0x18), rom.u32(d + 0x1C)
+                vdata[d] = {"pre": '0x%08X' % pre if thumb_fn(rom, pre) else None,
+                            "post": '0x%08X' % post if thumb_fn(rom, post) else None,
+                            "raw": rb[d - B:d - B + 0x30].hex()}
+                if thumb_fn(rom, post): preds[post] = None
+        for o in (0x18, 0x1C):
+            f = rom.u32(ev + o)
+            if thumb_fn(rom, f): preds[f] = None
+        events[ev] = {"dayMode": rom.u8(ev + 1), "count": n, "variants": vs, "list": lst,
+                      "f18": '0x%08X' % rom.u32(ev + 0x18), "f1c": '0x%08X' % rom.u32(ev + 0x1C), "raw": rb[ev - B:ev - B + 0x28].hex()}
     # 앱 진행에 쓰는 원작 함수: 관심사 하루 처리, 시대, 나이 단계
-    for f in (0x08027E78, 0x08111A58, 0x08111888): preds[f] = None
+    for f in (0x08027E78, 0x08111A58, 0x08111888, 0x08119C5C, 0x08119B8C): preds[f] = None
     print('관심사 %d, 사건 %d, 결과 기록 %d, 변환할 함수 %d' % (len(interests), len(events), len(vdata), len(preds)), flush=True)
     trees, fails, tabs = lift_all(sys.argv[1], preds)
     # 함수 포인터 표의 대상도 변환 (새 표가 안 나올 때까지)

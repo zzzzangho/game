@@ -123,6 +123,28 @@ namespace SennenKazoku.Tests
             }
             Console.WriteLine("       MAX/MIN 사건(변형 고르기+효과) " + eN + "건 중 원작과 같음 " + eOk + " (옮기지 못함 " + eUnm + ")");
             T.Eq(eOk, eN, "사건 결과가 원작과 다름");
+
+            // 원작 코드로 60일 진행 (관심사 하루 처리 → 사건 → 다음 관심사). 예외 없이 돌고 사건이 나야 한다.
+            {
+                var mem = Fresh("main.ram");
+                var game = new SennenKazoku.Core.Orig.OrigGame(mem, rules);
+                var sw = System.Diagnostics.Stopwatch.StartNew(); int nev = 0, days = 60;
+                var titles = new List<string>();
+                for (int dday = 0; dday < days; dday++)
+                {
+                    foreach (var ev in game.TickInterests())
+                    {
+                        nev++;
+                        uint p = SennenKazoku.Core.Orig.OrigMem.PersonAddr(ev.Person);
+                        titles.Add("일" + dday + " 인물" + ev.Person + (ev.Max ? " MAX" : " MIN") + " → 다음 관심사 " + mem.R16(p + 0x80) + "," + mem.R16(p + 0x82) + " 게이지 " + mem.R8(p + 0x5A));
+                    }
+                    game.NextDate();
+                }
+                SennenKazoku.Core.Orig.OrigDate.Get(mem, SennenKazoku.Core.Orig.OrigMem.Date, out int yy, out int mm, out int dd);
+                Console.WriteLine("       원작 코드로 " + days + "일 진행: 사건 " + nev + "번, " + sw.ElapsedMilliseconds + "ms, 날짜 " + yy + "-" + mm + "-" + dd);
+                foreach (var tl in titles.Take(6)) Console.WriteLine("         " + tl);
+                T.True(nev > 0, "60일 동안 사건이 없음");
+            }
         }
 
         static List<Pack> Bundled() { return new List<Pack> { LoadPack(Read("sk.sample")), LoadPack(Read("nova.pack001")) }; }
