@@ -29,12 +29,28 @@ namespace SennenKazoku.Core.Orig
             return e.Count;
         }
 
-        /// <summary>결과 기록의 효과 함수 실행. 돌려주는 값 = 결과 3단어 (원작 0x0203C440 사본).</summary>
-        public static uint[] RunEffect(OrigVm vm, OrigRules rules, uint data)
+        /// <summary>결과 기록의 효과 함수 실행. arg = 시작 함수가 돌려준 값(사건 장면 +0x286). 돌려주는 값 = 결과 3단어.</summary>
+        public static uint[] RunEffect(OrigVm vm, OrigRules rules, uint data, uint arg = 0)
         {
             if (!rules.VariantData.TryGetValue(data, out var fns) || fns[1] == null) return new uint[3];
-            vm.Call(fns[1], ResultBuf, 0, 0, 0);
+            vm.Call(fns[1], ResultBuf, arg & 0xFF, 0, 0);
             return new[] { vm.Mem.R32(ResultBuf), vm.Mem.R32(ResultBuf + 4), vm.Mem.R32(ResultBuf + 8) };
+        }
+
+        /// <summary>
+        /// 사건 장면 한 번 (0x0801E724 장면의 규칙 부분):
+        /// 시작 함수 +0x18 (0x0804C84A, 돌려준 값 → 장면 +0x286) → 참가 슬롯 0x08110F5C(그 값) → 효과 함수 +0x1C(결과, 그 값) (0x0804D9B2)
+        /// → 메인 장면 복귀 0x080111B8(-3, 인물 번호, 1, ·, 그 값, ·, 결과 기록): 추억 기록·후속 일정·날 넘김.
+        /// 시작 함수 5,311개 중 대부분은 0 을 돌려준다(값을 계산하는 것 약 170개).
+        /// </summary>
+        public static uint RunScene(OrigVm vm, OrigRules rules, uint data, uint personId)
+        {
+            uint v = 0;
+            if (rules.VariantData.TryGetValue(data, out var fns) && fns[0] != null) v = vm.Call(fns[0], 0, data, 0, 0) & 0xFFFF;
+            vm.Call("08110F5C", v & 0xFF);
+            RunEffect(vm, rules, data, v);
+            vm.Call("080111B8", 0xFFFFFFFD, personId, 1, 0, v, 0, data);
+            return v;
         }
 
         /// <summary>가족 레코드 n 의 사건 한 번: 슬롯표 → 변형 → 효과. 돌려주는 값 = 결과 기록 주소.</summary>

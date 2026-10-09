@@ -88,7 +88,12 @@ namespace SennenKazoku.Core.Orig
                 case "smod": return args[1] == 0 ? args[0] : (uint)((int)args[0] % (int)args[1]);
                 case "rel": return OrigFamily.Rel(Mem, (int)args[0], (int)args[1]);
                 case "slots":
-                    if (args.Length > 1 && args[1] != 0) throw new OrigUnmodeled("관계 슬롯표 작성의 두 번째 인자 경로(0x08112788) 미이식");
+                    if (args.Length > 1 && args[1] != 0)
+                    {
+                        // 두 번째 인자(사건 항목)가 있는 경로(0x08112788 쪽)는 손 이식하지 않고 원작 함수 트리를 그대로 실행
+                        if (!TryTree("08110B90", out var st)) throw new OrigUnmodeled("관계 슬롯표 작성(사건 인자) 트리 없음");
+                        return Run(st, args);
+                    }
                     OrigFamily.BuildSlots(Mem, args[0] & 0xFFFF); return 0;
                 case "inhouse": return OrigFamily.InHouse(Mem, args[0] & 0xFFFF);
                 case "memcpy":   // 0x0824F700 (libc memcpy)

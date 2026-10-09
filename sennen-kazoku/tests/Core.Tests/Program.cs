@@ -133,17 +133,17 @@ namespace SennenKazoku.Tests
                 var titles = new List<string>();
                 for (int dday = 0; dday < days; dday++)
                 {
-                    foreach (var ev in game.TickInterests())
+                    foreach (var ev in game.TickDay())
                     {
                         nev++;
                         uint p = SennenKazoku.Core.Orig.OrigMem.PersonAddr(ev.Person);
-                        titles.Add("일" + dday + " 인물" + ev.Person + (ev.Max ? " MAX" : " MIN") + " → 다음 관심사 " + mem.R16(p + 0x80) + "," + mem.R16(p + 0x82) + " 게이지 " + mem.R8(p + 0x5A));
+                        titles.Add("일" + dday + " 인물" + ev.Person + " 큐종류" + ev.Type + " 코드" + ev.Code + " 결과 " + ev.Data.ToString("X8") + " → 관심사 " + mem.R16(p + 0x80) + "," + mem.R16(p + 0x82) + " 게이지 " + mem.R8(p + 0x5A));
                     }
                     game.NextDate();
                 }
                 SennenKazoku.Core.Orig.OrigDate.Get(mem, SennenKazoku.Core.Orig.OrigMem.Date, out int yy, out int mm, out int dd);
                 Console.WriteLine("       원작 코드로 " + days + "일 진행: 사건 " + nev + "번, " + sw.ElapsedMilliseconds + "ms, 날짜 " + yy + "-" + mm + "-" + dd);
-                foreach (var tl in titles.Take(6)) Console.WriteLine("         " + tl);
+                foreach (var tl in titles.Take(10)) Console.WriteLine("         " + tl);
                 T.True(nev > 0, "60일 동안 사건이 없음");
             }
 
@@ -207,8 +207,102 @@ namespace SennenKazoku.Tests
                 T.True(people >= 2, "새 가족 인원이 너무 적음");
                 // 만든 가족을 원작 하루 처리로 60일 진행
                 var g2 = new SennenKazoku.Core.Orig.OrigGame(mn, rules); int ev2 = 0;
-                for (int dday = 0; dday < 60; dday++) { ev2 += g2.TickInterests().Count; g2.NextDate(); }
+                for (int dday = 0; dday < 60; dday++) { ev2 += g2.TickDay().Count; g2.NextDate(); }
                 Console.WriteLine("       새 가족 60일 진행: 사건 " + ev2 + "번");
+            }
+        }
+
+        static void OrigDays(string dir, string daysDir)
+        {
+            var rules = SennenKazoku.Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "orig_rules.json")))));
+            rules.TreesText = File.ReadAllBytes(Path.Combine(dir, rules.TreesFile));
+            var shared = new SennenKazoku.Core.Orig.OrigMem(); rules.CreateVm(shared);
+            var files = Directory.GetFiles(daysDir, "*.ram").OrderBy(f => f).ToList();
+            const uint E = SennenKazoku.Core.Orig.OrigMem.EwramBase;
+            int okDays = 0;
+            for (int i = 0; i + 1 < files.Count; i++)
+            {
+                var a = File.ReadAllBytes(files[i]); var b = File.ReadAllBytes(files[i + 1]);
+                var m = new SennenKazoku.Core.Orig.OrigMem(); m.ShareRom(shared);
+                Array.Copy(a, m.Ewram, SennenKazoku.Core.Orig.OrigMem.EwramSize);
+                Array.Copy(a, (int)SennenKazoku.Core.Orig.OrigMem.EwramSize, m.Iwram, 0, m.Iwram.Length);
+                var g = new SennenKazoku.Core.Orig.OrigGame(m, rules);
+                g.NextDate();
+                string evs;
+                try { evs = string.Join(",", g.TickDay().Select(x => x.Person + ":" + x.Type + ":" + x.Data.ToString("X"))); }
+                catch (SennenKazoku.Core.Orig.OrigUnmodeled ex) { Console.WriteLine("       " + Path.GetFileName(files[i]) + " 옮기지 못함: " + ex.Message); continue; }
+                var runs = new List<string>(); int nd = 0;
+                for (uint x = SennenKazoku.Core.Orig.OrigMem.SaveStart; x < SennenKazoku.Core.Orig.OrigMem.SaveEnd; x++)
+                {
+                    if (m.Ewram[x - E] == b[x - E]) continue;
+                    nd++;
+                    if (runs.Count > 0 && runs[runs.Count - 1].EndsWith((x - 1).ToString("X8"))) runs[runs.Count - 1] = runs[runs.Count - 1].Substring(0, 9) + x.ToString("X8");
+                    else runs.Add(x.ToString("X8") + "-" + x.ToString("X8"));
+                }
+                if (nd == 0) okDays++;
+                if (Environment.GetEnvironmentVariable("SK_DAYS_DUMP") == Path.GetFileName(files[i]))
+                    for (uint x = 0x0202C6C4; x < 0x0203BD60; x++)
+                        if (m.Ewram[x - E] != b[x - E] && (x < 0x0203BC90 || x >= 0x0203BD00))
+                            Console.WriteLine("           " + x.ToString("X8") + " C# " + m.Ewram[x - E].ToString("X2") + " 원작 " + b[x - E].ToString("X2") + " 시작 " + a[x - E].ToString("X2"));
+                Console.WriteLine("         게이지 C# " + string.Join(",", Enumerable.Range(0, 4).Select(k => m.R8(SennenKazoku.Core.Orig.OrigMem.PersonAddr(k) + 0x5A))) + " / 원작 " + string.Join(",", Enumerable.Range(0, 4).Select(k => b[SennenKazoku.Core.Orig.OrigMem.PersonAddr(k) + 0x5A - E])) + "  시작 " + string.Join(",", Enumerable.Range(0, 4).Select(k => a[SennenKazoku.Core.Orig.OrigMem.PersonAddr(k) + 0x5A - E])));
+                Console.WriteLine("       " + Path.GetFileName(files[i]) + " 사건[" + evs + "] 다른 바이트 " + nd + (nd > 0 ? ": " + string.Join(" ", runs.Take(60)) : ""));
+            }
+            Console.WriteLine("       " + (files.Count - 1) + "일 중 저장 영역이 원작과 완전히 같은 날 " + okDays);
+            // 사건 장면 덤프(시작 0804c84c → 효과 직전 0804d9b4 → 복귀 뒤 0804df40): 효과 직전 상태에서 C# 효과+복귀 처리 → 복귀 뒤와 비교
+            var sdir = Environment.GetEnvironmentVariable("SK_SCENES_DIR");
+            if (!string.IsNullOrEmpty(sdir))
+            {
+                var sf = Directory.GetFiles(sdir, "*.ram").OrderBy(f => f).ToList();
+                var slog = File.ReadAllLines(Path.Combine(sdir, "..", "rams", "sc.log"));
+                SennenKazoku.Core.Orig.OrigMem Load(string f)
+                {
+                    var a = File.ReadAllBytes(f); var m = new SennenKazoku.Core.Orig.OrigMem(); m.ShareRom(shared);
+                    Array.Copy(a, m.Ewram, SennenKazoku.Core.Orig.OrigMem.EwramSize);
+                    Array.Copy(a, (int)SennenKazoku.Core.Orig.OrigMem.EwramSize, m.Iwram, 0, m.Iwram.Length); return m;
+                }
+                int sameScenes = 0, nScenes = 0;
+                for (int i = 0; i + 2 < sf.Count && i + 2 < slog.Length; i++)
+                {
+                    if (!slog[i].Contains("pc=0804c84c") || !slog[i + 1].Contains("pc=0804d9b4") || !slog[i + 2].Contains("pc=0804df40")) continue;
+                    uint data = Convert.ToUInt32(slog[i].Split(' ').First(x => x.StartsWith("r1=")).Substring(3), 16);
+                    var mp = Load(sf[i]); var vmp = rules.CreateVm(mp);
+                    uint v = rules.VariantData.TryGetValue(data, out var fns) && fns[0] != null ? vmp.Call(fns[0], 0, data, 0, 0) & 0xFFFF : 0;
+                    var me = Load(sf[i + 1]); var vme = rules.CreateVm(me);
+                    uint rd = me.R16(0x0203BBCA), qe = 0x0203BBD0 + 8 * ((rd + 23) % 24), id = me.R16(qe + 6);
+                    SennenKazoku.Core.Orig.OrigEvents.RunEffect(vme, rules, data, v);
+                    vme.Call("080111B8", 0xFFFFFFFD, id, 1, 0, v, 0, data);
+                    var want = File.ReadAllBytes(sf[i + 2]);
+                    var diffs = new List<string>(); int nd = 0;
+                    for (uint x = 0x0202C6C4; x < SennenKazoku.Core.Orig.OrigMem.SaveEnd; x++)
+                        if (me.Ewram[x - E] != want[x - E] && (x < 0x0203BC90 || x >= 0x0203BCB0) && x != 0x0203BCF0 && x != 0x0203BCF1 && x != 0x0203BAD0)
+                        { nd++; if (diffs.Count < 12) diffs.Add(x.ToString("X8") + ":" + me.Ewram[x - E].ToString("X2") + "/" + want[x - E].ToString("X2")); }
+                    nScenes++; if (nd == 0) sameScenes++;
+                    Console.WriteLine("       사건 장면 " + Path.GetFileName(sf[i]) + " 결과 " + data.ToString("X8") + " 인물 " + id + " 시작값 " + v + ": 다른 바이트 " + nd + " " + string.Join(" ", diffs));
+                }
+                Console.WriteLine("       사건 장면(효과+복귀) " + nScenes + "건 중 원작과 같음 " + sameScenes + " (작업 위치표 0x0203BC90~AF·0x0203BCF0·장면 핸들 0x0203BAD0 제외)");
+            }
+            // 메인 장면 변형 고르기 지점 덤프(p_NN_080187b2: 슬롯표 전, 다음 덤프 080187d4: 고른 뒤)에서 C# 슬롯표+변형 고르기 비교
+            var pdir = Environment.GetEnvironmentVariable("SK_PICKS_DIR");
+            if (!string.IsNullOrEmpty(pdir))
+            {
+                var pf = Directory.GetFiles(pdir, "*_080187b2.ram").OrderBy(f => f).ToList();
+                foreach (var f in pf)
+                {
+                    var a = File.ReadAllBytes(f);
+                    var m = new SennenKazoku.Core.Orig.OrigMem(); m.ShareRom(shared);
+                    Array.Copy(a, m.Ewram, SennenKazoku.Core.Orig.OrigMem.EwramSize);
+                    Array.Copy(a, (int)SennenKazoku.Core.Orig.OrigMem.EwramSize, m.Iwram, 0, m.Iwram.Length);
+                    var vm = rules.CreateVm(m);
+                    var line = File.ReadAllLines(Path.Combine(pdir, "..", "rams", "pk.log")).Where(l => l.Contains("pc=080187b2")).ElementAt(pf.IndexOf(f));
+                    uint id = Convert.ToUInt32(line.Split(' ').First(x => x.StartsWith("r0=")).Substring(3), 16);
+                    uint ev = Convert.ToUInt32(line.Split(' ').First(x => x.StartsWith("r1=")).Substring(3), 16);
+                    var nxt = File.ReadAllLines(Path.Combine(pdir, "..", "rams", "pk.log")).Where(l => l.Contains("pc=080187d4")).ElementAt(pf.IndexOf(f));
+                    uint want = Convert.ToUInt32(nxt.Split(' ').First(x => x.StartsWith("r0=")).Substring(3), 16);
+                    vm.Call("slots", id, ev);
+                    int k = SennenKazoku.Core.Orig.OrigEvents.PickVariant(vm, rules, ev);
+                    uint got = rules.Events[ev].Data[k];
+                    Console.WriteLine("       변형 고르기 " + Path.GetFileName(f) + " 인물 " + id + " 사건 " + ev.ToString("X8") + ": C# " + got.ToString("X8") + " 원작 " + want.ToString("X8") + (got == want ? " 같음" : " 다름"));
+                }
             }
         }
 
@@ -660,6 +754,9 @@ namespace SennenKazoku.Tests
             var origDir = Environment.GetEnvironmentVariable("SK_ORIG_DIR");
             if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "vectors.json")))
                 T.Run("원작 규칙 재현: 판정 트리·관계 슬롯·관심사 선택 = 원작 ROM 실행 결과 (로컬 자료 있을 때만)", () => OrigVectors(origDir));
+            var daysDir = Environment.GetEnvironmentVariable("SK_DAYS_DIR");
+            if (!string.IsNullOrEmpty(origDir) && !string.IsNullOrEmpty(daysDir) && Directory.Exists(daysDir))
+                T.Run("원작 하루 진행 비교: 날 바뀜 덤프 → C# 하루 → 다음 날 바뀜 덤프 (로컬 자료 있을 때만)", () => OrigDays(origDir, daysDir));
 
             Console.WriteLine("\n통과 " + T.Pass + " / 실패 " + T.Fail);
             return T.Fail == 0 ? 0 : 1;
