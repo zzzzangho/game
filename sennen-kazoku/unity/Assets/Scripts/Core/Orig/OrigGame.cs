@@ -29,7 +29,7 @@ namespace SennenKazoku.Core.Orig
     ///    그날 사건이 있으면 하루 일정 명령 8(0x080153B0)이 큐에 "인물 사건"(종류 6)을 넣는다.
     /// 2) 메인 장면이 사건 큐(0x0203BBC0)를 앞에서부터 하나씩 꺼내 사건 장면을 띄운다.
     ///    종류 6 은 이때 관계 슬롯표를 만들고 변형을 고른다(0x080187B0~). 사건 장면 = 시작 함수 → 효과 함수 → 복귀 처리.
-    /// 하루 일정의 걷기·방 이동 명령은 화면 연출이라 옮기지 않는다. 일정 명령 8 의 시각은 옮기지 않았다:
+    /// 하루 일정의 걷기·방 이동 명령은 화면 연출이라 옮기지 않는다. 하루 시각(0x0202C682)은 각 처리 때의 시각 문턱값으로 둔다. 일정 명령 8 의 시각은 옮기지 않았다:
     /// 측정한 날들에서는 그날 사건이 정해진 인물 순서대로 큐에 들어갔다(그 순서로 처리).
     /// </summary>
     public sealed class OrigGame
@@ -50,13 +50,67 @@ namespace SennenKazoku.Core.Orig
 
         public static bool Present(OrigMem m, int n) { return m.R16(OrigMem.PersonAddr(n) + 0x3C) != 0xFFFF; }
 
-        /// <summary>하루 진행 (06:00 블록 → 큐 처리). 돌려주는 값 = 그날 화면에 띄운 사건들.</summary>
+        /// <summary>
+        /// 하루 진행. 날짜는 이미 넘긴 상태(NextDate)에서 부른다. 메인 장면 0x0801862C 의 시각별 처리 순서:
+        /// 날 바뀜(1일이면 월초 사건, 1000년째면 1000년 사건) → 03:00 아크마(0x0802A640) → 06:00 인물 블록 → 큐 →
+        /// 20:00 가족 일정(0x08027BE4) → 큐 → 22:00 그 달 마지막 날이면 월말 사건 → 큐.
+        /// 돌려주는 값 = 그날 띄운 사건들.
+        /// </summary>
         public List<DayEvent> TickDay()
         {
-            Mem.W16(TimeOfDay, 0x708);
+            var evs = new List<DayEvent>();
             var codes = new int[8];
+            OrigDate.Get(Mem, OrigMem.Date, out int y, out int mo, out int d);
+            uint head = Mem.R16(0x0202C67C);
+            // 날 바뀜 (0x080194A2~): 시작 날짜부터 1000년째면 특별 사건 표 2 의 3 번(종류 4), 1일이면 표 2 의 0 번(종류 1). 대상 = 가장(0x0202C67C)
+            if (Years() == 1000) PushSpecial(2, 3, 4, head);
+            if (d == 1) PushSpecial(2, 0, 1, head);
+            // 03:00 이후 (0x0801971C~): 레코드 +0x61 이 0 아닌 첫 인물이 4 비트면 아크마가 붙는다: +0x61 = 경과 년수 단계(0x0802A7DC)+8
+            Mem.W16(TimeOfDay, 900);
+            int dv = (int)Vm.Call("0802A640");
+            if (dv >= 0 && dv < 8 && (Mem.R8(OrigMem.PersonAddr(dv) + 0x61) & 4) != 0)
+                Mem.W8(OrigMem.PersonAddr(dv) + 0x61, Vm.Call("0802A7DC", Years()) + 8);
+            // 06:00 인물 블록
+            Mem.W16(TimeOfDay, 0x708);
             for (int n = 0; n < 8; n++) if (Present(Mem, n)) codes[n] = Morning(n);
-            return RunQueue(codes);
+            evs.AddRange(RunQueue(codes));
+            // 20:00 이후 (0x08019818~): 날이 된 가족 일정을 하나씩 큐에 (종류 3, 그 인물 슬롯표 → 변형)
+            Mem.W16(TimeOfDay, 6000);
+            uint doy = Vm.Call("08027D0C", DateArg());
+            for (int guard = 0; guard < QueueSize; guard++)
+            {
+                for (uint i = 0; i < 12; i += 4) Mem.W32(OutBuf + i, 0);
+                if (Vm.Call("08027BE4", doy, OutBuf) == 0) break;
+                uint who = Mem.R32(OutBuf) & 0xFFFF, ev = Mem.R32(OutBuf + 8);
+                Vm.Call("slots", who, 0);
+                Push(Rules.Events[ev].Data[OrigEvents.PickVariant(Vm, Rules, ev)], 3, who);
+            }
+            evs.AddRange(RunQueue(codes));
+            // 22:00 이후 (0x08019600~): 그 달 마지막 날(0x08095CD0)이면 특별 사건 표 2 의 1 번 (종류 2, 가장)
+            Mem.W16(TimeOfDay, 6600);
+            uint last = DateArg(); Vm.Call("08095CD0", last);
+            if (d == (int)Mem.R8(last + 3)) PushSpecial(2, 1, 2, Mem.R16(0x0202C67C));
+            evs.AddRange(RunQueue(codes));
+            return evs;
+        }
+
+        /// <summary>시작 날짜부터 지난 해 수 (0x0802B2A4).</summary>
+        uint Years() { return Vm.Call("0802B2A4", DateArg()); }
+
+        /// <summary>원작 날짜 구조체 {u16 년, u8 월, u8 일} 를 OutBuf+0x20 에 만든다 (0x0800E430 와 같은 꼴).</summary>
+        uint DateArg()
+        {
+            OrigDate.Get(Mem, OrigMem.Date, out int y, out int mo, out int d);
+            Mem.W16(OutBuf + 0x20, (uint)y); Mem.W8(OutBuf + 0x22, (uint)mo); Mem.W8(OutBuf + 0x23, (uint)d);
+            return OutBuf + 0x20;
+        }
+
+        /// <summary>특별 사건 표 a 의 b 번 → 대상 인물 중심 슬롯표 → 변형 → 큐.</summary>
+        void PushSpecial(uint a, uint b, uint type, uint who)
+        {
+            uint ev = Vm.Call("08119B8C", Table(a, b));
+            Vm.Call("slots", who, 0);
+            Push(Rules.Events[ev].Data[OrigEvents.PickVariant(Vm, Rules, ev)], type, who);
         }
 
         /// <summary>인물 n 의 06:00 블록 (0x08011D30 의 하루 한 번 부분 중 규칙 상태를 바꾸는 것). 돌려주는 값 = 하루 처리 결과 코드.</summary>
@@ -74,6 +128,8 @@ namespace SennenKazoku.Core.Orig
             int code = (int)Vm.Call("08027E78", p, 0);
             if (code != 0) Dispatch(n, code);
             if (TodayEvent[n] != 0) Push(0, 6, id);   // 일정 명령 8 (0x080153B0)
+            // 블록 끝(0x08012178~): 아크마가 붙을지 (0x0802A6C4: 나이 단계·관심사·레코드 +0x4B 에 따라 1/4 또는 1/16) → +0x61 = 4
+            if (Vm.Call("0802A6C4", id) != 0) Mem.W8(p + 0x61, 4);
             return code;
         }
 
@@ -137,7 +193,7 @@ namespace SennenKazoku.Core.Orig
                 uint r = Mem.R16(Queue + 0xA), e = QueueEntries + 8 * r;
                 uint type = Mem.R16(e + 4), id = Mem.R16(e + 6);
                 int n = (int)Vm.Call("0800E524", id);
-                if (type >= 1 && type <= 4) throw new OrigUnmodeled("사건 큐 종류 " + type + " (메인 장면 다른 화면) 미이식");
+                // 종류 1~4 (월초·월말·가족 일정·1000년) 는 넣을 때 변형을 이미 골랐다. 원작 실행에서 종류 1·2 도 같은 사건 장면 경로로 처리됨을 확인.
                 if (type == 6)
                 {
                     Mem.W16(e + 4, 0);

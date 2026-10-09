@@ -100,6 +100,10 @@ int main(int argc, char** argv) {
             long long v = 0; if (sscanf(line, "%*s %d %lld", &n, &v) != 2) continue;
             c->rtc.override = (enum mRTCGenericType)n; c->rtc.value = v;
             printf("rtc %d %lld\n", n, v);
+        } else if (!strcmp(cmd, "poke")) {   /* poke <주소> <값> <크기 1|2|4> : 메모리 값 바꾸기 (원작 경로를 일부러 일으켜 관찰할 때) */
+            unsigned addr = 0, val = 0; int sz = 1; if (sscanf(line, "%*s %i %i %d", &addr, &val, &sz) < 2) continue;
+            if (sz == 4) c->busWrite32(c, addr, val); else if (sz == 2) c->busWrite16(c, addr, val); else c->busWrite8(c, addr, val);
+            printf("poke %08x=%x\n", addr, val);
         } else if (!strcmp(cmd, "bp")) {   /* bp <주소> <파일> : 실행 중단점 추가(기록 파일은 watch 와 같음) */
             unsigned addr = 0; if (sscanf(line, "%*s %i %199s", &addr, arg) != 2) continue;
             if (!g_dbg.platform) {
