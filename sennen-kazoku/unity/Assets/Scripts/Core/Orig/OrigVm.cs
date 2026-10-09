@@ -64,9 +64,25 @@ namespace SennenKazoku.Core.Orig
         public OrigRules Rules;
 
         int depth;
+        /// <summary>검증용: 맨 바깥 호출 앞뒤에 불린다 (함수, 인자, 돌려준 값 — 앞에서는 0). 원작 ROM 실행과 비교하는 도구가 쓴다.</summary>
+        public Action<string, uint[]> BeforeTop;
+        public Action<string, uint[], uint> AfterTop;
         public uint Call(string fn, params uint[] args)
         {
-            if (depth == 0) { Calls = 0; heapNext = HeapStart; }
+            if (depth == 0)
+            {
+                Calls = 0; heapNext = HeapStart;
+                if (BeforeTop != null || AfterTop != null)
+                {
+                    BeforeTop?.Invoke(fn, args);
+                    var keepB = BeforeTop; var keepA = AfterTop; BeforeTop = null; AfterTop = null;
+                    uint r;
+                    try { r = Call(fn, args); }
+                    finally { BeforeTop = keepB; AfterTop = keepA; }
+                    AfterTop?.Invoke(fn, args, r);
+                    return r;
+                }
+            }
             if (++Calls > 2_000_000 || depth > 200) throw new OrigUnmodeled("호출이 너무 많음");
             depth++;
             try { return CallInner(fn, args); }

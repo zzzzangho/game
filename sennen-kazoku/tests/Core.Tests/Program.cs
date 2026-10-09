@@ -769,8 +769,28 @@ namespace SennenKazoku.Tests
                     var kinds = new Dictionary<uint, int>(); var perYear = new int[int.Parse(years) + 1];
                     string Fam() { var l = new List<string>(); for (int k = 0; k < 8; k++) { uint p = SennenKazoku.Core.Orig.OrigMem.PersonAddr(k); if (SennenKazoku.Core.Orig.OrigGame.Present(m, k)) { SennenKazoku.Core.Orig.OrigDate.Get(m, p + 0x2E, out int by, out _, out _); l.Add(m.R16(p + 0x3C) + "(" + (m.R8(p + 0x31) == 0 ? "남" : "여") + by + ")"); } } return string.Join(" ", l); }
                     string last = Fam(); Console.WriteLine("       시작: " + last);
+                    // 검증용 기록: SK_REC_DIR 에 SK_REC_FROM 날부터 SK_REC_DAYS 날 동안 맨 바깥 원작 함수 호출의 앞뒤 메모리를 남긴다 (romlift/replay_check.py 가 원작 ROM 실행과 비교)
+                    var recDir = Environment.GetEnvironmentVariable("SK_REC_DIR"); int recFrom = int.Parse(Environment.GetEnvironmentVariable("SK_REC_FROM") ?? "0"), recDays = int.Parse(Environment.GetEnvironmentVariable("SK_REC_DAYS") ?? "1"), recN = 0; int curDay = 0;
+                    byte[] Snap() { var b = new byte[0x40000 + 0x8000 + 0x40000 + 0x400]; Array.Copy(m.Ewram, 0, b, 0, 0x40000); Array.Copy(m.Iwram, 0, b, 0x40000, 0x8000); Array.Copy(m.Frames, 0, b, 0x48000, 0x40000); Array.Copy(m.Io, 0, b, 0x88000, 0x400); return b; }
+                    byte[] recPre = null;
+                    if (!string.IsNullOrEmpty(recDir))
+                    {
+                        Directory.CreateDirectory(recDir);
+                        g.Vm.BeforeTop = (fn, a) => { if (curDay >= recFrom && curDay < recFrom + recDays) recPre = Snap(); };
+                        g.Vm.AfterTop = (fn, a, r) =>
+                        {
+                            if (recPre == null) return;
+                            using (var w = new BinaryWriter(File.Create(Path.Combine(recDir, "rec_" + (recN++).ToString("D5") + ".bin"))))
+                            {
+                                w.Write(0x31434552u); w.Write(uint.TryParse(fn.StartsWith("0x") ? fn.Substring(2) : fn, System.Globalization.NumberStyles.HexNumber, null, out var fa) ? fa : fn == "slots" ? 0x08110B90u : 0u); w.Write((uint)curDay); w.Write((uint)a.Length); foreach (var x in a) w.Write(x); w.Write(r);
+                                w.Write(recPre); w.Write(Snap());
+                            }
+                            recPre = null;
+                        };
+                    }
                     for (int dd = 0; dd < days; dd++)
                     {
+                        curDay = dd;
                         g.NextDate();
                         try
                         {

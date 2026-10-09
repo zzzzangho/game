@@ -62,18 +62,25 @@ namespace SennenKazoku.Core.Orig
             var codes = new int[8];
             OrigDate.Get(Mem, OrigMem.Date, out int y, out int mo, out int d);
             uint head = Mem.R16(0x0202C67C);
-            // 날 바뀜 (0x080194A2~): 시작 날짜부터 1000년째면 특별 사건 표 2 의 3 번(종류 4), 1일이면 표 2 의 0 번(종류 1). 대상 = 가장(0x0202C67C)
-            if (Years() == 1000) PushSpecial(2, 3, 4, head);
-            if (d == 1) PushSpecial(2, 0, 1, head);
-            // 03:00 이후 (0x0801971C~): 레코드 +0x61 이 0 아닌 첫 인물이 4 비트면 아크마가 붙는다: +0x61 = 경과 년수 단계(0x0802A7DC)+8
-            Mem.W16(TimeOfDay, 900);
-            int dv = (int)Vm.Call("0802A640");
-            if (dv >= 0 && dv < 8 && (Mem.R8(OrigMem.PersonAddr(dv) + 0x61) & 4) != 0)
-                Mem.W8(OrigMem.PersonAddr(dv) + 0x61, Vm.Call("0802A7DC", Years()) + 8);
+            bool resumed = SceneEndedDay; SceneEndedDay = false;
+            // 사건 장면이 날을 끝냈으면(아래 RunQueue) 원작은 날짜를 이미 다음 날로, 시각을 06:00 으로 적고 메인 장면을 다시 시작한다:
+            // 메인 장면의 자정 넘김(날 바뀜 사건)과 03:00 은 지나지 않고 06:00 인물 블록부터 간다.
+            if (!resumed)
+            {
+                // 날 바뀜 (0x080194A2~): 시작 날짜부터 1000년째면 특별 사건 표 2 의 3 번(종류 4), 1일이면 표 2 의 0 번(종류 1). 대상 = 가장(0x0202C67C)
+                if (Years() == 1000) PushSpecial(2, 3, 4, head);
+                if (d == 1) PushSpecial(2, 0, 1, head);
+                // 03:00 이후 (0x0801971C~): 레코드 +0x61 이 0 아닌 첫 인물이 4 비트면 아크마가 붙는다: +0x61 = 경과 년수 단계(0x0802A7DC)+8
+                Mem.W16(TimeOfDay, 900);
+                int dv = (int)Vm.Call("0802A640");
+                if (dv >= 0 && dv < 8 && (Mem.R8(OrigMem.PersonAddr(dv) + 0x61) & 4) != 0)
+                    Mem.W8(OrigMem.PersonAddr(dv) + 0x61, Vm.Call("0802A7DC", Years()) + 8);
+            }
             // 06:00 인물 블록
             Mem.W16(TimeOfDay, 0x708);
             for (int n = 0; n < 8; n++) if (Present(Mem, n)) codes[n] = Morning(n);
             evs.AddRange(RunQueue(codes));
+            if (SceneEndedDay) return evs;
             // 20:00 이후 (0x08019818~): 날이 된 가족 일정을 하나씩 큐에 (종류 3, 그 인물 슬롯표 → 변형)
             Mem.W16(TimeOfDay, 6000);
             uint doy = Vm.Call("08027D0C", DateArg());
@@ -86,6 +93,7 @@ namespace SennenKazoku.Core.Orig
                 Push(Rules.Events[ev].Data[OrigEvents.PickVariant(Vm, Rules, ev)], 3, who);
             }
             evs.AddRange(RunQueue(codes));
+            if (SceneEndedDay) return evs;
             // 22:00 이후 (0x08019600~): 그 달 마지막 날(0x08095CD0)이면 특별 사건 표 2 의 1 번 (종류 2, 가장)
             Mem.W16(TimeOfDay, 6600);
             uint last = DateArg(); Vm.Call("08095CD0", last);
@@ -208,9 +216,14 @@ namespace SennenKazoku.Core.Orig
                 // 0x080187F2~: 결과 기록 +0 종류가 5 초과·0xB 아니고 그 인물이 그날 새 관심사를 알렸으면 띄우지 않고 넘긴다
                 uint kind = Mem.R8(data);
                 if (kind > 5 && kind != 0xB && n >= 0 && n < 8 && Announced[n]) continue;
+                // 메인 장면을 떠날 때(0x080211F4, 0x080213EC) 큐 머리에 가족 수(0x08015BC4)와 가족 표지를 적는다.
+                // 장면 복귀 0x080111B8 은 둘이 지금 값과 다르면(사건으로 가족이 바뀜) 그날을 끝내고 다음 날 06:00 으로 넘긴다.
+                Mem.W16(Queue + 0xE, FamilyKey()); Mem.W16(Queue + 6, Vm.Call("08015BC4"));
+                uint date0 = Mem.R32(OrigMem.Date) & 0xFFFFFF;
                 OrigEvents.RunScene(Vm, Rules, data, id);
                 evs.Add(new DayEvent { Person = n, Data = data, Type = type, Code = n >= 0 && n < 8 ? codes[n] : 0, Max = n >= 0 && n < 8 && codes[n] == 1 });
                 AnnouncePending();
+                if ((Mem.R32(OrigMem.Date) & 0xFFFFFF) != date0) { SceneEndedDay = true; break; }
             }
             return evs;
         }
@@ -231,9 +244,16 @@ namespace SennenKazoku.Core.Orig
             }
         }
 
-        /// <summary>날짜 하루 넘기기 (그레고리력). 원작은 메인 장면에서 0x08095DAC 로 더한다.</summary>
+        /// <summary>가족 표지 (0x0801165A·0x080212DA): (0x0202C6AF & 0xF) + (0x0202C692 << 8).</summary>
+        uint FamilyKey() { return (Mem.R8(0x0202C6AF) & 0xF) + (Mem.R8(0x0202C692) << 8); }
+
+        /// <summary>마지막 사건 장면 복귀(0x080111B8)가 그날을 끝내고 날짜를 다음 날 06:00 으로 넘겼는지. 다음 NextDate 는 날짜를 더하지 않는다.</summary>
+        public bool SceneEndedDay { get; private set; }
+
+        /// <summary>날짜 하루 넘기기 (그레고리력). 원작은 메인 장면에서 0x08095DAC 로 더한다. 사건 장면이 이미 날을 넘겼으면 그대로 둔다.</summary>
         public void NextDate()
         {
+            if (SceneEndedDay) return;
             OrigDate.Get(Mem, OrigMem.Date, out int y, out int mo, out int d);
             var dt = new System.DateTime(y, mo, d).AddDays(1);
             OrigDate.Set(Mem, OrigMem.Date, dt.Year, dt.Month, dt.Day);
