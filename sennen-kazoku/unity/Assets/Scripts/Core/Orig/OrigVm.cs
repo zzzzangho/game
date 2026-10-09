@@ -19,6 +19,8 @@ namespace SennenKazoku.Core.Orig
         public readonly OrigMem Mem;
         readonly Dictionary<string, Node> trees = new Dictionary<string, Node>();
         public int Calls;   // 실행한 호출 수 (무한 재귀 방지)
+        /// <summary>참이면 옮기지 못한 경로 예외 메시지에 호출 경로를 붙인다 (진단용).</summary>
+        public static bool Trail;
 
         public OrigVm(OrigMem mem) { Mem = mem; }
 
@@ -64,10 +66,14 @@ namespace SennenKazoku.Core.Orig
         int depth;
         public uint Call(string fn, params uint[] args)
         {
-            if (depth == 0) Calls = 0;
+            if (depth == 0) { Calls = 0; heapNext = HeapStart; }
             if (++Calls > 2_000_000 || depth > 200) throw new OrigUnmodeled("호출이 너무 많음");
             depth++;
             try { return CallInner(fn, args); }
+            catch (OrigUnmodeled ex) when (Trail)
+            {
+                throw new OrigUnmodeled(ex.Message + " ← " + fn + "(" + string.Join(",", Array.ConvertAll(args, x => x.ToString("X"))) + ")");
+            }
             finally { depth--; }
         }
 
@@ -100,6 +106,13 @@ namespace SennenKazoku.Core.Orig
                         return 0;
                     }
                 case "noop": return 0;   // 소리·화면 함수 (규칙 상태를 바꾸지 않음)
+                case "malloc":   // 원작 힙 할당 0x08006A58 — 원작 힙 상태 대신 작업 영역에서 차례로 잡는다
+                    {
+                        uint size = (args[0] + 3) & ~3u;
+                        if (heapNext + size > HeapEnd) throw new OrigUnmodeled("작업 영역 부족 (할당 " + args[0] + ")");
+                        uint p = heapNext; heapNext += size; return p;
+                    }
+                case "free": return 0;   // 원작 힙 해제 0x0800695C — 작업 영역은 맨 바깥 호출마다 처음부터 다시 쓴다
                 case "select":
                     if (Rules == null) throw new OrigUnmodeled("규칙 데이터 없음");
                     new OrigSelect(Mem, this, Rules).Select(args[0], args[1], args[2]); return 0;
@@ -119,6 +132,9 @@ namespace SennenKazoku.Core.Orig
 
         // ---------------- 실행 ----------------
         public const uint FrameTop = 0x0F100000, FrameSize = 0x1000;   // 지역 변수 프레임 (GBA 에 없는 빈 주소 영역)
+        /// <summary>malloc 작업 영역: 프레임 영역 아래쪽 (호출 깊이 200 까지의 프레임과 겹치지 않음).</summary>
+        public const uint HeapStart = 0x0F001000, HeapEnd = 0x0F036000;
+        uint heapNext = HeapStart;
 
         sealed class Cont { public char Kind; public int Tag; public Node A, B; }
 

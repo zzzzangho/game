@@ -14,10 +14,43 @@ namespace SennenKazoku.Core.Orig
         /// <summary>마무리 장면(0x0802D7A0)에 넘기는 장면 객체 자리. [0] = 설정 블록, +0x11 = 0. 프레임 영역 맨 아래(쓰이지 않는 곳).</summary>
         public const uint SceneObj = 0x0F000000;
 
+        /// <summary>
+        /// 저장 영역 초기화 0x0800D778(방식). 원작은 전원을 켤 때 0, 제목 화면에서 새로 시작할 때
+        /// (0x0202C030 의 0x40 비트가 켜져 있으면 1, 아니면 2) 를 부른다. 각 저장 구획을 DMA 로 0 또는 0xFF 로 채운다.
+        /// </summary>
+        public static void ResetSave(OrigVm vm, uint mode) { vm.Call("0800D778", mode); }
+
+        /// <summary>
+        /// 처음 켠 카트리지 상태: 전원을 켜면 원작은 플래시 세이브를 0x0202C010 부터 읽는데(IWRAM 루틴, 0x0824E610),
+        /// 세이브가 없으면 플래시는 전부 0xFF 다. 원작 실행에서 0xFF 로 읽힌 범위는 0x0203BA38 앞까지이고, 그 뒤(~0x0203C43F)는 0 이다.
+        /// 그 다음 0x0800D778(0) 으로 구획들을 초기화한다.
+        /// </summary>
+        public static void BlankCartridge(OrigVm vm)
+        {
+            for (uint a = OrigMem.SaveStart; a < OrigMem.SaveEnd; a++) vm.Mem.W8(a, a < FlashEnd ? 0xFFu : 0u);
+            ResetSave(vm, 0);
+        }
+        public const uint FlashEnd = 0x0203BA38;
+
+        /// <summary>제목 화면의 새로 시작 방식 (0x0809B5E0).</summary>
+        public static uint TitleResetMode(OrigMem m) { return (m.R32(0x0202C030) & 0x40) != 0 ? 1u : 2u; }
+
+        /// <summary>
+        /// 제목 화면에서 새로 시작: 제목 장면 시작(0x08078650)이 부르는 0x0802B194(0x0203BD30~32 = 0xFF)와
+        /// 새로 시작 선택 때의 저장 영역 초기화(0x0809B5E0 → 0x0800D778).
+        /// </summary>
+        public static void TitleNewGame(OrigVm vm)
+        {
+            for (uint i = 0; i < 3; i++) vm.Mem.W8(0x0203BD30 + i, 0xFF);
+            ResetSave(vm, TitleResetMode(vm.Mem));
+        }
+
         /// <summary>추천 가족으로 새 게임을 만든다. 시작 날짜는 원작처럼 카트리지 시계 날짜가 없으면 2005-01-01.</summary>
         public static void Recommended(OrigVm vm, int year = 2005, int month = 1, int day = 1)
         {
             var m = vm.Mem;
+            // 0x0202C688: 확인 화면에서 카트리지 시계로 적는 날짜(0x0800E3F4) — 시작 날짜와 같게 둔다
+            OrigDate.Set(m, 0x0202C688, year, month, day);
             Init(m, year, month, day);
             vm.Call("0804BC2C", Setup, Members);
             Confirm(m);

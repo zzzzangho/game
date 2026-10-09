@@ -26,7 +26,7 @@ NATIVES = {0x08000614: 0, 0x0824F640: 2, 0x0824F5C8: 2, 0x0824F460: 2, 0x0824F4F
 # 다음 장면으로 바꾸기(0x0809AF60, 가족 레코드 만들기 끝) — 규칙 상태를 바꾸지 않음.
 # 0x08001014 를 건너뛰어도 원작 가족 만들기 결과 EWRAM 전체가 같고, 0x0809AF60 을 건너뛰면 저장 범위 안에서는
 # 0x0203BE04(장면 작업 핸들, 0x080A6038 이 0x08003C00 결과를 넣는 곳)만 다르다.
-UI_NOOP = (0x08047024, 0x08048390, 0x08047864, 0x08046F80, 0x08046804, 0x08003FE8, 0x0800695C, 0x08001014, 0x0809AF60)
+UI_NOOP = (0x08047024, 0x08048390, 0x08047864, 0x08046F80, 0x08046804, 0x08003FE8, 0x08001014, 0x0809AF60)
 NATIVES.update({a: 1 for a in UI_NOOP})
 # 크게 변환해야 하는 새 가족 함수: 추천 가족 틀, 구성원 마무리(채우기 0x0804B1F0 포함), 가족 레코드 만들기
 BIG = (0x0804BC2C, 0x0802D7A0, 0x080417E0)
@@ -34,6 +34,9 @@ NATIVE_NAMES = {0x08000614: "rand", 0x0824F640: "umod", 0x0824F5C8: "udiv", 0x08
                 0x08115778: "rel", 0x08110B90: "slots", 0x08110608: "inhouse", 0x08028524: "select",
                 0x0824F700: "memcpy", 0x0824E2BC: "cpuset", 0x08248EE0: "noop", 0x082494CC: "noop", 0x080955C8: "noop", 0x080959DC: "noop"}
 NATIVE_NAMES.update({a: "noop" for a in UI_NOOP})
+# 원작 힙(머리 0x0202BFB0): 할당 0x08006A58, 해제 0x0800695C. 앱은 원작 힙 상태를 두지 않고 따로 잡은 작업 영역에서 할당한다.
+NATIVES.update({0x08006A58: 1, 0x0800695C: 1})
+NATIVE_NAMES.update({0x08006A58: "malloc", 0x0800695C: "free"})
 STATE_TABLE, CAND_TABLE = 0x085BD4A0, 0x085BD4B4
 OPS = {'add': '+', 'sub': '-', 'mul': '*', 'and': '&', 'or': '|', 'xor': '^', 'shl': '<<', 'lsr': '>>', 'asr': '>>>',
        'udiv': '/', 'umod': '%', 'sdiv': '/s', 'smod': '%s'}
@@ -136,6 +139,11 @@ def rom_spans(rom, consts=(), extra=(), more=()):
     for base in (0x088915C8, 0x0889D3B8, 0x088A309C):
         walk(base, 4 * n_ptrs(base), 3)
     walk(0x08891D9C, 28 * 512, 0)
+    # 특별 사건 표 (0x08119B8C: m32[m32[0x085BD4C8 + 종류*4] + 번호*4]) — 종류 9개, 각 사건 기록 포인터 배열
+    for t in range(16):
+        tb = rom.u32(0x085BD4C8 + 4 * t)
+        if not isptr(tb): break
+        walk(0x085BD4C8 + 4 * t, 4, 0); walk(tb, 4 * n_ptrs(tb), 1)
     # 새 가족: 성(姓) 256개 표, 추천 가족 틀 8개(20바이트씩)
     walk(0x088A3F84, 4 * 256, 1)
     walk(0x08587DBC, 8 * 20, 0)

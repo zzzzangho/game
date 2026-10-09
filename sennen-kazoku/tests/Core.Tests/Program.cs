@@ -38,6 +38,7 @@ namespace SennenKazoku.Tests
         /// <summary>tools/romlift/make_vectors.py 가 원작 ROM 을 실제 RAM 덤프 위에서 돌린 결과와 C# 이식을 비교한다.</summary>
         static void OrigVectors(string dir)
         {
+            SennenKazoku.Core.Orig.OrigVm.Trail = Environment.GetEnvironmentVariable("SK_TRACE") != null;
             var rules = SennenKazoku.Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "orig_rules.json")))));
             if (rules.TreesFile != "" && File.Exists(Path.Combine(dir, rules.TreesFile))) rules.TreesText = File.ReadAllBytes(Path.Combine(dir, rules.TreesFile));
             var vec = J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "vectors.json"))));
@@ -180,12 +181,34 @@ namespace SennenKazoku.Tests
                        + Diff(mc, wc, 0x0203BE08, SennenKazoku.Core.Orig.OrigMem.SaveEnd);
                 Console.WriteLine("       가족 레코드 만들기(0x080417E0): 저장 영역 원작과 다른 바이트 " + d2 + " (머리말 36바이트·장면 핸들 4바이트 제외, " + sw.ElapsedMilliseconds + "ms)");
                 T.Eq(d2, 0, "가족 레코드 만들기 결과가 원작과 다름");
-                // 처음부터 추천 가족 만들기: 예외 없이 돌고 가족이 생겨야 한다
-                var mn = Fresh("main.ram"); var vmn = rules.CreateVm(mn);
+                // 빈 메모리에서 원작처럼 저장 영역 초기화(전원 켤 때 0, 제목 화면 새로 시작) → 새 가족 장면 직전 원작 저장 영역과 비교
+                var mn = new SennenKazoku.Core.Orig.OrigMem(); mn.ShareRom(shared); var vmn = rules.CreateVm(mn);
+                SennenKazoku.Core.Orig.OrigNewGame.BlankCartridge(vmn);
+                SennenKazoku.Core.Orig.OrigNewGame.TitleNewGame(vmn);
+                {
+                    // 비교에서 빼는 칸: 시계 날짜(0x0202C688, 뒤에서 적음)·성(0x0202C6A0, 추천 가족 틀에서 적음)·
+                    // 화면 작업 변수(0x0203BD68, 가족 고르기 화면이 여러 번 바꿈)·장면 작업 핸들(0x0203BE04)
+                    bool Skip(uint a) { return (a >= 0x0202C688 && a < 0x0202C68B) || (a >= 0x0202C6A0 && a < 0x0202C6C4) || a == 0x0203BD68 || (a >= 0x0203BE04 && a < 0x0203BE08); }
+                    var w0 = Ram("newg_fin0.ram"); var runs = new List<string>(); int nd = 0;
+                    for (uint a = SennenKazoku.Core.Orig.OrigMem.SaveStart; a < SennenKazoku.Core.Orig.OrigMem.SaveEnd; a++)
+                    {
+                        if (mn.Ewram[a - E] == w0[a - E] || Skip(a)) continue;
+                        nd++;
+                        if (runs.Count > 0 && runs[runs.Count - 1].EndsWith((a - 1).ToString("X8"))) runs[runs.Count - 1] = runs[runs.Count - 1].Substring(0, 9) + a.ToString("X8");
+                        else runs.Add(a.ToString("X8") + "-" + a.ToString("X8"));
+                    }
+                    Console.WriteLine("       빈 카트리지 → 제목 화면 새로 시작: 저장 영역 원작(새 가족 장면 직전)과 다른 바이트 " + nd + (nd > 0 ? ": " + string.Join(" ", runs.Take(30)) : "") + " (날짜·성·화면 변수·장면 핸들 제외)");
+                    T.Eq(nd, 0, "저장 영역 초기화가 원작과 다름");
+                }
                 SennenKazoku.Core.Orig.OrigNewGame.Recommended(vmn);
                 int people = 0; for (int k = 0; k < 8; k++) if (SennenKazoku.Core.Orig.OrigGame.Present(mn, k)) people++;
-                Console.WriteLine("       추천 가족 새로 만들기: " + people + "명");
+                SennenKazoku.Core.Orig.OrigDate.Get(mn, SennenKazoku.Core.Orig.OrigMem.Date, out int ny, out int nm2, out int nd2);
+                Console.WriteLine("       빈 카트리지에서 추천 가족 새로 만들기: " + people + "명, 날짜 " + ny + "-" + nm2 + "-" + nd2);
                 T.True(people >= 2, "새 가족 인원이 너무 적음");
+                // 만든 가족을 원작 하루 처리로 60일 진행
+                var g2 = new SennenKazoku.Core.Orig.OrigGame(mn, rules); int ev2 = 0;
+                for (int dday = 0; dday < 60; dday++) { ev2 += g2.TickInterests().Count; g2.NextDate(); }
+                Console.WriteLine("       새 가족 60일 진행: 사건 " + ev2 + "번");
             }
         }
 
