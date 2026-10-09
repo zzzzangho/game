@@ -93,8 +93,15 @@ namespace SennenKazoku.Core
                     { "nextPersonId", f.NextPersonId }, { "members", members }, { "flags", flags }, { "history", hist },
                     { "lastFired", last }, { "fireCount", cnt }, { "rng", f.RngState.ToString() },
                     { "active", f.Active != null ? f.Active.ToJson() : null }, { "queue", queue },
-                    { "startDay", f.StartDay }, { "gratitude", f.Gratitude }, { "head", f.HeadId }, { "items", ItemsJson(f) } } }
+                    { "startDay", f.StartDay }, { "gratitude", f.Gratitude }, { "head", f.HeadId }, { "items", ItemsJson(f) },
+                    { "orig", f.IsOriginal ? OrigJson(f) : null } } }
             };
+        }
+
+        static Dictionary<string, object> OrigJson(Family f)
+        {
+            var names = new Dictionary<string, object>(); foreach (var kv in f.OrigNames) names[kv.Key.ToString()] = kv.Value;
+            return new Dictionary<string, object> { { "mem", f.OrigState }, { "names", names } };
         }
 
         static Dictionary<string, object> ItemsJson(Family f)
@@ -122,6 +129,12 @@ namespace SennenKazoku.Core
             foreach (var o in J.List(d, "queue")) f.Queue.Add(ActiveEvent.FromJson(J.Obj(o)));
             f.StartDay = J.Int(d, "startDay", f.Today); f.Gratitude = J.Int(d, "gratitude"); f.HeadId = J.Int(d, "head", -1);
             var it = J.Child(d, "items"); if (it != null) foreach (var kv in it) f.Items[kv.Key] = Convert.ToInt32(kv.Value);
+            var og = J.Child(d, "orig");
+            if (og != null)
+            {
+                f.OrigState = J.Str(og, "mem");
+                var nm = J.Child(og, "names"); if (nm != null) foreach (var kv in nm) f.OrigNames[int.Parse(kv.Key)] = kv.Value as string ?? "";
+            }
             return f;
         }
 

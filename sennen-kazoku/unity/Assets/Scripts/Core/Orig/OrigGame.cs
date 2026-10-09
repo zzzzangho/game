@@ -44,7 +44,13 @@ namespace SennenKazoku.Core.Orig
         /// <summary>호출에 넘기는 결과 버퍼 자리 (원작은 호출한 쪽 지역 변수).</summary>
         const uint OutBuf = 0x0F000800;
 
-        public sealed class DayEvent { public int Person; public uint Data; public int Code; public uint Type; public bool Max; }
+        public sealed class DayEvent
+        {
+            public int Person; public uint Data; public int Code; public uint Type; public bool Max;
+            public uint PersonId;                         // 사건 인물 번호(레코드 +0x3C)
+            public uint[] Slots = new uint[28];           // 장면 시작 때 슬롯표 (대사 이름 자리)
+            public uint Date;                             // 사건 날 (0x0202C684 3바이트)
+        }
 
         public OrigGame(OrigMem mem, OrigRules rules) { Mem = mem; Rules = rules; Vm = rules.CreateVm(mem); }
 
@@ -220,8 +226,10 @@ namespace SennenKazoku.Core.Orig
                 // 장면 복귀 0x080111B8 은 둘이 지금 값과 다르면(사건으로 가족이 바뀜) 그날을 끝내고 다음 날 06:00 으로 넘긴다.
                 Mem.W16(Queue + 0xE, FamilyKey()); Mem.W16(Queue + 6, Vm.Call("08015BC4"));
                 uint date0 = Mem.R32(OrigMem.Date) & 0xFFFFFF;
-                OrigEvents.RunScene(Vm, Rules, data, id);
-                evs.Add(new DayEvent { Person = n, Data = data, Type = type, Code = n >= 0 && n < 8 ? codes[n] : 0, Max = n >= 0 && n < 8 && codes[n] == 1 });
+                var de = new DayEvent { Person = n, Data = data, Type = type, Code = n >= 0 && n < 8 ? codes[n] : 0, Max = n >= 0 && n < 8 && codes[n] == 1,
+                    PersonId = id, Date = date0 };
+                OrigEvents.RunScene(Vm, Rules, data, id, de.Slots);
+                evs.Add(de);
                 AnnouncePending();
                 if ((Mem.R32(OrigMem.Date) & 0xFFFFFF) != date0) { SceneEndedDay = true; break; }
             }
@@ -249,6 +257,8 @@ namespace SennenKazoku.Core.Orig
 
         /// <summary>마지막 사건 장면 복귀(0x080111B8)가 그날을 끝내고 날짜를 다음 날 06:00 으로 넘겼는지. 다음 NextDate 는 날짜를 더하지 않는다.</summary>
         public bool SceneEndedDay { get; private set; }
+        /// <summary>저장에서 이어 할 때: 마지막 장면이 날을 끝낸 상태였으면 다음 날을 06:00 부터.</summary>
+        public void ResumeMorning() { SceneEndedDay = true; }
 
         /// <summary>날짜 하루 넘기기 (그레고리력). 원작은 메인 장면에서 0x08095DAC 로 더한다. 사건 장면이 이미 날을 넘겼으면 그대로 둔다.</summary>
         public void NextDate()

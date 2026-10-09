@@ -9,6 +9,8 @@ namespace SennenKazoku.Core
     public sealed class EventView
     {
         public string EventId, Title, Speaker, Text, Phase, Origin, Certainty, TextSource;
+        /// <summary>사건 인물 번호 (화면이 그 인물을 따라가게). −1 = 모름.</summary>
+        public int PersonId = -1;
         public List<ChoiceView> Choices = new List<ChoiceView>();
         public bool NeedsChoice { get { return Phase == "choices"; } }
     }
@@ -84,7 +86,22 @@ namespace SennenKazoku.Core
         public bool HasRandom;
     }
 
-    public sealed class GameSession
+    /// <summary>화면이 쓰는 진행 세션. GameSession = 팩 규칙(이전 방식), Orig.OrigSession = 원작 코드(변환 트리) 진행.</summary>
+    public interface IGameSession
+    {
+        Family Family { get; }
+        bool Paused { get; }
+        bool StepDay();
+        EventView View();
+        bool Advance();
+        bool Choose(string choiceId);
+        Prediction Predict(int personId, bool max);
+        void ReplaceCatalog(ContentCatalog c);
+        /// <summary>저장 직전에 부른다 (원작 세션은 원작 메모리를 Family 에 적어 둔다).</summary>
+        void PrepareSave();
+    }
+
+    public sealed class GameSession : IGameSession
     {
         public Family Family { get; private set; }
         public ContentCatalog Catalog { get; private set; }
@@ -105,6 +122,7 @@ namespace SennenKazoku.Core
         public void ReplaceCatalog(ContentCatalog c) { Catalog = c; }
 
         public bool Paused { get { return Family.Active != null; } }
+        public void PrepareSave() { }
 
         // ---------- 하루 진행 ----------
         /// <summary>하루 진행. 이벤트가 진행 중이면 아무 것도 하지 않는다. 이벤트가 시작되면 true.</summary>

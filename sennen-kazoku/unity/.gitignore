@@ -15,3 +15,5 @@
 *.gba
 /Assets/Resources/LocalArt/
 /Assets/Resources/LocalArt.meta
+/Assets/Resources/LocalOrig/
+/Assets/Resources/LocalOrig.meta

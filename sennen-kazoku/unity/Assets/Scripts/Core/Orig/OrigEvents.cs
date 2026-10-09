@@ -52,13 +52,17 @@ namespace SennenKazoku.Core.Orig
         /// → 메인 장면 복귀 0x080111B8(-3, 인물 번호, 1, ·, 그 값, ·, 결과 기록): 추억 기록·후속 일정·날 넘김.
         /// 시작 함수 5,311개 중 대부분은 0 을 돌려준다(값을 계산하는 것 약 170개).
         /// </summary>
-        public static uint RunScene(OrigVm vm, OrigRules rules, uint data, uint personId)
+        public static uint RunScene(OrigVm vm, OrigRules rules, uint data, uint personId) { return RunScene(vm, rules, data, personId, null); }
+
+        /// <param name="slotsOut">있으면 장면 시작 때 만든 슬롯표(28칸)를 담는다 — 대사의 인물 이름 자리(제어 토큰 1A 06)를 채울 때 쓴다.</param>
+        public static uint RunScene(OrigVm vm, OrigRules rules, uint data, uint personId, uint[] slotsOut)
         {
             // 장면 시작 0x0804C66C 의 규칙 부분 (원작 실행 중단점으로 확인: 시작 함수 전에 0x0804C76C 에서 슬롯표를 다시 만든다):
             // 0x0800E57C — 인물 레코드 앞 0x38 바이트를 가계 표(0x0202EB9C + 60×번호)에 옮겨 적기,
             // 0x08110B90(사건 인물, 0) — 사건 인물 중심 슬롯표. 큐에 넣은 뒤 다른 인물 처리로 슬롯표가 바뀌었어도 여기서 바로잡힌다.
             vm.Call("0800E57C");
             vm.Call("slots", personId, 0);
+            if (slotsOut != null) for (int k = 0; k < slotsOut.Length && k < 28; k++) slotsOut[k] = vm.Mem.R16(OrigMem.Slots + 2 * (uint)k);
             uint v = 0;
             var fns = Fns(vm, rules, data);
             if (fns[0] != null) v = vm.Call(fns[0], 0, data, 0, 0) & 0xFFFF;

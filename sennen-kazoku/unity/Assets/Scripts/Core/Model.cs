@@ -208,6 +208,11 @@ namespace SennenKazoku.Core
         public ActiveEvent Active;
         public ulong RngState = 12345;
         public List<ActiveEvent> Queue = new List<ActiveEvent>();                     // 대기 중 이벤트
+        /// <summary>원작 코드로 진행하는 가족이면 원작 메모리(세이브 영역+난수 seed, base64). 비어 있으면 팩 규칙 가족.</summary>
+        public string OrigState = "";
+        /// <summary>원작 가족의 표시 이름 (인물 번호 → 이름). 원작 이름 글자표는 아직 해독하지 못해 앱이 붙인 이름이다.</summary>
+        public Dictionary<int, string> OrigNames = new Dictionary<int, string>();
+        public bool IsOriginal { get { return !string.IsNullOrEmpty(OrigState); } }
 
         public static int MoodLevel(int mood)
         {

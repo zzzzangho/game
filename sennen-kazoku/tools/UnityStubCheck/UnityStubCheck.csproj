@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Unity 없이 앱 스크립트(Game/*.cs)가 컴파일되는지만 보는 검사. UnityEngine 은 Stubs.cs 의 빈 껍데기다 (실행 검사 아님). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <Nullable>disable</Nullable>
+    <NoWarn>CS0067;CS0414;CS0169;CS0649;CS0168;CS0219;CS8981</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../unity/Assets/Scripts/**/*.cs" />
+    <Compile Include="Stubs.cs" />
+  </ItemGroup>
+</Project>

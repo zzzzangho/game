@@ -18,7 +18,7 @@ namespace SennenKazoku.Game
     public sealed class GameApp : MonoBehaviour
     {
         // ---- 코어 ----
-        PackStore packStore; SaveSystem saves; List<Pack> bundled; ContentCatalog catalog; GameSession session;
+        PackStore packStore; SaveSystem saves; List<Pack> bundled; ContentCatalog catalog; IGameSession session;
         readonly List<string> contentWarnings = new List<string>();
         readonly ContentUpdater updater = new ContentUpdater();
         ArtLibrary art;
@@ -59,6 +59,57 @@ namespace SennenKazoku.Game
             toastBox = UiKit.Box(root, "toast", new Color(0.1f, 0.15f, 0.3f, 0.92f));
             toastText = UiKit.Label(toastBox.transform, "t", "", 16, Color.white, TextAnchor.MiddleCenter);
             toastBox.gameObject.SetActive(false);
+        }
+
+        // ---- 원작 코드 진행 (로컬 원작 팩: tools/romlift 이 사용자 ROM 에서 만든 규칙·트리·글 대응표. 배포 불가) ----
+        // 찾는 곳: persistentDataPath/orig/ (orig_rules.json, orig_rules.json.trees, orig_text.json) 또는
+        // Resources/LocalOrig/ (orig_rules.json, orig_trees.bytes, orig_text.json). 없으면 이전 방식(팩 규칙)으로만 시작한다.
+        Core.Orig.OrigRules origRules; Core.Orig.OrigText origText; bool origTried;
+        bool OrigAvailable()
+        {
+            string d = Path.Combine(Application.persistentDataPath, "orig");
+            return File.Exists(Path.Combine(d, "orig_rules.json")) || Resources.Load<TextAsset>("LocalOrig/orig_rules") != null;
+        }
+        bool LoadOrig()
+        {
+            if (origRules != null) return true;
+            if (origTried) return false;
+            origTried = true;
+            try
+            {
+                string d = Path.Combine(Application.persistentDataPath, "orig");
+                string rulesJson, textJson = null; byte[] trees;
+                if (File.Exists(Path.Combine(d, "orig_rules.json")))
+                {
+                    rulesJson = File.ReadAllText(Path.Combine(d, "orig_rules.json"));
+                    trees = File.ReadAllBytes(Path.Combine(d, "orig_rules.json.trees"));
+                    if (File.Exists(Path.Combine(d, "orig_text.json"))) textJson = File.ReadAllText(Path.Combine(d, "orig_text.json"));
+                }
+                else
+                {
+                    rulesJson = Resources.Load<TextAsset>("LocalOrig/orig_rules").text;
+                    trees = Resources.Load<TextAsset>("LocalOrig/orig_trees").bytes;
+                    var tt = Resources.Load<TextAsset>("LocalOrig/orig_text"); if (tt != null) textJson = tt.text;
+                }
+                var r = Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(rulesJson)));
+                r.TreesText = trees;
+                origText = textJson != null ? Core.Orig.OrigText.FromJson(J.Obj(MiniJson.Parse(textJson))) : new Core.Orig.OrigText();
+                origRules = r;
+                return true;
+            }
+            catch (Exception e) { contentWarnings.Add("원작 팩 불러오기 실패: " + e.Message); return false; }
+        }
+
+        /// <summary>원작 코드로 새 가족 — 원작 "신이 추천하는 가족" 경로 그대로(OrigNewGame).</summary>
+        void BeginOrig()
+        {
+            if (!LoadOrig()) { Toast("원작 팩을 불러오지 못했습니다"); return; }
+            try
+            {
+                session = Core.Orig.OrigSession.NewRecommended(origRules, origText, "", (uint)DateTime.UtcNow.Ticks);
+                EnterGame(); Toast("원작 규칙으로 시작합니다 (신님이 추천하는 가족)");
+            }
+            catch (Exception e) { Toast("원작 진행 시작 실패: " + e.Message); session = null; }
         }
 
         void LoadContent()
@@ -299,15 +350,16 @@ namespace SennenKazoku.Game
 
         void StartNew()
         {
-            if (!art.Parts.Available) { BeginNew(false); return; }
+            if (!art.Parts.Available) { if (OrigAvailable()) BeginOrig(); else BeginNew(false); return; }
             // 원작 도입부의 신님 질문 (원작 문구 확인됨: docs/07)
             playing = false;
             var body = Window("신님", 300); float w = BodyW(body);
             var q = UiKit.Label(body, "q", "내가 아는 가족을 지켜봐 주지 않겠느냐?", Px(16), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
             UiKit.SetPx(q.rectTransform, 0, 0, w, Px(60));
-            var a = UiKit.Btn(body, "yes", "네, 알겠습니다!", Px(16), new Color32(0xE8, 0x70, 0x40, 255), Color.white, () => BeginNew(false));
+            bool orig = OrigAvailable();
+            var a = UiKit.Btn(body, "yes", "네, 알겠습니다!", Px(16), new Color32(0xE8, 0x70, 0x40, 255), Color.white, () => { if (orig) BeginOrig(); else BeginNew(false); });
             UiKit.SetPx(a.GetComponent<RectTransform>(), 0, Px(70), w, Px(52));
-            var b = UiKit.Btn(body, "no", "어… 잠깐만요… (내가 아는 가족)", Px(16), new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => BeginNew(true));
+            var b = UiKit.Btn(body, "no", orig ? "어… 잠깐만요… (내가 아는 가족 · 원작 규칙 미이식)" : "어… 잠깐만요… (내가 아는 가족)", Px(16), new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => BeginNew(true));
             UiKit.SetPx(b.GetComponent<RectTransform>(), 0, Px(132), w, Px(52));
         }
 
@@ -568,7 +620,17 @@ namespace SennenKazoku.Game
 
         void LoadSlot(string slot)
         {
-            try { var r = saves.Load(slot); session = new GameSession(r.Family, catalog); EnterGame(); Toast(r.Warning.Length > 0 ? r.Warning : "불러왔습니다"); }
+            try
+            {
+                var r = saves.Load(slot);
+                if (r.Family.IsOriginal)
+                {
+                    if (!LoadOrig()) { Toast("원작 규칙 저장입니다 — 원작 팩이 없어 불러올 수 없습니다"); return; }
+                    session = Core.Orig.OrigSession.Load(origRules, origText, r.Family);
+                }
+                else session = new GameSession(r.Family, catalog);
+                EnterGame(); Toast(r.Warning.Length > 0 ? r.Warning : "불러왔습니다");
+            }
             catch (Exception e) { Toast("불러오기 실패: " + e.Message); }
         }
 
@@ -583,7 +645,7 @@ namespace SennenKazoku.Game
 
         void SaveSlot(string slot, bool quiet = false)
         {
-            try { saves.Save(slot, session.Family, catalog); if (!quiet) Toast("저장했습니다 (" + SlotLabel(slot) + ")"); }
+            try { session.PrepareSave(); saves.Save(slot, session.Family, catalog); if (!quiet) Toast("저장했습니다 (" + SlotLabel(slot) + ")"); }
             catch (Exception e) { Toast("저장 실패: " + e.Message); }
         }
         static string SlotLabel(string s) { return s == "auto" ? "자동 저장" : s.Replace("slot", "슬롯 "); }
@@ -769,22 +831,25 @@ namespace SennenKazoku.Game
             while (acc >= SecondsPerDay && !started)
             {
                 acc -= SecondsPerDay;
-                int before = session.Family.Members.Count;
+                string before = MemberIds();
                 started = session.StepDay();
-                if (session.Family.Members.Count != before) RebuildActors();
+                if (MemberIds() != before) RebuildActors();   // 결혼·출생·사망·독립 (같은 날 들고 나도 알아챈다)
                 if (session.Family.Today - lastAutoDay >= 30) { lastAutoDay = session.Family.Today; SaveSlot("auto", true); }
             }
             if (started)
             {
                 acc = 0; SaveSlot("auto", true);
                 int self; if (session.Family.Active != null && session.Family.Active.Cast.TryGetValue("self", out self)) { selectedId = self; follow = true; }
+                else { var vw = session.View(); if (vw != null && vw.PersonId >= 0 && session.Family.Get(vw.PersonId) != null) { selectedId = vw.PersonId; follow = true; } }
                 RefreshAll();
             }
             else { RefreshHud(); RefreshEffects(); }
         }
 
+        string MemberIds() { var sb = new StringBuilder(); foreach (var m in session.Family.Members) sb.Append(m.Id).Append(','); return sb.ToString(); }
+
         void OnApplicationPause(bool paused) { if (paused && playing && session != null) SaveSlot("auto", true); }
-        void OnApplicationQuit() { if (playing && session != null) { try { saves.Save("auto", session.Family, catalog); } catch (Exception) { } } }
+        void OnApplicationQuit() { if (playing && session != null) { try { session.PrepareSave(); saves.Save("auto", session.Family, catalog); } catch (Exception) { } } }
 
         // =============================================================== 표시 갱신
         void RefreshAll() { RefreshHud(); RefreshBar(); RefreshDialog(); }

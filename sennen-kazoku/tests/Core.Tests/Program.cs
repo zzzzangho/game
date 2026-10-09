@@ -754,6 +754,44 @@ namespace SennenKazoku.Tests
             var origDir = Environment.GetEnvironmentVariable("SK_ORIG_DIR");
             if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "vectors.json")))
                 T.Run("원작 규칙 재현: 판정 트리·관계 슬롯·관심사 선택 = 원작 ROM 실행 결과 (로컬 자료 있을 때만)", () => OrigVectors(origDir));
+            if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "orig_rules.json")) && File.Exists(Path.Combine(origDir, "orig_text.json")))
+                T.Run("원작 세션(앱 연결): 추천 가족 → 2년 진행 → 사건 대사 → 저장·불러오기 후 같은 진행 (로컬)", () =>
+                {
+                    var rules = SennenKazoku.Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(origDir, "orig_rules.json")))));
+                    rules.TreesText = File.ReadAllBytes(Path.Combine(origDir, rules.TreesFile));
+                    var text = SennenKazoku.Core.Orig.OrigText.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(origDir, "orig_text.json")))));
+                    var s = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234);
+                    T.True(s.Family.Members.Count >= 2, "가족 인원 " + s.Family.Members.Count);
+                    Console.WriteLine("       시작 " + GameDate.Format(s.Family.Today) + " " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + "(" + (p.Gender == 0 ? "남" : "여") + p.Age(s.Family.Today) + "세 " + p.PlannedTitle + ")")));
+                    int shown = 0, withText = 0, pagesTotal = 0; string sample = null;
+                    void Drain(SennenKazoku.Core.Orig.OrigSession ss)
+                    {
+                        while (ss.Paused)
+                        {
+                            var v = ss.View(); pagesTotal++;
+                            if (ss == s && sample == null && v.TextSource != "none" && v.Text.Length > 20) sample = v.Title + " / " + v.Text.Replace("\n", " ");
+                            if (ss.Advance()) { shown++; if (v.TextSource != "none") withText++; }
+                        }
+                    }
+                    for (int d = 0; d < 730; d++) { s.StepDay(); Drain(s); }
+                    Console.WriteLine("       2년: 보여 준 사건 " + shown + "개 (대사 있음 " + withText + "), 장 " + pagesTotal + ", " + GameDate.Format(s.Family.Today));
+                    Console.WriteLine("       예: " + sample);
+                    T.True(shown > 100 && withText * 10 >= shown * 9, "사건 수·대사 비율");
+                    // 저장 → 불러오기 → 두 세션을 60일 같이 진행: 같은 사건이 나야 한다
+                    s.PrepareSave();
+                    var json = MiniJson.Serialize(SaveSystem.ToJson(s.Family, null, SaveSystem.CurrentSchema));
+                    var f2 = SaveSystem.FromJson(J.Obj(MiniJson.Parse(json)));
+                    var s2 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, f2);
+                    var a = new List<string>(); var b = new List<string>();
+                    for (int d = 0; d < 60; d++)
+                    {
+                        s.StepDay(); while (s.Paused) { var v = s.View(); a.Add(GameDate.Format(s.Family.Today) + v.EventId); s.Advance(); }
+                        s2.StepDay(); while (s2.Paused) { var v = s2.View(); b.Add(GameDate.Format(s2.Family.Today) + v.EventId); s2.Advance(); }
+                    }
+                    T.True(a.Count > 0 && string.Join("|", a) == string.Join("|", b), "불러온 뒤 진행이 다름 " + a.Count + "/" + b.Count);
+                    T.True(Convert.ToBase64String(s.Game.Mem.SaveBlock()) == Convert.ToBase64String(s2.Game.Mem.SaveBlock()), "60일 뒤 원작 메모리가 다름");
+                    Console.WriteLine("       저장·불러오기 뒤 60일 사건 " + a.Count + "개 같음, 원작 메모리 같음");
+                });
             var years = Environment.GetEnvironmentVariable("SK_ORIG_YEARS");
             if (!string.IsNullOrEmpty(origDir) && !string.IsNullOrEmpty(years))
                 T.Run("원작 코드로 새 가족 장기 진행 (로컬)", () =>
