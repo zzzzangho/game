@@ -7,12 +7,13 @@ namespace SennenKazoku.Core.Orig
     /// 원작 코드(변환 트리)로 진행하는 세션 — 화면은 이전 GameSession 과 같은 방식(IGameSession)으로 쓴다.
     /// 원작 메모리가 기준이고, 화면용 Family 는 하루마다 원작 레코드에서 다시 만든다(투영).
     ///  - 인물: 레코드 0x0202C6C4+976n 중 번호(+0x3C)가 있는 것. 생일 +0x2E, 성별 +0x31, 능력치 +0x50~+0x56, 게이지 +0x5A,
-    ///    몰입도 +0x5B, 직업 +0x58, 관심사 날짜 +0x48, 화살 표시 +0x69, 성격 +0x32, 관심사 +0x80/+0x82.
+    ///    몰입도 +0x5B, 직업 +0x58, 직업 숙련 +0x5E, 스킬 +0x62~+0x64, 관심사 날짜 +0x48, 화살 표시 +0x69, 성격 +0x32, 관심사 +0x80/+0x82.
+    ///  - 가족: 무드 0x0202C6AE · 집 등급 0x0202C6AF · 자산 0x0202C6B8.
     ///  - 관계: 족보 0x0202EB9C+60×번호 의 +0x10 아버지 · +0x12 어머니 · +0x14 배우자. 가장 0x0202C67C, 시작 날짜 0x0202C688.
     /// 사건은 원작처럼 그날 진행(OrigGame.TickDay) 안에서 효과까지 끝나고, 화면에는 그 뒤 대사(로컬 글 대응표)로 보여 준다.
     /// 아직 원작대로 하지 못한 것(표시):
-    ///  - 이름: 원작 이름 글자표를 해독하지 못해 앱이 붙인 이름을 쓴다(OrigNames).
-    ///  - 결과 예고(Predict)·사건 중 선택지·하트(무드) 표시는 아직 없다.
+    ///  - 이름: 한국식 이름을 앱이 붙인다(OrigNames, 가족 안에서 겹치지 않게). 원작 이름(자체 글자표)은 쓰지 않는다 — 사용자 결정.
+    ///  - 하트 표시는 원작 값이 무엇인지 아직 모른다(0).
     ///  - 아직 보여 주지 않은 그날 사건 목록은 저장하지 않는다(효과는 이미 원작 메모리에 들어가 있다).
     /// </summary>
     public sealed class OrigSession : IGameSession
@@ -30,6 +31,7 @@ namespace SennenKazoku.Core.Orig
 
         /// <summary>표시 이름이 없는 새 인물에게 붙이는 이름 (앱 표시용, 원작 이름 아님).</summary>
         static readonly string[] MaleNames = { "민준", "서준", "도윤", "하준", "지호", "준우", "현우", "건우", "우진", "선우", "유준", "정우", "승현", "시우", "지훈", "태윤" };
+        static readonly string[] Surnames = { "김", "이", "박", "최", "정", "강", "조", "윤", "장", "임", "한", "오", "서", "신", "권", "황", "안", "송", "류", "홍" };
         static readonly string[] FemaleNames = { "서연", "지우", "하윤", "서윤", "민서", "하은", "지아", "수아", "지유", "채원", "윤서", "다은", "예린", "소율", "가은", "나연" };
 
         OrigSession(OrigRules rules, OrigText text, Family f, OrigMem m)
@@ -47,7 +49,8 @@ namespace SennenKazoku.Core.Orig
             OrigNewGame.TitleNewGame(vm);
             m.W32(OrigMem.Seed, seed);
             OrigNewGame.Recommended(vm, year, month, day);
-            var f = new Family { Name = surname ?? "" };
+            if (string.IsNullOrEmpty(surname)) surname = Surnames[(int)(seed % (uint)Surnames.Length)];
+            var f = new Family { Name = surname };
             var s = new OrigSession(rules, text, f, m);
             s.PrepareSave();
             return s;
@@ -124,13 +127,19 @@ namespace SennenKazoku.Core.Orig
             return id == 0xFFFF ? null : NameOf((int)id, -1);
         }
 
+        /// <summary>표시 이름: 이미 붙인 이름, 없으면 성별 이름 목록에서 지금 가족(살아 있는 사람)과 겹치지 않는 것을 고른다.</summary>
         string NameOf(int id, int gender)
         {
             string s;
             if (Family.OrigNames.TryGetValue(id, out s) && !string.IsNullOrEmpty(s)) return s;
             if (gender < 0) { var p = Family.Get(id); gender = p != null ? p.Gender : 0; }
             var list = gender == 1 ? FemaleNames : MaleNames;
-            s = list[id % list.Length];
+            var used = new HashSet<string>(); foreach (var q in Family.Members) used.Add(q.Name);
+            for (int n = 0; n < 8; n++)
+                if (OrigGame.Present(Game.Mem, n)) { string t; if (Family.OrigNames.TryGetValue((int)Game.Mem.R16(OrigMem.PersonAddr(n) + 0x3C), out t)) used.Add(t); }
+            s = null;
+            for (int k = 0; k < list.Length && s == null; k++) { var c = list[(id + k) % list.Length]; if (!used.Contains(c)) s = c; }
+            if (s == null) s = list[id % list.Length] + id;
             Family.OrigNames[id] = s;
             return s;
         }
@@ -215,7 +224,8 @@ namespace SennenKazoku.Core.Orig
                 p.BirthDay = SafeDay(by, bm, bd);
                 for (int k = 0; k < 4; k++) p.Stats[k] = (int)m.R16(a + 0x50 + 2 * (uint)k);
                 p.Gauge = (int)m.R8(a + 0x5A); p.Immersion = (int)m.R8(a + 0x5B);
-                p.Job = (int)m.R8(a + 0x58); p.JobMastery = (int)m.R8(a + 0x59);
+                p.Job = (int)m.R8(a + 0x58); p.JobMastery = (int)m.R8(a + 0x5E);
+                p.Skills.Clear(); for (uint k = 0; k < 3; k++) { uint sk = m.R8(a + 0x62 + k); if (sk != 0xFF) p.Skills.Add((int)sk); }
                 p.InterestDay = (int)m.R16(a + 0x48); p.ArrowFlags = (int)m.R8(a + 0x69);
                 p.PersonalityCode = (int)(m.R8(a + 0x32) & 0xF);
                 int t = (int)m.R16(a + 0x80), i = (int)m.R16(a + 0x82);
@@ -228,6 +238,8 @@ namespace SennenKazoku.Core.Orig
                 f.Members.Add(p);
             }
             f.HeadId = (int)m.R16(0x0202C67C);
+            // 가족 값 (가족 기준 0x0202C010: +0x69E 무드 · +0x69F 집 등급 · +0x6A8 자산 — 참고 자료 family-save-layout 과 0x08111D54)
+            f.Mood = (int)m.R8(0x0202C6AE); f.HouseGrade = (int)m.R8(0x0202C6AF); f.Assets = m.R32(0x0202C6B8);
             OrigDate.Get(m, OrigMem.Date, out int y, out int mo, out int d);
             f.Today = SafeDay(y, mo, d);
             OrigDate.Get(m, 0x0202C688, out int sy, out int sm, out int sd);
