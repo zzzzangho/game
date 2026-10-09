@@ -70,11 +70,11 @@ def is_sp(x): return isinstance(x, tuple) and x[0] == 'sp'
 
 
 class State:
-    __slots__ = ('r', 'mem', 'flags', 'pc', 'depth', 'steps')
+    __slots__ = ('r', 'mem', 'flags', 'pc', 'depth', 'steps', 'fns', 'stops', 'skip')
 
     def copy(self):
         s = State(); s.r = dict(self.r); s.mem = dict(self.mem); s.flags = self.flags; s.pc = self.pc
-        s.depth = self.depth; s.steps = self.steps; return s
+        s.depth = self.depth; s.steps = self.steps; s.fns = list(self.fns); s.stops = self.stops; s.skip = False; return s
 
 
 CC = {'beq': 'eq', 'bne': 'ne', 'bhs': 'geu', 'bcs': 'geu', 'blo': 'ltu', 'bcc': 'ltu', 'bhi': 'gtu', 'bls': 'leu',
@@ -95,6 +95,7 @@ class Lifter:
         self.cache = {}; self.nvar = 0; self.max_steps = max_steps; self.max_nodes = max_nodes
         self.unknown_calls = set()
         self.subs = set(); self.subtrees = {}; self.auto_subs = False; self.nosub = set(); self.inprog = set()
+        self.join_cache = {}; self.head_cache = {}; self.use_joins = True; self.use_loops = True; self.ntag = 0
 
     def u(self, a, n):
         return int.from_bytes(self.rom[a - B:a - B + n], 'little')
@@ -110,10 +111,21 @@ class Lifter:
     def lift(self, fn, nargs=4):
         s = State(); s.r = {('r%d' % k): ('arg', k) for k in range(nargs)}
         s.r['sp'] = ('sp', 0); s.r['lr'] = 'RET'; s.mem = {}; s.flags = None; s.pc = fn & ~1; s.depth = 0; s.steps = 0
+        s.fns = [fn & ~1]; s.stops = (); s.skip = False
         for k in range(4):  # 스택 인자
             s.mem[k * 4] = (('sarg', k), 4)
         self.nodes = 0
-        return self.run(s)
+        # 먼저 반복문을 펼쳐 보고(값이 정해지는 반복은 펼친 결과가 더 단순하다), 안 되면 반복문 노드로 바꾼다
+        saved = self.use_loops; base = s.copy(); nv = self.nvar
+        try:
+            self.use_loops = False
+            return self.run(s)
+        except Unsupported:
+            if not saved: raise
+            self.use_loops = True; self.nodes = 0
+            return self.run(base)
+        finally:
+            self.use_loops = saved
 
     # ---- 값 읽기
     def reg(self, s, name):
@@ -177,10 +189,98 @@ class Lifter:
     def newvar(self, bits=0):
         self.nvar += 1; return ('v', self.nvar, bits)
 
+    # ---- 분기 합류점: 함수 안 명령 단위 흐름도의 직접 후지배자 (if/else 가 다시 만나는 곳)
+    def succs(self, a):
+        mn, ops, size, raw = self.ins(a)
+        if mn == 'b': return [int(ops[0][1:], 16)]
+        if mn in CC: return [int(ops[0][1:], 16), a + size]
+        if mn == 'bx' or (mn == 'pop' and 'pc' in raw) or (mn in ('mov', 'movs') and ops and ops[0] == 'pc'): return []
+        return [a + size]
+
+    def joins(self, fn):
+        if fn in self.join_cache: return self.join_cache[fn]
+        nodes, work = set(), [fn]
+        while work:
+            a = work.pop()
+            if a in nodes: continue
+            try: nx = self.succs(a)
+            except Unsupported: nx = []
+            nodes.add(a)
+            if len(nodes) > 6000: self.join_cache[fn] = {}; return {}
+            work.extend(x for x in nx if x not in nodes)
+        succ = {}
+        for a in nodes:
+            try: succ[a] = [x for x in self.succs(a) if x in nodes]
+            except Unsupported: succ[a] = []
+        EXIT = -1
+        allset = frozenset(nodes) | {EXIT}
+        pd = {a: allset for a in nodes}
+        order = sorted(nodes, reverse=True)
+        changed = True
+        while changed:
+            changed = False
+            for a in order:
+                ss = succ[a]
+                if not ss: new = frozenset((a, EXIT))
+                else:
+                    inter = None
+                    for x in ss: inter = pd[x] if inter is None else inter & pd[x]
+                    new = inter | {a}
+                if new != pd[a]: pd[a] = new; changed = True
+        res = {}
+        for a in nodes:
+            cand = [x for x in pd[a] if x != a and x != EXIT]
+            if not cand: continue
+            res[a] = max(cand, key=lambda x: len(pd[x]))   # 가장 가까운 후지배자
+        # 반복문 머리: 깊이 우선 탐색에서 조상으로 돌아가는 간선의 대상
+        heads, state = set(), {}
+        stack = [(fn, iter(succ.get(fn, [])))]; state[fn] = 1
+        while stack:
+            a, it = stack[-1]
+            nxt = next(it, None)
+            if nxt is None: state[a] = 2; stack.pop(); continue
+            if state.get(nxt) == 1: heads.add(nxt)
+            elif nxt not in state: state[nxt] = 1; stack.append((nxt, iter(succ.get(nxt, []))))
+        self.join_cache[fn] = res; self.head_cache[fn] = heads
+        return res
+
+    def loop_heads(self, fn):
+        self.joins(fn)
+        return self.head_cache.get(fn, set())
+
+    def merge(self, ends):
+        sts = [st for _, st in ends]
+        base = sts[0].copy(); assigns = {i: [] for i, _ in ends}
+        keys = set().union(*[set(st.r) for st in sts])
+        isret = lambda v: v == 'RET' or (isinstance(v, tuple) and v[0] == 'retaddr')
+        for k in keys:
+            vals = [st.r.get(k, ('undef', k)) for st in sts]
+            if all(v == vals[0] for v in vals): base.r[k] = vals[0]; continue
+            if any(isret(v) for v in vals): base.r[k] = ('undef', k); continue
+            v = self.newvar(); base.r[k] = v
+            for (i, _), val in zip(ends, vals): assigns[i].append((v[1], val))
+        offs = set().union(*[set(st.mem) for st in sts]); base.mem = {}
+        for o in offs:
+            vals = [st.mem.get(o) for st in sts]
+            if any(x is None for x in vals) or any(x[1] != vals[0][1] for x in vals): continue
+            if all(x == vals[0] for x in vals): base.mem[o] = vals[0]; continue
+            v = self.newvar(); base.mem[o] = (v, vals[0][1])
+            for (i, _), val in zip(ends, vals): assigns[i].append((v[1], val[0]))
+        base.flags = None; base.steps = max(st.steps for st in sts)
+        return base, assigns
+
     def run(self, s):
         self.nodes += 1
         if self.nodes > self.max_nodes: raise Unsupported('too many paths')
         while True:
+            if s.skip: s.skip = False
+            else:
+                for (spc, sd, kind, col, tag) in reversed(s.stops):
+                    if s.pc == spc and len(s.fns) == sd:
+                        i = len(col); col.append((i, s))
+                        return (kind, tag, i)
+                if self.use_loops and s.pc in self.loop_heads(s.fns[-1]):
+                    return self.make_loop(s)
             s.steps += 1
             if s.steps > self.max_steps: raise Unsupported('too many steps at %x' % s.pc)
             pc = s.pc
@@ -205,8 +305,10 @@ class Lifter:
                 return self.ret(s, t)
             elif mn == 'bl':
                 t = int(ops[0][1:], 16)
-                if t == 0x0824F434 or t in (0x0824F438, 0x0824F43C):  # bx r4/r5/r6 (간접 호출)
-                    fr = {0x0824F434: 'r4', 0x0824F438: 'r5', 0x0824F43C: 'r6'}[t]
+                TRAMP = {0x0824F424: 'r0', 0x0824F428: 'r1', 0x0824F42C: 'r2', 0x0824F430: 'r3',
+                         0x0824F434: 'r4', 0x0824F438: 'r5', 0x0824F43C: 'r6'}
+                if t in TRAMP:  # bx rN (간접 호출)
+                    fr = TRAMP[t]
                     f = self.reg(s, fr)
                     if not isinstance(f, int): return self.native(s, nxt, ('icall', f), 4)
                     t = f & ~1
@@ -226,7 +328,7 @@ class Lifter:
                         if not any(has_sp(v) for v in vals):
                             return self.native(s, nxt, t, ar)
                 if s.depth > 12: raise Unsupported('depth')
-                s.r['lr'] = ('retaddr', nxt); s.depth += 1; s.pc = t; continue
+                s.r['lr'] = ('retaddr', nxt); s.depth += 1; s.fns.append(t); s.pc = t; continue
             elif mn == 'b':
                 s.pc = int(ops[0][1:], 16); continue
             elif mn in CC:
@@ -237,16 +339,29 @@ class Lifter:
                     s.pc = t if eval_cc(cc, a, b) else nxt; continue
                 if a == b and cc in ('eq', 'ne', 'geu', 'leu', 'ge', 'le', 'ltu', 'gtu', 'lt', 'gt'):
                     s.pc = t if eval_cc(cc, 0, 0) else nxt; continue
-                s1 = s.copy(); s1.pc = t; s2 = s; s2.pc = nxt
-                return ('if', (cc, a, b), self.run(s1), self.run(s2))
+                J = self.joins(s.fns[-1]).get(pc) if self.use_joins else None
+                if J is None:
+                    s1 = s.copy(); s1.pc = t; s2 = s; s2.pc = nxt
+                    return ('if', (cc, a, b), self.run(s1), self.run(s2))
+                outer = s.stops; ends = []; self.ntag += 1; tag = self.ntag
+                stops = outer + ((J, len(s.fns), 'end', ends, tag),)
+                s1 = s.copy(); s1.pc = t; s1.stops = stops
+                s2 = s.copy(); s2.pc = nxt; s2.stops = stops
+                t1 = self.run(s1); t2 = self.run(s2)
+                if not ends: return ('if', (cc, a, b), t1, t2)
+                merged, assigns = self.merge(ends)
+                merged.stops = outer; merged.pc = J
+                fix = lambda tr: self.patch(tr, 'end', tag, assigns)
+                return ('if2', (cc, a, b), fix(t1), fix(t2), self.run(merged))
             elif mn in ('cmp', 'cmn', 'tst'):
                 a = self.opval(s, ops[0]); b = self.opval(s, ops[1])
                 if mn == 'cmn': b = binop('sub', 0, b)
                 if mn == 'tst': s.flags = (binop('and', a, b), 0)
                 else: s.flags = (a, b)
             elif mn in ('movs', 'mov'):
-                if ops[0] == 'pc':  # 점프 표
+                if ops[0] == 'pc':  # 점프 표 또는 복귀
                     t = self.reg(s, ops[1])
+                    if t == 'RET' or (isinstance(t, tuple) and t[0] == 'retaddr'): return self.ret(s, t)
                     if not isinstance(t, int): return self.switch(s, t)
                     s.pc = t & ~1; continue
                 v = self.opval(s, ops[1]); self.setreg(s, ops[0], v)
@@ -288,7 +403,25 @@ class Lifter:
                     s.pc = nxt
                     return eff + (self.run(s),)
             elif mn in ('ldm', 'ldmia', 'stm', 'stmia'):
-                return ('fail', mn + ' at %x' % pc)
+                base_r = re.match(r'(\w+)', raw).group(1)
+                regs = re.findall(r'\br\d+\b', raw.split('{', 1)[1])
+                addr = self.reg(s, base_r)
+                if mn.startswith('ldm'):
+                    for k, rg in enumerate(regs):
+                        self.setreg(s, rg, self.load(s, binop('add', addr, 4 * k), 4))
+                    if base_r not in regs: self.setreg(s, base_r, binop('add', addr, 4 * len(regs)))
+                else:
+                    vals = [self.reg(s, rg) for rg in regs]
+                    self.setreg(s, base_r, binop('add', addr, 4 * len(regs)))
+                    effs = []
+                    for k, v in enumerate(vals):
+                        eff = self.store(s, binop('add', addr, 4 * k), v, 4)
+                        if eff: effs.append(eff)
+                    if effs:
+                        s.pc = nxt
+                        node = self.run(s)
+                        for eff in reversed(effs): node = eff + (node,)
+                        return node
             elif mn == 'nop' or (mn == 'mov' and ops == ['r8', 'r8']):
                 pass
             else:
@@ -336,6 +469,14 @@ class Lifter:
             k = n[0]
             if k == 'ret': we(n[1])
             elif k == 'if': we(n[1][1]); we(n[1][2]); wt(n[2]); wt(n[3])
+            elif k == 'if2': we(n[1][1]); we(n[1][2]); wt(n[2]); wt(n[3]); wt(n[4])
+            elif k == 'end':
+                for _, e in n[1]: we(e)
+            elif k in ('cont', 'brk'):
+                for _, e in n[2]: we(e)
+            elif k == 'loop':
+                for _, e in n[2]: we(e)
+                wt(n[3]); wt(n[4])
             elif k == 'let':
                 for a in n[2][2]: we(a)
                 wt(n[3])
@@ -343,11 +484,66 @@ class Lifter:
         wt(self.subtrees[t])
         return max(used) + 1 if used else 0
 
+    def patch(self, t, kind, tag, assigns):
+        """정지점 잎 (kind, tag, i) 를 대입 목록이 붙은 잎으로 바꾼다. end → ('end', 대입), cont/brk → (kind, tag, 대입)."""
+        k = t[0]
+        P = lambda x: self.patch(x, kind, tag, assigns)
+        if k == kind and len(t) == 3 and t[1] == tag and isinstance(t[2], int):
+            a = tuple(assigns[t[2]])
+            return ('end', a) if kind == 'end' else (kind, tag, a)
+        if k == 'if': return ('if', t[1], P(t[2]), P(t[3]))
+        if k == 'if2': return ('if2', t[1], P(t[2]), P(t[3]), P(t[4]))
+        if k == 'let': return ('let', t[1], t[2], P(t[3]))
+        if k == 'store': return ('store', t[1], t[2], t[3], P(t[4]))
+        if k == 'loop': return ('loop', t[1], t[2], P(t[3]), P(t[4]))
+        return t
+
+    def make_loop(self, s):
+        """반복문: 머리 H 에서 모든 레지스터·스택 칸을 반복 변수로 바꾸고, H 로 돌아오면 cont, 출구 E 에 닿으면 brk."""
+        H = s.pc; d = len(s.fns)
+        E = self.joins(s.fns[-1]).get(H)
+        isret = lambda v: v == 'RET' or (isinstance(v, tuple) and v[0] == 'retaddr')
+        regs = [k for k, v in s.r.items() if k not in ('sp', 'pc', 'lr') and not isret(v)]
+        offs = [o for o, (v, sz) in s.mem.items() if not isret(v)]
+        for attempt in range(3):
+            self.ntag += 1; tag = self.ntag
+            lv = {}; init = []; bs = s.copy(); bs.flags = None
+            for k in regs:
+                v = self.newvar(); lv[('r', k)] = v; init.append((v[1], s.r.get(k, ('undef', k)))); bs.r[k] = v
+            for o in offs:
+                sz = s.mem[o][1] if o in s.mem else 4
+                v = self.newvar(); lv[('m', o)] = v; init.append((v[1], s.mem[o][0] if o in s.mem else ('undef_stack', o))); bs.mem[o] = (v, sz)
+            conts, brks = [], []
+            bs.stops = s.stops + ((H, d, 'cont', conts, tag),) + (((E, d, 'brk', brks, tag),) if E is not None else ())
+            bs.skip = True
+            body = self.run(bs)
+            # 본문에서 새로 생긴 칸이 다음 반복으로 넘어가면 다시 (반복 변수로 포함)
+            new_regs = {k for _, st in conts for k, v in st.r.items() if k not in regs and k not in ('sp', 'pc', 'lr') and not isret(v)}
+            new_offs = {o for _, st in conts for o, (v, sz) in st.mem.items() if o not in offs and not isret(v) and o >= min(offs + [0])}
+            if not new_regs and not new_offs: break
+            regs += sorted(new_regs); offs += sorted(new_offs)
+        cassign = {}
+        for i, st in conts:
+            a = []
+            for (kind, key), v in lv.items():
+                val = st.r.get(key, ('undef', key)) if kind == 'r' else (st.mem[key][0] if key in st.mem else ('undef_stack', key))
+                if val != v: a.append((v[1], val))
+            cassign[i] = a
+        body = self.patch(body, 'cont', tag, cassign)
+        if brks:
+            ex, bassign = self.merge(brks)
+            ex.stops = s.stops; ex.pc = E
+            body = self.patch(body, 'brk', tag, bassign)
+            after = self.run(ex)
+        else:
+            after = ('ret', ('undef', 'noexit'))
+        return ('loop', tag, tuple(init), body, after)
+
     def ret(self, s, target):
         if target == 'RET':
             return ('ret', s.r.get('r0'))
         if isinstance(target, tuple) and target[0] == 'retaddr':
-            s.depth -= 1; s.pc = target[1]
+            s.depth -= 1; s.fns.pop(); s.pc = target[1]
             return self.run(s)
         raise Unsupported('ret to %r' % (target,))
 
@@ -356,10 +552,24 @@ class Lifter:
         sp = self.reg(s, 'sp')
         if nargs > 4:
             args += tuple(self.load(s, ('sp', sp[1] + 4 * k), 4) for k in range(nargs - 4))
+        def has_sp(e):
+            return isinstance(e, tuple) and (e[0] == 'sp' or any(has_sp(x) for x in e[1:]))
+        spill = []
+        if any(has_sp(a) for a in args):
+            # 지역 변수 주소를 넘기는 호출: 스택 값을 실제 프레임 메모리에 쓰고, 호출 뒤 다시 읽는다
+            isret = lambda v: v == 'RET' or (isinstance(v, tuple) and v[0] == 'retaddr')
+            for off, (val, size) in sorted(s.mem.items()):
+                if isret(val): continue          # 복귀 주소는 호출한 함수가 바꾸지 않는다
+                spill.append(('store', size, ('sp', off), val))
+            for off, (val, size) in list(s.mem.items()):
+                if isret(val): continue
+                s.mem[off] = (('load', size, ('sp', off)), size)
         for k in range(4): s.r['r%d' % k] = ('undef_ret',)
         v = self.newvar()
         s.r['r0'] = v; s.pc = nxt; s.flags = None
-        return ('let', v, ('call', t, args), self.run(s))
+        node = ('let', v, ('call', t, args), self.run(s))
+        for st in reversed(spill): node = st + (node,)
+        return node
 
     def switch(self, s, t):
         # t = load(4, table + idx*4) : 표 범위를 모르면 지원 안 함
@@ -405,6 +615,15 @@ def show(t, ind=0, names={}):
     if k == 'if':
         cc, a, b = t[1]
         return p + 'if %s %s %s:\n%s\n%selse:\n%s' % (fmt(a), cc, fmt(b), show(t[2], ind + 1, names), p, show(t[3], ind + 1, names))
+    if k == 'if2':
+        cc, a, b = t[1]
+        return p + 'if %s %s %s {\n%s\n%s} else {\n%s\n%s}\n%s' % (fmt(a), cc, fmt(b), show(t[2], ind + 1, names), p, show(t[3], ind + 1, names), p, show(t[4], ind, names))
+    if k == 'end':
+        return p + '; '.join('v%d = %s' % (v, fmt(e)) for v, e in t[1]) if t[1] else p + 'pass'
+    if k in ('cont', 'brk'):
+        return p + '; '.join('v%d = %s' % (v, fmt(e)) for v, e in t[2]) + ('; ' if t[2] else '') + ('continue' if k == 'cont' else 'break')
+    if k == 'loop':
+        return p + '; '.join('v%d = %s' % (v, fmt(e)) for v, e in t[2]) + '\n' + p + 'loop {\n' + show(t[3], ind + 1, names) + '\n' + p + '}\n' + show(t[4], ind, names)
     if k == 'let':
         c = t[2]; fn = c[1]
         fname = names.get(fn, '%x' % fn if isinstance(fn, int) else fmt(fn[1]) if isinstance(fn, tuple) else str(fn))

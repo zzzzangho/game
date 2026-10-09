@@ -22,7 +22,9 @@ static void quiet(struct mLogger* l, int cat, enum mLogLevel lv, const char* fmt
 #include <mgba/debugger/debugger.h>
 /* ---- 쓰기 감시점: 원작 코드가 특정 RAM 을 쓰는 순간의 PC·LR·값 기록 (규칙 역분석용) ---- */
 static FILE* g_wlog; static struct mCore* g_core;
+static void bp_log(void);
 static void wp_entered(struct mDebugger* d, enum mDebuggerEntryReason r, struct mDebuggerEntryInfo* info) {
+    if (g_wlog && r == DEBUGGER_ENTER_BREAKPOINT) bp_log();
     if (g_wlog && info && r == DEBUGGER_ENTER_WATCHPOINT) {
         uint32_t pc = 0, lr = 0; g_core->readRegister(g_core, "pc", &pc); g_core->readRegister(g_core, "lr", &lr);
         fprintf(g_wlog, "%ld %08x pc=%08x lr=%08x %u->%u\n", g_frame, info->address, pc, lr, info->type.wp.oldValue, info->type.wp.newValue);
@@ -30,6 +32,12 @@ static void wp_entered(struct mDebugger* d, enum mDebuggerEntryReason r, struct 
     d->state = DEBUGGER_RUNNING;
 }
 static void wp_paused(struct mDebugger* d) { d->state = DEBUGGER_RUNNING; }
+/* 실행 중단점: 그 주소를 실행하는 순간의 프레임·PC·LR·r0~r3 기록 */
+static void bp_log(void) {
+    uint32_t r[6] = {0}; const char* nm[6] = { "pc", "lr", "r0", "r1", "r2", "r3" };
+    for (int i = 0; i < 6; i++) g_core->readRegister(g_core, nm[i], &r[i]);
+    fprintf(g_wlog, "%ld BP pc=%08x lr=%08x r0=%08x r1=%08x r2=%08x r3=%08x\n", g_frame, r[0], r[1], r[2], r[3], r[4], r[5]);
+}
 static struct mDebugger g_dbg;
 
 int main(int argc, char** argv) {
@@ -85,6 +93,15 @@ int main(int argc, char** argv) {
             long long v = 0; if (sscanf(line, "%*s %d %lld", &n, &v) != 2) continue;
             c->rtc.override = (enum mRTCGenericType)n; c->rtc.value = v;
             printf("rtc %d %lld\n", n, v);
+        } else if (!strcmp(cmd, "bp")) {   /* bp <주소> <파일> : 실행 중단점 추가(기록 파일은 watch 와 같음) */
+            unsigned addr = 0; if (sscanf(line, "%*s %i %199s", &addr, arg) != 2) continue;
+            if (!g_dbg.platform) {
+                memset(&g_dbg, 0, sizeof g_dbg); g_dbg.entered = wp_entered; g_dbg.paused = wp_paused; g_core = c;
+                mDebuggerAttach(&g_dbg, c); g_dbg.state = DEBUGGER_RUNNING;
+                char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); g_wlog = fopen(p, "w");
+            }
+            struct mBreakpoint bp; memset(&bp, 0, sizeof bp); bp.address = addr & ~1u; bp.segment = -1; bp.type = BREAKPOINT_HARDWARE;
+            g_dbg.platform->setBreakpoint(g_dbg.platform, &bp);
         } else if (!strcmp(cmd, "watch")) {   /* watch <주소> <파일> : 쓰기 감시점 추가(이후 run/autolog 중 기록) */
             unsigned addr = 0; if (sscanf(line, "%*s %i %199s", &addr, arg) != 2) continue;
             if (!g_dbg.platform) {

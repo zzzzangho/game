@@ -42,13 +42,14 @@ def enc_e(e):
     if k == 'ram': return ['m', e[1], e[2]]
     if k == 'load': return ['m', e[1], enc_e(e[2])]
     if k == 'sext': return ['x', e[2], enc_e(e[1])]
+    if k == 'sp': return ['p', e[1]]
     if k in OPS: return [OPS[k], enc_e(e[1]), enc_e(e[2])]
     return ['u', str(k)]        # 정의되지 않은 값 (도달하면 실행기가 오류를 낸다)
 
 
 def enc_t(t):
     k = t[0]
-    if k == 'ret': return ['r', enc_e(t[1]) if t[1] is not None else ['u', 'none']]
+    if k == 'ret': return ['r', enc_e(t[1]) if t[1] is not None and not isinstance(t[1], str) else ['u', 'none']]
     if k == 'if': return ['i', t[1][0], enc_e(t[1][1]), enc_e(t[1][2]), enc_t(t[2]), enc_t(t[3])]
     if k == 'let':
         c = t[2]; fn = c[1]
@@ -56,6 +57,12 @@ def enc_t(t):
         return ['l', t[1][1], name, [enc_e(a) for a in c[2]], enc_t(t[3])]
     if k == 'store': return ['s', t[1], enc_e(t[2]), enc_e(t[3]), enc_t(t[4])]
     if k == 'fail': return ['f', t[1]]
+    asg = lambda pairs: [[v, enc_e(x)] for v, x in pairs]
+    if k == 'if2': return ['j', t[1][0], enc_e(t[1][1]), enc_e(t[1][2]), enc_t(t[2]), enc_t(t[3]), enc_t(t[4])]
+    if k == 'end': return ['e', asg(t[1])]
+    if k == 'loop': return ['o', t[1], asg(t[2]), enc_t(t[3]), enc_t(t[4])]
+    if k == 'cont': return ['c', t[1], asg(t[2])]
+    if k == 'brk': return ['b', t[1], asg(t[2])]
     raise ValueError(k)
 
 
