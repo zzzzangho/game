@@ -30,9 +30,18 @@ namespace SennenKazoku.Core.Orig
         }
 
         /// <summary>결과 기록의 효과 함수 실행. arg = 시작 함수가 돌려준 값(사건 장면 +0x286). 돌려주는 값 = 결과 3단어.</summary>
+        /// <summary>결과 기록의 시작(+0x18)·효과(+0x1C) 함수. 사건 변형 목록에서 모은 표에 없으면(일정·가족 일정에서 온 기록 등) ROM 기록에서 직접 읽는다.</summary>
+        public static string[] Fns(OrigVm vm, OrigRules rules, uint data)
+        {
+            if (rules.VariantData.TryGetValue(data, out var fns)) return fns;
+            string F(uint f) { return (f & 1) != 0 && f >= 0x08000000 && f < 0x08300000 ? "0x" + f.ToString("X8") : null; }
+            return new[] { F(vm.Mem.R32(data + 0x18)), F(vm.Mem.R32(data + 0x1C)) };
+        }
+
         public static uint[] RunEffect(OrigVm vm, OrigRules rules, uint data, uint arg = 0)
         {
-            if (!rules.VariantData.TryGetValue(data, out var fns) || fns[1] == null) return new uint[3];
+            var fns = Fns(vm, rules, data);
+            if (fns[1] == null) return new uint[3];
             vm.Call(fns[1], ResultBuf, arg & 0xFF, 0, 0);
             return new[] { vm.Mem.R32(ResultBuf), vm.Mem.R32(ResultBuf + 4), vm.Mem.R32(ResultBuf + 8) };
         }
@@ -46,7 +55,8 @@ namespace SennenKazoku.Core.Orig
         public static uint RunScene(OrigVm vm, OrigRules rules, uint data, uint personId)
         {
             uint v = 0;
-            if (rules.VariantData.TryGetValue(data, out var fns) && fns[0] != null) v = vm.Call(fns[0], 0, data, 0, 0) & 0xFFFF;
+            var fns = Fns(vm, rules, data);
+            if (fns[0] != null) v = vm.Call(fns[0], 0, data, 0, 0) & 0xFFFF;
             vm.Call("08110F5C", v & 0xFF);
             RunEffect(vm, rules, data, v);
             vm.Call("080111B8", 0xFFFFFFFD, personId, 1, 0, v, 0, data);

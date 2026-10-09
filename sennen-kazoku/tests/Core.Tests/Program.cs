@@ -766,13 +766,24 @@ namespace SennenKazoku.Tests
                     SennenKazoku.Core.Orig.OrigNewGame.Recommended(vm);
                     var g = new SennenKazoku.Core.Orig.OrigGame(m, rules);
                     var sw = System.Diagnostics.Stopwatch.StartNew(); int nev = 0, days = int.Parse(years) * 365;
-                    var kinds = new Dictionary<uint, int>();
+                    var kinds = new Dictionary<uint, int>(); var perYear = new int[int.Parse(years) + 1];
                     string Fam() { var l = new List<string>(); for (int k = 0; k < 8; k++) { uint p = SennenKazoku.Core.Orig.OrigMem.PersonAddr(k); if (SennenKazoku.Core.Orig.OrigGame.Present(m, k)) { SennenKazoku.Core.Orig.OrigDate.Get(m, p + 0x2E, out int by, out _, out _); l.Add(m.R16(p + 0x3C) + "(" + (m.R8(p + 0x31) == 0 ? "남" : "여") + by + ")"); } } return string.Join(" ", l); }
                     string last = Fam(); Console.WriteLine("       시작: " + last);
                     for (int dd = 0; dd < days; dd++)
                     {
                         g.NextDate();
-                        try { foreach (var e in g.TickDay()) { nev++; kinds[e.Type] = kinds.TryGetValue(e.Type, out var c) ? c + 1 : 1; } }
+                        try
+                        {
+                            foreach (var e in g.TickDay())
+                            {
+                                nev++; kinds[e.Type] = kinds.TryGetValue(e.Type, out var c) ? c + 1 : 1; perYear[dd / 365]++;
+                                if (Environment.GetEnvironmentVariable("SK_ORIG_LOGEV") != null && dd >= int.Parse(Environment.GetEnvironmentVariable("SK_ORIG_LOGEV")) && dd < int.Parse(Environment.GetEnvironmentVariable("SK_ORIG_LOGEV")) + 30)
+                                {
+                                    uint pp = SennenKazoku.Core.Orig.OrigMem.PersonAddr(Math.Max(0, e.Person));
+                                    Console.WriteLine("         일" + dd + " 인물" + e.Person + " 종류" + e.Type + " 코드" + e.Code + " 결과" + e.Data.ToString("X8") + " 관심사 " + m.R16(pp + 0x80) + "," + m.R16(pp + 0x82) + " 게이지 " + m.R8(pp + 0x5A) + " +5F " + m.R8(pp + 0x5F) + " 일정칸 " + string.Join(",", Enumerable.Range(0, 10).Select(k => m.R8(pp + 0x76 + (uint)k).ToString("X2"))) + " 풀0 " + m.R32(0x02038BEC).ToString("X8") + " 풀1 " + m.R32(0x02038BEC + 12).ToString("X8"));
+                                }
+                            }
+                        }
                         catch (SennenKazoku.Core.Orig.OrigUnmodeled ex)
                         {
                             SennenKazoku.Core.Orig.OrigDate.Get(m, SennenKazoku.Core.Orig.OrigMem.Date, out int ey, out int em, out int ed);
@@ -782,6 +793,7 @@ namespace SennenKazoku.Tests
                         if (f != last) { SennenKazoku.Core.Orig.OrigDate.Get(m, SennenKazoku.Core.Orig.OrigMem.Date, out int ey, out int em, out int ed); Console.WriteLine("       " + ey + "-" + em + "-" + ed + " 가족: " + f); last = f; }
                     }
                     Console.WriteLine("       " + days + "일, 사건 " + nev + " (종류별 " + string.Join(",", kinds.Select(kv => kv.Key + ":" + kv.Value)) + "), " + sw.ElapsedMilliseconds + "ms");
+                    Console.WriteLine("       해마다 사건: " + string.Join(" ", perYear));
                 });
             var daysDir = Environment.GetEnvironmentVariable("SK_DAYS_DIR");
             if (!string.IsNullOrEmpty(origDir) && !string.IsNullOrEmpty(daysDir) && Directory.Exists(daysDir))
