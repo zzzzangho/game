@@ -173,9 +173,12 @@ namespace SennenKazoku.Tests
                 sw.Restart();
                 var mc = Full("newg_pre.ram"); var vmc = rules.CreateVm(mc);
                 vmc.Call("080417E0", S);
-                // 가족 머리말 0x0202C6A0~C3 의 성 문자열 뒤·패딩 칸은 원작 스택 찌꺼기라 비교에서 뺀다
-                int d2 = Diff(mc, Ram("newg_create.ram"), SennenKazoku.Core.Orig.OrigMem.SaveStart, SennenKazoku.Core.Orig.OrigMem.SaveEnd, 0x0202C6A0, 0x0202C6C4);
-                Console.WriteLine("       가족 레코드 만들기(0x080417E0): 저장 영역 원작과 다른 바이트 " + d2 + " (머리말 36바이트 제외, " + sw.ElapsedMilliseconds + "ms)");
+                // 가족 머리말 0x0202C6A0~C3 의 성 문자열 뒤·패딩 칸은 원작 스택 찌꺼기, 0x0203BE04 는 다음 장면 작업 핸들
+                // (장면 바꾸기 0x0809AF60 은 실행하지 않음)이라 비교에서 뺀다
+                var wc = Ram("newg_create.ram");
+                int d2 = Diff(mc, wc, SennenKazoku.Core.Orig.OrigMem.SaveStart, 0x0203BE04, 0x0202C6A0, 0x0202C6C4)
+                       + Diff(mc, wc, 0x0203BE08, SennenKazoku.Core.Orig.OrigMem.SaveEnd);
+                Console.WriteLine("       가족 레코드 만들기(0x080417E0): 저장 영역 원작과 다른 바이트 " + d2 + " (머리말 36바이트·장면 핸들 4바이트 제외, " + sw.ElapsedMilliseconds + "ms)");
                 T.Eq(d2, 0, "가족 레코드 만들기 결과가 원작과 다름");
                 // 처음부터 추천 가족 만들기: 예외 없이 돌고 가족이 생겨야 한다
                 var mn = Fresh("main.ram"); var vmn = rules.CreateVm(mn);

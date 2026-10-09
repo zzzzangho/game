@@ -26,6 +26,8 @@ namespace SennenKazoku.Core.Orig
         public readonly Dictionary<uint, OrigEvent> Events = new Dictionary<uint, OrigEvent>();
         /// <summary>결과 기록 주소 → (+0x18 시작 함수, +0x1C 효과 함수).</summary>
         public readonly Dictionary<uint, string[]> VariantData = new Dictionary<uint, string[]>();
+        /// <summary>네이티브 표: 원작 함수 주소(8자리 16진) → C# 처리 이름 (rand, noop 등).</summary>
+        public readonly Dictionary<string, string> Natives = new Dictionary<string, string>();
         public object TreesJson;           // 실행기에 넣을 트리 (한 파일에 함께 넣은 경우)
         public byte[] TreesText;           // 트리 파일 내용 (treesFile, 한 줄에 함수 하나 — 부를 때 해석)
         public string TreesFile = "";
@@ -58,6 +60,10 @@ namespace SennenKazoku.Core.Orig
         {
             if (d == null) return null;
             var r = new OrigRules();
+            var nat = J.Child(d, "natives");
+            if (nat != null)
+                foreach (var kv in nat)
+                    if (kv.Value is string nm && nm != "") r.Natives[(Convert.ToUInt32(kv.Key.Substring(2), 16) & ~1u).ToString("X8")] = nm;
             foreach (var o in J.List(d, "interests"))
             {
                 var l = (List<object>)o;

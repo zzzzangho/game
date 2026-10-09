@@ -22,8 +22,11 @@ from lift import Lifter, Unsupported, B, M32  # noqa: E402
 NATIVES = {0x08000614: 0, 0x0824F640: 2, 0x0824F5C8: 2, 0x0824F460: 2, 0x0824F4F8: 2,
            0x08115778: 2, 0x08110B90: 2, 0x08110608: 1, 0x08028524: 3,
            0x0824F700: 3, 0x0824E2BC: 3, 0x08248EE0: 1, 0x082494CC: 1, 0x080955C8: 0, 0x080959DC: 4}
-# 새 가족 장면의 화면 정리 함수 (0x0802D7A0 끝부분) — 규칙 상태를 바꾸지 않음
-UI_NOOP = (0x08047024, 0x08048390, 0x08047864, 0x08046F80, 0x08046804, 0x08003FE8, 0x0800695C)
+# 새 가족 장면의 화면 정리 함수 (0x0802D7A0 끝부분), 장면 객체 128개 정리(0x08001014, 가족 레코드 만들기 시작) —
+# 다음 장면으로 바꾸기(0x0809AF60, 가족 레코드 만들기 끝) — 규칙 상태를 바꾸지 않음.
+# 0x08001014 를 건너뛰어도 원작 가족 만들기 결과 EWRAM 전체가 같고, 0x0809AF60 을 건너뛰면 저장 범위 안에서는
+# 0x0203BE04(장면 작업 핸들, 0x080A6038 이 0x08003C00 결과를 넣는 곳)만 다르다.
+UI_NOOP = (0x08047024, 0x08048390, 0x08047864, 0x08046F80, 0x08046804, 0x08003FE8, 0x0800695C, 0x08001014, 0x0809AF60)
 NATIVES.update({a: 1 for a in UI_NOOP})
 # 크게 변환해야 하는 새 가족 함수: 추천 가족 틀, 구성원 마무리(채우기 0x0804B1F0 포함), 가족 레코드 만들기
 BIG = (0x0804BC2C, 0x0802D7A0, 0x080417E0)
@@ -113,7 +116,7 @@ def trees_raw_consts(trees):
     return out
 
 
-def rom_spans(rom, consts=(), extra=()):
+def rom_spans(rom, consts=(), extra=(), more=()):
     """트리가 읽는 ROM 표: 포인터 표와 그 대상(0x40 바이트씩, 3단계까지)."""
     spans = set()
     isptr = lambda p: B + 0x400000 <= p < B + len(rom.b) and (p & 3) == 0
@@ -143,6 +146,7 @@ def rom_spans(rom, consts=(), extra=()):
         walk(STATE_TABLE + 4 * t, 4, 0)
         n = table_len(rom, t); walk(tb, 4 * n, 0)
         for i in range(n): walk(rom.u32(tb + 4 * i), 0x28, 0)
+    for a, size in more: spans.add((a, size))   # 실행해서 모은 범위 (newgame_spans.py)
     # 겹치는 구간 합치기
     iv = sorted((a, a + s) for a, s in spans)
     out = []
@@ -150,6 +154,46 @@ def rom_spans(rom, consts=(), extra=()):
         if out and a <= out[-1][1]: out[-1][1] = max(out[-1][1], b)
         else: out.append([a, b])
     return [[a, rom.b[a - B:b - B].hex()] for a, b in out]
+
+
+def more_spans(out_path):
+    """출력 파일 옆 newgame_spans.json (newgame_spans.py 결과) 이 있으면 그 범위도 넣는다."""
+    p = os.path.join(os.path.dirname(os.path.abspath(out_path)), 'newgame_spans.json')
+    return [tuple(x) for x in json.load(open(p))] if os.path.exists(p) else []
+
+
+def respan(rom_path, out_path):
+    """변환은 다시 하지 않고 ROM 조각·네이티브 표만 다시 계산한다 (--respan)."""
+    rb = open(rom_path, 'rb').read(); rom = Rom(rb)
+    out = json.load(open(out_path, encoding='utf8'))
+    trees = {}
+    for line in open(out_path + '.trees', encoding='utf8'):
+        a, _, t = line.rstrip('\n').partition('\t'); trees[a] = json.loads(t)
+    out['natives'] = {('0x%08X' % a): n for a, n in NATIVE_NAMES.items()}
+    out['rom'] = rom_spans(rom, trees_raw_consts(trees), [int(a, 16) for a in out['events']] + [int(a, 16) for a in out['variantData']],
+                           more_spans(out_path))
+    with open(out_path, 'w', encoding='utf8') as fp: json.dump(out, fp, separators=(',', ':'))
+    print('ROM 조각 %d, 크기 %.1f KB' % (len(out['rom']), os.path.getsize(out_path) / 1024))
+    return 0
+
+
+def add_funcs(rom_path, out_path, addrs):
+    """이미 만든 트리 파일에 함수를 더 변환해 넣는다 (--add 주소...). 함수 포인터로 부르는 대상 등."""
+    trees = {}
+    for line in open(out_path + '.trees', encoding='utf8'):
+        a, _, t = line.rstrip('\n').partition('\t'); trees[a] = t
+    new = [a for a in addrs if '0x%08X' % a not in trees]
+    t2, f2, _ = lift_all(rom_path, new, procs=4) if new else ({}, [], set())
+    n = 0
+    for a, t in t2.items():
+        if a not in trees: trees[a] = json.dumps(t, separators=(',', ':')); n += 1
+    with open(out_path + '.trees', 'w', encoding='utf8') as fp:
+        for a in sorted(trees): fp.write(a + '\t' + trees[a] + '\n')
+    out = json.load(open(out_path, encoding='utf8'))
+    out['liftFailures'] = out.get('liftFailures', []) + f2
+    with open(out_path, 'w', encoding='utf8') as fp: json.dump(out, fp, separators=(',', ':'))
+    print('트리 %d개 추가, 실패 %s' % (n, f2))
+    return respan(rom_path, out_path)
 
 
 def icall_tables(t, rom, out):
@@ -177,22 +221,35 @@ def icall_tables(t, rom, out):
 
 
 def _work(args):
+    if len(args) > 2:
+        # 큰 함수는 트리가 깊어 재귀 한도·스택을 늘린 스레드에서 변환
+        import threading
+        sys.setrecursionlimit(1000000); threading.stack_size(1024 * 1024 * 1024)
+        box = []
+        th = threading.Thread(target=lambda: box.append(_work1(args))); th.start(); th.join()
+        return box[0]
+    return _work1(args)
+
+
+def _work1(args):
     path, fns = args[:2]; big = len(args) > 2
     import signal
     class TO(Exception): pass
     def al(*a): raise TO()
-    signal.signal(signal.SIGALRM, al)
+    import threading
+    main = threading.current_thread() is threading.main_thread()
+    if main: signal.signal(signal.SIGALRM, al)
     rb = open(path, 'rb').read(); rom = Rom(rb)
     L = Lifter(rb, NATIVES, max_steps=200000 if big else 50000, max_nodes=500000 if big else 50000); L.auto_subs = True
     trees, fails, tabs = {}, [], set()
     for f in fns:
-        signal.alarm(5400 if big else 60)
+        if main: signal.alarm(60)
         try:
             t = L.lift(f); trees[f] = t; icall_tables(t, rom, tabs)
         except (Unsupported, TO, RecursionError) as ex:
             fails.append(('0x%08X' % f, str(ex)[:60] or type(ex).__name__))
         finally:
-            signal.alarm(0)
+            if main: signal.alarm(0)
     for a, t in L.subtrees.items():
         trees.setdefault(a, t); icall_tables(t, rom, tabs)
     return {('0x%08X' % a): enc_t(t) for a, t in trees.items()}, fails, tabs
@@ -346,7 +403,7 @@ def main():
            "interests": interests, "treesFile": os.path.basename(sys.argv[2]) + ".trees", "candidates": cands,
            "events": {('0x%08X' % a): v for a, v in events.items()}, "variantData": {('0x%08X' % a): v for a, v in vdata.items()},
            "modeTable": mode_table, "b15Table": b15_table, "jobs": jobs, "specials": specials,
-           "rom": rom_spans(rom, trees_raw_consts(trees), list(events) + list(vdata)), "liftFailures": fails}
+           "rom": rom_spans(rom, trees_raw_consts(trees), list(events) + list(vdata), more_spans(sys.argv[2])), "liftFailures": fails}
     with open(sys.argv[2], 'w', encoding='utf8') as fp:
         json.dump(out, fp, separators=(',', ':'))
     # 트리는 한 줄에 함수 하나 ("0x주소\t트리 JSON") — 앱은 부르는 함수만 그때 읽는다
@@ -359,4 +416,15 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    # 새 가족 함수 트리는 깊어서 재귀 한도·스택을 늘린 스레드에서 실행
+    import threading
+    sys.setrecursionlimit(1000000); threading.stack_size(1024 * 1024 * 1024)
+    rc = []
+    if '--add' in sys.argv:
+        go = lambda: add_funcs(sys.argv[1], sys.argv[2], [int(x, 16) for x in sys.argv[sys.argv.index('--add') + 1:]])
+    elif '--respan' in sys.argv:
+        go = lambda: respan(sys.argv[1], sys.argv[2])
+    else:
+        go = main
+    th = threading.Thread(target=lambda: rc.append(go())); th.start(); th.join()
+    sys.exit(rc[0] if rc else 1)

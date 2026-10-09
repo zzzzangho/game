@@ -1,5 +1,5 @@
 """검증 전용: unicorn 으로 원작 ROM 함수를 실제 RAM 덤프 위에서 실행한다 (앱에는 쓰지 않음)."""
-from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UcError, UC_HOOK_MEM_UNMAPPED
+from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UcError, UC_HOOK_MEM_UNMAPPED, UC_HOOK_MEM_WRITE
 from unicorn.arm_const import *
 import struct
 
@@ -23,6 +23,33 @@ class RomCpu:
         self.set_ram(ram)
         self.mirrors = []
         self.mu.hook_add(UC_HOOK_MEM_UNMAPPED, self._unmapped)
+        self.mu.hook_add(UC_HOOK_MEM_WRITE, self._dma, begin=0x040000B0, end=0x040000DF)
+
+    def _dma(self, mu, acc, addr, size, val, ud):
+        # unicorn 은 DMA 를 하지 않는다 — 원작 코드가 즉시 시작 DMA 로 메모리를 복사·채우므로 흉내 낸다 (C# OrigMem 과 같은 규칙)
+        for ch in range(4):
+            cnt = 0x040000B8 + 12 * ch
+            if addr + size <= cnt or addr >= cnt + 4: continue
+            cur = bytearray(mu.mem_read(cnt, 4))
+            for i in range(size):
+                if cnt <= addr + i < cnt + 4: cur[addr + i - cnt] = (val >> (8 * i)) & 0xFF
+            ctl = cur[2] | cur[3] << 8
+            if not ctl & 0x8000 or (ctl >> 12) & 3: continue
+            b = 0x040000B0 + 12 * ch
+            src, dst = struct.unpack('<II', bytes(mu.mem_read(b, 8)))
+            if addr <= b + 7 and addr + size > b:   # 같은 쓰기로 주소를 바꾸는 경우
+                raw = bytearray(mu.mem_read(b, 8))
+                for i in range(size):
+                    if b <= addr + i < b + 8: raw[addr + i - b] = (val >> (8 * i)) & 0xFF
+                src, dst = struct.unpack('<II', bytes(raw))
+            n = cur[0] | cur[1] << 8 or (0x10000 if ch == 3 else 0x4000)
+            w = 4 if ctl & 0x400 else 2
+            step = lambda m: -w if m == 1 else 0 if m == 2 else w
+            ds, ss = step((ctl >> 5) & 3), step((ctl >> 7) & 3)
+            src &= ~(w - 1); dst &= ~(w - 1)
+            for _ in range(n):
+                mu.mem_write(dst, bytes(mu.mem_read(src, w)))
+                dst = (dst + ds) & 0xFFFFFFFF; src = (src + ss) & 0xFFFFFFFF
 
     def _unmapped(self, mu, acc, addr, size, val, ud):
         # EWRAM 은 0x02000000~0x02FFFFFF 에 256KB 단위로 반복된다 (실기 동작)

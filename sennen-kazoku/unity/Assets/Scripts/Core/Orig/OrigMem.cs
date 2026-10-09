@@ -37,8 +37,54 @@ namespace SennenKazoku.Core.Orig
 
         static uint Mirror(uint a) { return EwramBase | (a & (EwramSize - 1)); }
 
+        /// <summary>입출력 레지스터 0x04000000~0x040003FF. 원작 코드가 DMA 로 메모리를 복사·채우므로(예: 0x08049C20) 즉시 시작 DMA 만 흉내 낸다.
+        /// 그 밖의 레지스터(화면·소리·인터럽트)는 값만 저장한다.</summary>
+        public readonly byte[] Io = new byte[0x400];
+
+        void IoWrite(uint a, int size, uint v)
+        {
+            uint o = a - 0x04000000;
+            if (o + (uint)size > (uint)Io.Length) throw new OrigUnmodeled("입출력 영역 밖 쓰기 " + a.ToString("X8"));
+            for (int i = 0; i < size; i++) Io[o + i] = (byte)(v >> (8 * i));
+            for (uint ch = 0; ch < 4; ch++)
+            {
+                uint cnt = 0xB8 + 12 * ch;   // DMAxCNT (아래 16비트 개수, 위 16비트 제어)
+                if (o + (uint)size <= cnt || o >= cnt + 4) continue;
+                uint ctl = (uint)(Io[cnt + 2] | (Io[cnt + 3] << 8));
+                if ((ctl & 0x8000) == 0) continue;
+                if (((ctl >> 12) & 3) == 0) Dma(ch, ctl);   // 즉시 시작만 (V/H 블랭크 DMA 는 화면용)
+                Io[cnt + 3] &= 0x7F;   // 끝나면 사용 비트가 꺼진다
+            }
+        }
+
+        void Dma(uint ch, uint ctl)
+        {
+            uint b = 0xB0 + 12 * ch;
+            uint src = (uint)(Io[b] | Io[b + 1] << 8 | Io[b + 2] << 16 | Io[b + 3] << 24);
+            uint dst = (uint)(Io[b + 4] | Io[b + 5] << 8 | Io[b + 6] << 16 | Io[b + 7] << 24);
+            uint n = (uint)(Io[b + 8] | Io[b + 9] << 8);
+            if (n == 0) n = ch == 3 ? 0x10000u : 0x4000u;
+            int w = (ctl & 0x400) != 0 ? 4 : 2;
+            src &= ~(uint)(w - 1); dst &= ~(uint)(w - 1);
+            int ds = DmaStep((ctl >> 5) & 3, w), ss = DmaStep((ctl >> 7) & 3, w);
+            for (uint i = 0; i < n; i++)
+            {
+                Write(dst, w, Read(src, w));
+                dst = unchecked(dst + (uint)ds); src = unchecked(src + (uint)ss);
+            }
+        }
+
+        static int DmaStep(uint mode, int w) { return mode == 1 ? -w : mode == 2 ? 0 : w; }   // 0 증가 · 1 감소 · 2 고정 · 3 증가(다시 불러오기)
+
         public uint Read(uint a, int size)
         {
+            if (a >= 0x04000000 && a < 0x04000400)
+            {
+                uint o = a - 0x04000000, v = 0;
+                if (o + (uint)size > (uint)Io.Length) throw new OrigUnmodeled("입출력 영역 밖 읽기 " + a.ToString("X8"));
+                for (int i = size - 1; i >= 0; i--) v = (v << 8) | Io[o + i];
+                return v;
+            }
             if (a >= 0x02000000 && a < 0x03000000)
             {
                 uint o = Mirror(a) - EwramBase;
@@ -97,6 +143,7 @@ namespace SennenKazoku.Core.Orig
                 for (int i = 0; i < size; i++) { Iwram[io + i] = (byte)v; v >>= 8; }
                 return;
             }
+            if (a >= 0x04000000 && a < 0x04000400) { IoWrite(a, size, v); return; }
             if (a < 0x02000000 || a >= 0x03000000) throw new OrigUnmodeled("원작 메모리 밖 쓰기 " + a.ToString("X8"));
             uint o = Mirror(a) - EwramBase;
             for (int i = 0; i < size; i++) { Ewram[o + i] = (byte)v; v >>= 8; }

@@ -22,8 +22,12 @@ namespace SennenKazoku.Core.Orig
             vm.Call("0804BC2C", Setup, Members);
             Confirm(m);
             m.W32(SceneObj, Setup); m.W8(SceneObj + 0x11, 0);
-            m.W32(Setup + 0xD340, 0);
+            // +0xD340 = 1: 추천 가족 경로 (원작 실행에서 이 값으로 구성원 채우기 루프를 돈다).
+            // 0 이면 생일을 시작 날짜로 두는 등 다른 경로로 간다 — 플레이어가 정하는 가족 쪽으로 보이며 아직 확인하지 않았다.
+            m.W32(Setup + 0xD340, 1);
             vm.Call("0802D7A0", SceneObj);
+            // +0xD34A: 장면 시작에서 1, 확인 화면에서 결정하면 0. 0 이 아니면 0x080417E0 은 가족을 만들지 않고 끝부분(0x080423F2)으로 간다.
+            m.W8(Setup + 0xD34A, 0);
             vm.Call("080417E0", Setup);
         }
 

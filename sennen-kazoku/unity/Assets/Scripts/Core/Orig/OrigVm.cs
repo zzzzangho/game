@@ -44,7 +44,17 @@ namespace SennenKazoku.Core.Orig
         {
             if (trees.TryGetValue(key, out t)) return true;
             if (!lazy.TryGetValue(key, out var span)) return false;
-            t = ParseNode(MiniJson.Parse(System.Text.Encoding.UTF8.GetString(treeText, span.Key, span.Value)));
+            var text = System.Text.Encoding.UTF8.GetString(treeText, span.Key, span.Value);
+            if (span.Value < 200_000) t = ParseNode(MiniJson.Parse(text));
+            else
+            {
+                // 새 가족 만들기 같은 큰 함수는 트리가 깊어 해석이 재귀로 깊어진다 — 스택을 넉넉히 준 스레드에서 해석
+                Node r = null; Exception err = null;
+                var th = new System.Threading.Thread(() => { try { r = ParseNode(MiniJson.Parse(text)); } catch (Exception ex) { err = ex; } }, 512 * 1024 * 1024);
+                th.Start(); th.Join();
+                if (err != null) throw err;
+                t = r;
+            }
             trees[key] = t; return true;
         }
         static string Norm(string a) { return (Convert.ToUInt32(a.StartsWith("0x") || a.StartsWith("0X") ? a.Substring(2) : a, 16) & ~1u).ToString("X8"); }
@@ -100,7 +110,10 @@ namespace SennenKazoku.Core.Orig
                         return Call((args[0] & ~1u).ToString("X8"), rest);
                     }
             }
-            if (!TryTree(Norm(fn), out var t)) throw new OrigUnmodeled("옮기지 않은 원작 함수 " + fn);
+            var key = Norm(fn);
+            // 규칙 파일의 네이티브 표(주소 → 이름)에 있으면 변환 트리 대신 그 처리를 쓴다 (트리를 다시 만들지 않고 바꿀 수 있게)
+            if (Rules != null && Rules.Natives.TryGetValue(key, out var nat)) return CallInner(nat, args);
+            if (!TryTree(key, out var t)) throw new OrigUnmodeled("옮기지 않은 원작 함수 " + fn);
             return Run(t, args);
         }
 

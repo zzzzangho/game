@@ -114,6 +114,7 @@ class Lifter:
         self.unknown_calls = set()
         self.subs = set(); self.subtrees = {}; self.auto_subs = False; self.nosub = set(); self.inprog = set()
         self.join_cache = {}; self.head_cache = {}; self.exit_cache = {}; self.use_joins = True; self.use_loops = True; self.ntag = 0; self.mem_mode = False; self.allow_loops = True
+        self.pre = []   # store() 가 앞에 넣을 스택 쓰기 (지역 변수 주소가 메모리로 나갈 때)
 
     def u(self, a, n):
         return int.from_bytes(self.rom[a - B:a - B + n], 'little')
@@ -208,6 +209,9 @@ class Lifter:
                 val = binop('and', val, (1 << (8 * size)) - 1)
             s.mem[off] = (val, size)
             return ('store', size, addr, val) if (self.mem_mode or s.membacked) else None   # 프레임 메모리에도 쓴다
+        if has_sp(val) and not has_sp(addr):
+            # 지역 변수 주소를 메모리에 넣는다(예: DMA 원본 주소 레지스터 0x040000D4) → 그 주소로 스택을 읽을 수 있으니 먼저 프레임에 쓴다
+            self.pre += self.spill_stack(s)
         if has_sp(addr):
             if not self.mem_mode: raise NeedMem('stack pointer store')
             # 어느 칸을 덮었는지 모르므로 이후 스택 읽기는 메모리에서
@@ -470,10 +474,14 @@ class Lifter:
             elif mn in ('str', 'strh', 'strb'):
                 size = {'str': 4, 'strh': 2, 'strb': 1}[mn]
                 addr = self.memaddr(s, ops[1])
+                self.pre = []
                 eff = self.store(s, addr, self.reg(s, ops[0]), size)
+                pre, self.pre = self.pre, []
                 if eff:
                     s.pc = nxt
-                    return eff + (self.run(s),)
+                    node = eff + (self.run(s),)
+                    for st in reversed(pre): node = st + (node,)
+                    return node
             elif mn in ('ldm', 'ldmia', 'stm', 'stmia'):
                 base_r = re.match(r'(\w+)', raw).group(1)
                 regs = re.findall(r'\br\d+\b', raw.split('{', 1)[1])
@@ -487,7 +495,9 @@ class Lifter:
                     self.setreg(s, base_r, binop('add', addr, 4 * len(regs)))
                     effs = []
                     for k, v in enumerate(vals):
+                        self.pre = []
                         eff = self.store(s, binop('add', addr, 4 * k), v, 4)
+                        effs += self.pre; self.pre = []
                         if eff: effs.append(eff)
                     if effs:
                         s.pc = nxt
@@ -628,6 +638,31 @@ class Lifter:
             return self.run(s)
         raise Unsupported('ret to %r' % (target,))
 
+    def spill_stack(self, s):
+        """기호로만 들고 있던 스택 칸을 프레임 메모리에 쓰는 저장 목록을 만들고, 이후 스택 읽기는 메모리에서 하게 한다."""
+        isret = lambda v: v == 'RET' or (isinstance(v, tuple) and v[0] == 'retaddr')
+        def undef_in(e):
+            if not isinstance(e, tuple): return e is None or isinstance(e, str)
+            seen, st = set(), [e]
+            while st:
+                x = st.pop()
+                if not isinstance(x, tuple) or id(x) in seen: continue
+                seen.add(id(x))
+                if x and x[0] in ('undef', 'undef_ret', 'undef_switch'): return True
+                st.extend(x[1:])
+            return False
+        spill = []
+        for off, (val, size) in sorted(s.mem.items()):
+            if isret(val): continue          # 복귀 주소는 호출한 함수가 바꾸지 않는다
+            if undef_in(val): continue       # 들어올 때 값을 모르는 저장 레지스터 (쓰이지 않음)
+            if isinstance(val, tuple) and val[0] == 'load' and val[2] == ('sp', off): continue   # 이미 메모리에 있음
+            spill.append(('store', size, ('sp', off), val))
+        for off, (val, size) in list(s.mem.items()):
+            if isret(val): continue
+            s.mem[off] = (('load', size, ('sp', off)), size)
+        s.membacked = True
+        return spill
+
     def native(self, s, nxt, t, nargs):
         args = tuple(self.reg(s, 'r%d' % k) for k in range(min(nargs, 4)))
         sp = self.reg(s, 'sp')
@@ -636,25 +671,7 @@ class Lifter:
         spill = []
         if any(has_sp(a) for a in args):
             # 지역 변수 주소를 넘기는 호출: 스택 값을 실제 프레임 메모리에 쓰고, 호출 뒤 다시 읽는다
-            isret = lambda v: v == 'RET' or (isinstance(v, tuple) and v[0] == 'retaddr')
-            def undef_in(e):
-                if not isinstance(e, tuple): return e is None or isinstance(e, str)
-                seen, st = set(), [e]
-                while st:
-                    x = st.pop()
-                    if not isinstance(x, tuple) or id(x) in seen: continue
-                    seen.add(id(x))
-                    if x and x[0] in ('undef', 'undef_ret', 'undef_switch'): return True
-                    st.extend(x[1:])
-                return False
-            for off, (val, size) in sorted(s.mem.items()):
-                if isret(val): continue          # 복귀 주소는 호출한 함수가 바꾸지 않는다
-                if undef_in(val): continue       # 들어올 때 값을 모르는 저장 레지스터 (쓰이지 않음)
-                spill.append(('store', size, ('sp', off), val))
-            for off, (val, size) in list(s.mem.items()):
-                if isret(val): continue
-                s.mem[off] = (('load', size, ('sp', off)), size)
-            s.membacked = True
+            spill = self.spill_stack(s)
         for k in range(4): s.r['r%d' % k] = ('undef_ret',)
         v = self.newvar()
         s.r['r0'] = v; s.pc = nxt; s.flags = None
