@@ -69,11 +69,12 @@ def _run(t, ctx, env, args, frame):
         k = t[0]
         if k == 'end':
             _assign(t[1], env, ctx)
-            while conts and conts[-1][0] != 'k': conts.pop()
+            tag = t[2] if len(t) > 2 else None
+            while conts and not (conts[-1][0] == 'k' and (tag is None or conts[-1][2] == tag)): conts.pop()
             t = conts.pop()[1]; continue
         if k == 'if2':
             cc, a, b = t[1]
-            conts.append(('k', t[4]))
+            conts.append(('k', t[4], t[5] if len(t) > 5 else None))
             t = t[2] if eval_cc(cc, ev(a, env, ctx), ev(b, env, ctx)) else t[3]
             continue
         if k == 'loop':

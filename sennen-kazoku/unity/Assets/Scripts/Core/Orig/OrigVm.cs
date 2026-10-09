@@ -175,11 +175,12 @@ namespace SennenKazoku.Core.Orig
                     case If f:
                         t = Cmp(f.Cc, Ev(f.A, env, args, frame, undef), Ev(f.B, env, args, frame, undef)) ? f.Then : f.Else; break;
                     case If2 f:
-                        conts.Add(new Cont { Kind = 'k', A = f.After });
+                        conts.Add(new Cont { Kind = 'k', A = f.After, Tag = f.Tag });
                         t = Cmp(f.Cc, Ev(f.A, env, args, frame, undef), Ev(f.B, env, args, frame, undef)) ? f.Then : f.Else; break;
                     case End e:
                         Assign(e.Pairs, env, args, frame, undef);
-                        while (conts.Count > 0 && conts[conts.Count - 1].Kind != 'k') conts.RemoveAt(conts.Count - 1);
+                        // 번호가 있는 합류(경로 폭발 대응 변환)는 같은 번호의 if2 로, 없으면 가장 가까운 if2 로
+                        while (conts.Count > 0 && !(conts[conts.Count - 1].Kind == 'k' && (e.Tag < 0 || conts[conts.Count - 1].Tag == e.Tag))) conts.RemoveAt(conts.Count - 1);
                         t = conts[conts.Count - 1].A; conts.RemoveAt(conts.Count - 1); break;
                     case Loop lp:
                         Assign(lp.Init, env, args, frame, undef);
@@ -289,8 +290,8 @@ namespace SennenKazoku.Core.Orig
         sealed class Let : Node { public int Var; public string Fn; public Expr[] Args; public Node Body; }
         sealed class Store : Node { public int Size; public Expr Addr, Val; public Node Body; }
         sealed class Fail : Node { public string Why; }
-        sealed class If2 : Node { public string Cc; public Expr A, B; public Node Then, Else, After; }
-        sealed class End : Node { public Pair[] Pairs; }
+        sealed class If2 : Node { public string Cc; public Expr A, B; public Node Then, Else, After; public int Tag = -1; }
+        sealed class End : Node { public Pair[] Pairs; public int Tag = -1; }
         sealed class Loop : Node { public int Tag; public Pair[] Init; public Node Body, After; }
         sealed class Jump : Node { public int Tag; public bool Again; public Pair[] Pairs; }
         sealed class Pair { public int Var; public Expr E; }
@@ -329,8 +330,8 @@ namespace SennenKazoku.Core.Orig
                     }
                 case "s": return new Store { Size = I(l[1]), Addr = ParseExpr(l[2]), Val = ParseExpr(l[3]), Body = ParseNode(l[4]) };
                 case "f": return new Fail { Why = (string)l[1] };
-                case "j": return new If2 { Cc = (string)l[1], A = ParseExpr(l[2]), B = ParseExpr(l[3]), Then = ParseNode(l[4]), Else = ParseNode(l[5]), After = ParseNode(l[6]) };
-                case "e": return new End { Pairs = Pairs(l[1]) };
+                case "j": return new If2 { Cc = (string)l[1], A = ParseExpr(l[2]), B = ParseExpr(l[3]), Then = ParseNode(l[4]), Else = ParseNode(l[5]), After = ParseNode(l[6]), Tag = l.Count > 7 ? I(l[7]) : -1 };
+                case "e": return new End { Pairs = Pairs(l[1]), Tag = l.Count > 2 ? I(l[2]) : -1 };
                 case "d": return new Bind { Var = I(l[1]), E = ParseExpr(l[2]), Body = ParseNode(l[3]) };
                 case "o": return new Loop { Tag = I(l[1]), Init = Pairs(l[2]), Body = ParseNode(l[3]), After = ParseNode(l[4]) };
                 case "c": return new Jump { Tag = I(l[1]), Again = true, Pairs = Pairs(l[2]) };

@@ -81,8 +81,8 @@ def enc_t(t):
     if k == 'bind': return ['d', t[1], enc_e(t[2]), enc_t(t[3])]
     if k == 'fail': return ['f', t[1]]
     asg = lambda pairs: [[v, enc_e(x)] for v, x in pairs]
-    if k == 'if2': return ['j', t[1][0], enc_e(t[1][1]), enc_e(t[1][2]), enc_t(t[2]), enc_t(t[3]), enc_t(t[4])]
-    if k == 'end': return ['e', asg(t[1])]
+    if k == 'if2': return ['j', t[1][0], enc_e(t[1][1]), enc_e(t[1][2]), enc_t(t[2]), enc_t(t[3]), enc_t(t[4])] + ([t[5]] if len(t) > 5 else [])
+    if k == 'end': return ['e', asg(t[1])] + ([t[2]] if len(t) > 2 else [])
     if k == 'loop': return ['o', t[1], asg(t[2]), enc_t(t[3]), enc_t(t[4])]
     if k == 'cont': return ['c', t[1], asg(t[2])]
     if k == 'brk': return ['b', t[1], asg(t[2])]
@@ -254,7 +254,7 @@ def _work1(args):
     L = Lifter(rb, NATIVES, max_steps=200000 if big else 50000, max_nodes=500000 if big else 50000); L.auto_subs = True
     trees, fails, tabs = {}, [], set()
     for f in fns:
-        if main: signal.alarm(60)
+        if main: signal.alarm(int(os.environ.get('LIFT_ALARM', '60')))   # 함수 하나 변환 시간 한도(초)
         try:
             t = L.lift(f); trees[f] = t; icall_tables(t, rom, tabs)
         except (Unsupported, TO, RecursionError) as ex:

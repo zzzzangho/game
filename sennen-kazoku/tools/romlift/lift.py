@@ -115,6 +115,9 @@ class Lifter:
         self.subs = set(); self.subtrees = {}; self.auto_subs = False; self.nosub = set(); self.inprog = set()
         self.join_cache = {}; self.head_cache = {}; self.exit_cache = {}; self.use_joins = True; self.use_loops = True; self.ntag = 0; self.mem_mode = False; self.allow_loops = True
         self.pre = []   # store() 가 앞에 넣을 스택 쓰기 (지역 변수 주소가 메모리로 나갈 때)
+        # 경로 폭발 대응: 후지배자가 아니라 "두 갈래가 처음 다시 만나는 명령"에서 합친다. 합치는 곳이 겹쳐질 수 있으므로
+        # if2·end 에 번호(tag)를 붙여 실행기가 맞는 합류로 간다. 기존 방식이 실패한 함수에만 쓴다.
+        self.agg = False; self.agg_cache = {}
 
     def u(self, a, n):
         return int.from_bytes(self.rom[a - B:a - B + n], 'little')
@@ -139,18 +142,23 @@ class Lifter:
         saved, saved_mem = self.use_loops, self.mem_mode
         try:
             last = None
-            for mem in (False, True):
-                for loops in ((False, True) if self.allow_loops else (False,)):
-                    self.use_loops, self.mem_mode = loops, mem; self.nodes = 0
-                    try:
-                        return self.run(s.copy())
-                    except NeedMem as ex:
-                        last = ex; break
-                    except Unsupported as ex:
-                        last = ex
+            saved_agg = self.agg
+            for agg in ((False, True) if not saved_agg else (True,)):
+                self.agg = agg
+                for mem in (False, True):
+                    for loops in ((False, True) if self.allow_loops else (False,)):
+                        self.use_loops, self.mem_mode = loops, mem; self.nodes = 0
+                        try:
+                            return self.run(s.copy())
+                        except NeedMem as ex:
+                            last = ex; break
+                        except Unsupported as ex:
+                            last = ex
+                if not (isinstance(last, Unsupported) and 'too many' in str(last)): break
             raise last
         finally:
             self.use_loops, self.mem_mode = saved, saved_mem
+            self.agg = saved_agg
 
     # ---- 값 읽기
     def reg(self, s, name):
@@ -320,6 +328,29 @@ class Lifter:
         self.join_cache[fn] = res; self.head_cache[fn] = heads; self.exit_cache[fn] = exits
         return res
 
+    def agg_join(self, fn, pc, a, b):
+        """두 갈래(a, b)에서 모두 닿는 명령 중 가장 가까운 것 (두 거리 중 큰 값이 최소). 반복문 머리는 넘지 않는다."""
+        key = (fn, pc)
+        if key in self.agg_cache: return self.agg_cache[key]
+        heads = self.loop_heads(fn)
+        def dist(start):
+            d = {start: 0}; q = [start]; i = 0
+            while i < len(q):
+                x = q[i]; i += 1
+                if len(d) > 4000: break
+                if x in heads and x != start: continue
+                try: nx = self.succs(x)
+                except Unsupported: nx = []
+                for y in nx:
+                    if y not in d: d[y] = d[x] + 1; q.append(y)
+            return d
+        da, db = dist(a), dist(b)
+        common = [x for x in da if x in db and x != pc]
+        J = min(common, key=lambda x: (max(da[x], db[x]), da[x] + db[x], x)) if common else None
+        if J is None: J = self.joins(fn).get(pc)
+        self.agg_cache[key] = J
+        return J
+
     def loop_heads(self, fn):
         self.joins(fn)
         return self.head_cache.get(fn, set())
@@ -415,7 +446,7 @@ class Lifter:
                     s.pc = t if eval_cc(cc, a, b) else nxt; continue
                 if a == b and cc in ('eq', 'ne', 'geu', 'leu', 'ge', 'le', 'ltu', 'gtu', 'lt', 'gt'):
                     s.pc = t if eval_cc(cc, 0, 0) else nxt; continue
-                J = self.joins(s.fns[-1]).get(pc) if self.use_joins else None
+                J = (self.agg_join(s.fns[-1], pc, t, nxt) if self.agg else self.joins(s.fns[-1]).get(pc)) if self.use_joins else None
                 if J is None:
                     s1 = s.copy(); s1.pc = t; s2 = s; s2.pc = nxt
                     return ('if', (cc, a, b), self.run(s1), self.run(s2))
@@ -428,6 +459,7 @@ class Lifter:
                 merged, assigns = self.merge(ends)
                 merged.stops = outer; merged.pc = J
                 fix = lambda tr: self.patch(tr, 'end', tag, assigns)
+                if self.agg: return ('if2', (cc, a, b), fix(t1), fix(t2), self.run(merged), tag)
                 return ('if2', (cc, a, b), fix(t1), fix(t2), self.run(merged))
             elif mn in ('cmp', 'cmn', 'tst'):
                 a = self.opval(s, ops[0]); b = self.opval(s, ops[1])
@@ -577,9 +609,10 @@ class Lifter:
         P = lambda x: self.patch(x, kind, tag, assigns)
         if k == kind and len(t) == 3 and t[1] == tag and isinstance(t[2], int):
             a = tuple(assigns[t[2]])
-            return ('end', a) if kind == 'end' else (kind, tag, a)
+            if kind == 'end': return ('end', a, tag) if self.agg else ('end', a)
+            return (kind, tag, a)
         if k == 'if': return ('if', t[1], P(t[2]), P(t[3]))
-        if k == 'if2': return ('if2', t[1], P(t[2]), P(t[3]), P(t[4]))
+        if k == 'if2': return ('if2', t[1], P(t[2]), P(t[3]), P(t[4])) + tuple(t[5:])
         if k == 'let': return ('let', t[1], t[2], P(t[3]))
         if k == 'store': return ('store', t[1], t[2], t[3], P(t[4]))
         if k == 'bind': return ('bind', t[1], t[2], P(t[3]))
