@@ -47,7 +47,7 @@ def main():
     rom = open(sys.argv[1], 'rb').read(); limit = int(sys.argv[2])
     fns = effect_functions(rom)
     random.Random(1).shuffle(fns); fns = fns[:limit]
-    L = Lifter(rom, NATIVES, max_steps=50000, max_nodes=5000); L.auto_subs = True
+    L = Lifter(rom, NATIVES, max_steps=50000, max_nodes=50000); L.auto_subs = True
     signal.signal(signal.SIGALRM, _al)
     trees = {}
     for f in fns:

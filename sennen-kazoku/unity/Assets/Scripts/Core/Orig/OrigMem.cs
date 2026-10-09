@@ -23,6 +23,8 @@ namespace SennenKazoku.Core.Orig
         public readonly byte[] Ewram = new byte[EwramSize];
         /// <summary>IWRAM 32KB: 원작 함수의 지역 변수 프레임(옮긴 트리가 지역 변수 주소를 넘길 때)에만 쓴다. 저장하지 않는다.</summary>
         public readonly byte[] Iwram = new byte[0x8000];
+        /// <summary>변환한 함수의 지역 변수 프레임 (0x0F000000~, 1MB, GBA 에 없는 영역). 저장하지 않는다.</summary>
+        public readonly byte[] Frames = new byte[0x100000];
         readonly List<KeyValuePair<uint, byte[]>> rom = new List<KeyValuePair<uint, byte[]>>();
 
         public void AddRom(uint start, byte[] data)
@@ -44,6 +46,13 @@ namespace SennenKazoku.Core.Orig
                 uint v = 0;
                 for (int i = size - 1; i >= 0; i--) v = (v << 8) | Ewram[o + i];
                 return v;
+            }
+            if (a >= 0x0F000000 && a < 0x0F100000)
+            {
+                uint fo = a - 0x0F000000, fv = 0;
+                if (fo + (uint)size > 0x100000) throw new OrigUnmodeled("프레임 경계 " + a.ToString("X8"));
+                for (int i = size - 1; i >= 0; i--) fv = (fv << 8) | Frames[fo + i];
+                return fv;
             }
             if (a >= 0x03000000 && a < 0x04000000)
             {
@@ -74,6 +83,13 @@ namespace SennenKazoku.Core.Orig
 
         public void Write(uint a, int size, uint v)
         {
+            if (a >= 0x0F000000 && a < 0x0F100000)
+            {
+                uint fo = a - 0x0F000000;
+                if (fo + (uint)size > 0x100000) throw new OrigUnmodeled("프레임 경계 " + a.ToString("X8"));
+                for (int i = 0; i < size; i++) { Frames[fo + i] = (byte)v; v >>= 8; }
+                return;
+            }
             if (a >= 0x03000000 && a < 0x04000000)
             {
                 uint io = a & 0x7FFF;

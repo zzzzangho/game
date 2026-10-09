@@ -6,7 +6,8 @@ namespace SennenKazoku.Core.Orig
     /// <summary>
     /// 원작 판정 함수를 옮긴 결정 트리(tools/romlift/lift.py 가 만든 것)를 실행한다.
     /// 트리 노드:  ["r", e] 반환 · ["i", cc, a, b, 참, 거짓] 분기 · ["l", 변수, 함수, [인자], 이후] 호출 ·
-    ///             ["s", 크기, 주소, 값, 이후] 메모리 쓰기 · ["f", 이유] 옮기지 못한 경로 ·
+    ///             ["s", 크기, 주소, 값, 이후] 메모리 쓰기 · ["d", 변수, 식, 이후] 메모리 읽기를 그 순간 값으로 묶기 ·
+    ///             ["f", 이유] 옮기지 못한 경로 ·
     ///             ["j", cc, a, b, 참, 거짓, 합류 후] 다시 만나는 분기(가지 끝 ["e", 대입]) ·
     ///             ["o", 꼬리표, 초기 대입, 본문, 반복 후] 반복문(본문 끝 ["c", 꼬리표, 대입] 다시 · ["b", 꼬리표, 대입] 빠져나감)
     /// 식: 정수 · ["v", n] 변수 · ["a", k] 인자 · ["m", 크기, 주소] 메모리 · ["x", 비트, e] 부호 확장 · ["p", 오프셋] 지역 변수 주소 · [연산, a, b]
@@ -22,8 +23,30 @@ namespace SennenKazoku.Core.Orig
         public OrigVm(OrigMem mem) { Mem = mem; }
 
         public void AddTree(string addr, object json) { trees[Norm(addr)] = ParseNode(json); }
-        public bool HasTree(string addr) { return trees.ContainsKey(Norm(addr)); }
-        public int TreeCount { get { return trees.Count; } }
+        public bool HasTree(string addr) { return trees.ContainsKey(Norm(addr)) || lazy.ContainsKey(Norm(addr)); }
+        public int TreeCount { get { return trees.Count + lazy.Count; } }
+
+        // 트리 파일 ("0x주소\t트리 JSON" 한 줄씩): 부르는 함수만 그때 해석한다
+        byte[] treeText; readonly Dictionary<string, KeyValuePair<int, int>> lazy = new Dictionary<string, KeyValuePair<int, int>>();
+        public void SetTreeSource(byte[] text)
+        {
+            treeText = text; int i = 0;
+            while (i < text.Length)
+            {
+                int tab = Array.IndexOf(text, (byte)'\t', i); if (tab < 0) break;
+                int nl = Array.IndexOf(text, (byte)'\n', tab); if (nl < 0) nl = text.Length;
+                var addr = System.Text.Encoding.ASCII.GetString(text, i, tab - i);
+                lazy[Norm(addr)] = new KeyValuePair<int, int>(tab + 1, nl - tab - 1);
+                i = nl + 1;
+            }
+        }
+        bool TryTree(string key, out Node t)
+        {
+            if (trees.TryGetValue(key, out t)) return true;
+            if (!lazy.TryGetValue(key, out var span)) return false;
+            t = ParseNode(MiniJson.Parse(System.Text.Encoding.UTF8.GetString(treeText, span.Key, span.Value)));
+            trees[key] = t; return true;
+        }
         static string Norm(string a) { return (Convert.ToUInt32(a.StartsWith("0x") || a.StartsWith("0X") ? a.Substring(2) : a, 16) & ~1u).ToString("X8"); }
         /// <summary>다음 관심사 선택(0x08028524)을 효과 함수가 부를 때 쓰는 규칙 데이터.</summary>
         public OrigRules Rules;
@@ -52,6 +75,21 @@ namespace SennenKazoku.Core.Orig
                     if (args.Length > 1 && args[1] != 0) throw new OrigUnmodeled("관계 슬롯표 작성의 두 번째 인자 경로(0x08112788) 미이식");
                     OrigFamily.BuildSlots(Mem, args[0] & 0xFFFF); return 0;
                 case "inhouse": return OrigFamily.InHouse(Mem, args[0] & 0xFFFF);
+                case "memcpy":   // 0x0824F700 (libc memcpy)
+                    for (uint i = 0; i < args[2]; i++) Mem.W8(args[0] + i, Mem.R8(args[1] + i));
+                    return args[0];
+                case "cpuset":   // BIOS svc 0x0B: r0 원본, r1 대상, r2 = 개수 | bit24 채우기 | bit26 32비트
+                    {
+                        uint n = args[2] & 0x1FFFFF; bool fill = (args[2] & (1u << 24)) != 0; int w = (args[2] & (1u << 26)) != 0 ? 4 : 2;
+                        uint src = args[0], dst = args[1];
+                        uint fv = fill ? Mem.Read(src, w) : 0;
+                        for (uint i = 0; i < n; i++)
+                        {
+                            Mem.Write(dst + (uint)w * i, w, fill ? fv : Mem.Read(src + (uint)w * i, w));
+                        }
+                        return 0;
+                    }
+                case "noop": return 0;   // 소리·화면 함수 (규칙 상태를 바꾸지 않음)
                 case "select":
                     if (Rules == null) throw new OrigUnmodeled("규칙 데이터 없음");
                     new OrigSelect(Mem, this, Rules).Select(args[0], args[1], args[2]); return 0;
@@ -62,12 +100,12 @@ namespace SennenKazoku.Core.Orig
                         return Call((args[0] & ~1u).ToString("X8"), rest);
                     }
             }
-            if (!trees.TryGetValue(Norm(fn), out var t)) throw new OrigUnmodeled("옮기지 않은 원작 함수 " + fn);
+            if (!TryTree(Norm(fn), out var t)) throw new OrigUnmodeled("옮기지 않은 원작 함수 " + fn);
             return Run(t, args);
         }
 
         // ---------------- 실행 ----------------
-        public const uint FrameTop = 0x03006000, FrameSize = 0x400;
+        public const uint FrameTop = 0x0F100000, FrameSize = 0x1000;   // 지역 변수 프레임 (GBA 에 없는 빈 주소 영역)
 
         sealed class Cont { public char Kind; public int Tag; public Node A, B; }
 
@@ -89,7 +127,7 @@ namespace SennenKazoku.Core.Orig
         uint Run(Node t, uint[] args)
         {
             var env = new Dictionary<int, uint>(); var undef = new HashSet<int>();
-            uint frame = FrameTop - FrameSize * (uint)depth;
+            uint frame = FrameTop - 0x100 - FrameSize * (uint)depth;   // 위쪽 0x100 은 받은 스택 인자 자리
             var conts = new List<Cont>();
             long steps = 0;
             while (true)
@@ -129,8 +167,14 @@ namespace SennenKazoku.Core.Orig
                         env[l.Var] = Call(l.Fn, av); undef.Remove(l.Var);
                         t = l.Body; break;
                     case Store s:
-                        Mem.Write(Ev(s.Addr, env, args, frame, undef), s.Size, Ev(s.Val, env, args, frame, undef));
+                        uint sv;
+                        try { sv = Ev(s.Val, env, args, frame, undef); }
+                        catch (UndefValue) { sv = 0; }   // 호출한 쪽이 남긴 레지스터 값 (원작에서도 의미 없는 값)
+                        Mem.Write(Ev(s.Addr, env, args, frame, undef), s.Size, sv);
                         t = s.Body; break;
+                    case Bind bd:
+                        env[bd.Var] = Ev(bd.E, env, args, frame, undef); undef.Remove(bd.Var);
+                        t = bd.Body; break;
                     case Fail x: throw new OrigUnmodeled("옮기지 못한 원작 경로: " + x.Why);
                     default: throw new OrigUnmodeled("알 수 없는 노드");
                 }
@@ -216,6 +260,7 @@ namespace SennenKazoku.Core.Orig
         sealed class Loop : Node { public int Tag; public Pair[] Init; public Node Body, After; }
         sealed class Jump : Node { public int Tag; public bool Again; public Pair[] Pairs; }
         sealed class Pair { public int Var; public Expr E; }
+        sealed class Bind : Node { public int Var; public Expr E; public Node Body; }
         abstract class Expr { }
         sealed class Const : Expr { public uint V; }
         sealed class Var : Expr { public int N; }
@@ -252,6 +297,7 @@ namespace SennenKazoku.Core.Orig
                 case "f": return new Fail { Why = (string)l[1] };
                 case "j": return new If2 { Cc = (string)l[1], A = ParseExpr(l[2]), B = ParseExpr(l[3]), Then = ParseNode(l[4]), Else = ParseNode(l[5]), After = ParseNode(l[6]) };
                 case "e": return new End { Pairs = Pairs(l[1]) };
+                case "d": return new Bind { Var = I(l[1]), E = ParseExpr(l[2]), Body = ParseNode(l[3]) };
                 case "o": return new Loop { Tag = I(l[1]), Init = Pairs(l[2]), Body = ParseNode(l[3]), After = ParseNode(l[4]) };
                 case "c": return new Jump { Tag = I(l[1]), Again = true, Pairs = Pairs(l[2]) };
                 case "b": return new Jump { Tag = I(l[1]), Again = false, Pairs = Pairs(l[2]) };

@@ -13,7 +13,7 @@ from export_orig import NATIVES, STATE_TABLE, table_len, Rom  # noqa: E402
 
 def main():
     rb = open(sys.argv[1], 'rb').read(); rom = Rom(rb)
-    L = Lifter(rb, NATIVES, max_steps=50000, max_nodes=5000); L.auto_subs = True
+    L = Lifter(rb, NATIVES, max_steps=50000, max_nodes=50000); L.auto_subs = True
     preds = set()
     for t in range(5):
         tb = rom.u32(STATE_TABLE + 4 * t)
@@ -38,6 +38,7 @@ def main():
                 ctx.write = lambda ad, sz, v: cpu.mu.mem_write(ad, (v & ((1 << (8 * sz)) - 1)).to_bytes(sz, 'little'))
                 b = irexec.run(tr, ctx)
                 same, diff = (same + 1, diff) if a == b else (same, diff + 1)
+                if a != b and diff <= 8: print('다름', hex(f), '인물', n, '원작', a, '변환', b)
     print('트리 %d개, 같음 %d, 다름 %d' % (len(trees), same, diff))
     return 0 if diff == 0 else 1
 

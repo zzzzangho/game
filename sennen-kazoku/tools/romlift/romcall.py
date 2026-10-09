@@ -19,6 +19,7 @@ class RomCpu:
         self.mu.mem_map(0x06000000, 0x20000)
         self.mu.mem_map(0x07000000, 0x1000)
         self.mu.mem_map(0x0E000000, 0x10000)
+        self.mu.mem_map(0x0F000000, 0x100000)    # 변환 트리의 프레임 영역 (검증용)
         self.set_ram(ram)
         self.mirrors = []
         self.mu.hook_add(UC_HOOK_MEM_UNMAPPED, self._unmapped)

@@ -13,6 +13,24 @@ class Unsupported(Exception):
     pass
 
 
+class NeedMem(Unsupported):
+    """지역 변수를 변수 첨자·포인터로 읽고 쓰는 함수: 스택을 실제 프레임 메모리에 함께 쓰는 방식으로 다시 변환."""
+    pass
+
+
+def has_sp(e):
+    """식 안에 스택 주소가 있는가 (공유된 부분식이 많아 방문한 것은 다시 보지 않는다)."""
+    if not isinstance(e, tuple): return False
+    seen, st = set(), [e]
+    while st:
+        x = st.pop()
+        if not isinstance(x, tuple) or id(x) in seen: continue
+        seen.add(id(x))
+        if x and x[0] == 'sp': return True
+        st.extend(x[1:])
+    return False
+
+
 def s32(x):
     x &= M32
     return x - (1 << 32) if x & 0x80000000 else x
@@ -70,11 +88,11 @@ def is_sp(x): return isinstance(x, tuple) and x[0] == 'sp'
 
 
 class State:
-    __slots__ = ('r', 'mem', 'flags', 'pc', 'depth', 'steps', 'fns', 'stops', 'skip')
+    __slots__ = ('r', 'mem', 'flags', 'pc', 'depth', 'steps', 'fns', 'stops', 'skip', 'membacked')
 
     def copy(self):
         s = State(); s.r = dict(self.r); s.mem = dict(self.mem); s.flags = self.flags; s.pc = self.pc
-        s.depth = self.depth; s.steps = self.steps; s.fns = list(self.fns); s.stops = self.stops; s.skip = False; return s
+        s.depth = self.depth; s.steps = self.steps; s.fns = list(self.fns); s.stops = self.stops; s.skip = False; s.membacked = self.membacked; return s
 
 
 CC = {'beq': 'eq', 'bne': 'ne', 'bhs': 'geu', 'bcs': 'geu', 'blo': 'ltu', 'bcc': 'ltu', 'bhi': 'gtu', 'bls': 'leu',
@@ -95,7 +113,7 @@ class Lifter:
         self.cache = {}; self.nvar = 0; self.max_steps = max_steps; self.max_nodes = max_nodes
         self.unknown_calls = set()
         self.subs = set(); self.subtrees = {}; self.auto_subs = False; self.nosub = set(); self.inprog = set()
-        self.join_cache = {}; self.head_cache = {}; self.exit_cache = {}; self.use_joins = True; self.use_loops = True; self.ntag = 0
+        self.join_cache = {}; self.head_cache = {}; self.exit_cache = {}; self.use_joins = True; self.use_loops = True; self.ntag = 0; self.mem_mode = False; self.allow_loops = True
 
     def u(self, a, n):
         return int.from_bytes(self.rom[a - B:a - B + n], 'little')
@@ -111,21 +129,27 @@ class Lifter:
     def lift(self, fn, nargs=4):
         s = State(); s.r = {('r%d' % k): ('arg', k) for k in range(nargs)}
         s.r['sp'] = ('sp', 0); s.r['lr'] = 'RET'; s.mem = {}; s.flags = None; s.pc = fn & ~1; s.depth = 0; s.steps = 0
-        s.fns = [fn & ~1]; s.stops = (); s.skip = False
+        s.fns = [fn & ~1]; s.stops = (); s.skip = False; s.membacked = False
         for k in range(4):  # 스택 인자
             s.mem[k * 4] = (('sarg', k), 4)
         self.nodes = 0
-        # 먼저 반복문을 펼쳐 보고(값이 정해지는 반복은 펼친 결과가 더 단순하다), 안 되면 반복문 노드로 바꾼다
-        saved = self.use_loops; base = s.copy(); nv = self.nvar
+        # 먼저 반복문을 펼쳐 보고(값이 정해지는 반복은 펼친 결과가 더 단순하다), 안 되면 반복문 노드로 바꾼다.
+        # 지역 변수를 포인터로 다루면 스택을 프레임 메모리에 함께 쓰는 방식으로 다시 한다.
+        saved, saved_mem = self.use_loops, self.mem_mode
         try:
-            self.use_loops = False
-            return self.run(s)
-        except Unsupported:
-            if not saved: raise
-            self.use_loops = True; self.nodes = 0
-            return self.run(base)
+            last = None
+            for mem in (False, True):
+                for loops in ((False, True) if self.allow_loops else (False,)):
+                    self.use_loops, self.mem_mode = loops, mem; self.nodes = 0
+                    try:
+                        return self.run(s.copy())
+                    except NeedMem as ex:
+                        last = ex; break
+                    except Unsupported as ex:
+                        last = ex
+            raise last
         finally:
-            self.use_loops = saved
+            self.use_loops, self.mem_mode = saved, saved_mem
 
     # ---- 값 읽기
     def reg(self, s, name):
@@ -142,10 +166,16 @@ class Lifter:
         return self.reg(s, o)
 
     def load(self, s, addr, size, signed=False):
+        if not is_sp(addr) and has_sp(addr):
+            if not self.mem_mode: raise NeedMem('stack pointer load')
+            v = ('load', size, addr)
+            return ('sext', v, 8 * size) if signed and size < 4 else v
         if is_sp(addr):
             off = addr[1]
             if off in s.mem and s.mem[off][1] == size:
                 val = s.mem[off][0]
+            elif self.mem_mode or s.membacked:
+                val = ('load', size, addr)   # 호출한 함수가 포인터로 썼을 수 있다 → 프레임 메모리에서
             else:
                 # 크기가 다른 칸들에서 바이트별로 모은다
                 val = 0
@@ -176,7 +206,13 @@ class Lifter:
                 del s.mem[o]
             if size < 4 and not isinstance(val, int) or size < 4:
                 val = binop('and', val, (1 << (8 * size)) - 1)
-            s.mem[off] = (val, size); return None
+            s.mem[off] = (val, size)
+            return ('store', size, addr, val) if (self.mem_mode or s.membacked) else None   # 프레임 메모리에도 쓴다
+        if has_sp(addr):
+            if not self.mem_mode: raise NeedMem('stack pointer store')
+            # 어느 칸을 덮었는지 모르므로 이후 스택 읽기는 메모리에서
+            isret = lambda v: v == 'RET' or (isinstance(v, tuple) and v[0] == 'retaddr')
+            s.mem = {o: (v, sz) if isret(v) else (('load', sz, ('sp', o)), sz) for o, (v, sz) in s.mem.items()}
         return ('store', size, addr, val)
 
     def memaddr(self, s, o):
@@ -185,6 +221,23 @@ class Lifter:
         if m.group(2) is None: return base
         off = self.opval(s, m.group(2))
         return binop('add', base, off)
+
+    def eager(self, val, pending):
+        """메모리 읽기는 읽는 순간의 값이어야 한다(뒤에 같은 곳에 쓰기가 올 수 있음) → 변수에 묶는다."""
+        x = val[1] if isinstance(val, tuple) and val[0] == 'sext' else val
+        if isinstance(x, tuple) and x[0] == 'load' and self.rom_addr(x[2]):
+            return val          # ROM 은 바뀌지 않는다 (점프 표 등은 식 그대로 둔다)
+        if isinstance(x, tuple) and x[0] in ('ram', 'load'):
+            v = self.newvar(); pending.append((v[1], val)); return v
+        return val
+
+    @staticmethod
+    def rom_addr(a):
+        """주소식이 ROM 상수 + 첨자 꼴인가."""
+        if isinstance(a, tuple) and a[0] == 'add':
+            for c in (a[1], a[2]):
+                if isinstance(c, int) and 0x08000000 <= c < 0x0A000000: return True
+        return False
 
     def newvar(self, bits=0):
         self.nvar += 1; return ('v', self.nvar, bits)
@@ -286,6 +339,7 @@ class Lifter:
             v = self.newvar(); base.mem[o] = (v, vals[0][1])
             for (i, _), val in zip(ends, vals): assigns[i].append((v[1], val[0]))
         base.flags = None; base.steps = max(st.steps for st in sts)
+        base.membacked = any(st.membacked for st in sts)
         return base, assigns
 
     def run(self, s):
@@ -302,6 +356,7 @@ class Lifter:
                     return self.make_loop(s)
             s.steps += 1
             if s.steps > self.max_steps: raise Unsupported('too many steps at %x' % s.pc)
+            pending = []
             pc = s.pc
             mn, ops, size, raw = self.ins(pc)
             nxt = pc + size
@@ -342,10 +397,8 @@ class Lifter:
                         sp = self.reg(s, 'sp')
                         vals = [self.reg(s, 'r%d' % k) for k in range(min(ar, 4))] + \
                                [self.load(s, ('sp', sp[1] + 4 * k), 4) for k in range(max(0, ar - 4))]
-                        def has_sp(e):
-                            return isinstance(e, tuple) and (e[0] == 'sp' or any(has_sp(x) for x in e[1:]))
-                        if not any(has_sp(v) for v in vals):
-                            return self.native(s, nxt, t, ar)
+                        # 지역 변수 주소를 넘기면 native() 가 스택 값을 프레임 메모리에 쓰고 호출 뒤 다시 읽는다
+                        return self.native(s, nxt, t, ar)
                 if s.depth > 12: raise Unsupported('depth')
                 s.r['lr'] = ('retaddr', nxt); s.depth += 1; s.fns.append(t); s.pc = t; continue
             elif mn == 'b':
@@ -413,7 +466,7 @@ class Lifter:
             elif mn in ('ldr', 'ldrh', 'ldrb', 'ldrsh', 'ldrsb'):
                 size = {'ldr': 4, 'ldrh': 2, 'ldrb': 1, 'ldrsh': 2, 'ldrsb': 1}[mn]
                 addr = self.memaddr(s, ops[1])
-                self.setreg(s, ops[0], self.load(s, addr, size, mn.startswith('ldrs')))
+                self.setreg(s, ops[0], self.eager(self.load(s, addr, size, mn.startswith('ldrs')), pending))
             elif mn in ('str', 'strh', 'strb'):
                 size = {'str': 4, 'strh': 2, 'strb': 1}[mn]
                 addr = self.memaddr(s, ops[1])
@@ -427,7 +480,7 @@ class Lifter:
                 addr = self.reg(s, base_r)
                 if mn.startswith('ldm'):
                     for k, rg in enumerate(regs):
-                        self.setreg(s, rg, self.load(s, binop('add', addr, 4 * k), 4))
+                        self.setreg(s, rg, self.eager(self.load(s, binop('add', addr, 4 * k), 4), pending))
                     if base_r not in regs: self.setreg(s, base_r, binop('add', addr, 4 * len(regs)))
                 else:
                     vals = [self.reg(s, rg) for rg in regs]
@@ -446,6 +499,10 @@ class Lifter:
             else:
                 raise Unsupported('%s %s at %x' % (mn, raw, pc))
             s.pc = nxt
+            if pending:
+                node = self.run(s)
+                for v, e in reversed(pending): node = ('bind', v, e, node)
+                return node
 
     def quick_arity(self, fn):
         """함수 앞부분에서 쓰기 전에 읽는 r0~r3 개수 (재귀 호출용 근사)."""
@@ -500,6 +557,7 @@ class Lifter:
                 for a in n[2][2]: we(a)
                 wt(n[3])
             elif k == 'store': we(n[2]); we(n[3]); wt(n[4])
+            elif k == 'bind': we(n[2]); wt(n[3])
         wt(self.subtrees[t])
         return max(used) + 1 if used else 0
 
@@ -514,6 +572,7 @@ class Lifter:
         if k == 'if2': return ('if2', t[1], P(t[2]), P(t[3]), P(t[4]))
         if k == 'let': return ('let', t[1], t[2], P(t[3]))
         if k == 'store': return ('store', t[1], t[2], t[3], P(t[4]))
+        if k == 'bind': return ('bind', t[1], t[2], P(t[3]))
         if k == 'loop': return ('loop', t[1], t[2], P(t[3]), P(t[4]))
         return t
 
@@ -522,8 +581,6 @@ class Lifter:
         H = s.pc; d = len(s.fns)
         self.joins(s.fns[-1]); E = self.exit_cache.get(s.fns[-1], {}).get(H)
         isret = lambda v: v == 'RET' or (isinstance(v, tuple) and v[0] == 'retaddr')
-        def has_sp(e):
-            return isinstance(e, tuple) and (e[0] == 'sp' or any(has_sp(x) for x in e[1:]))
         # 지역 변수 주소는 반복 중에도 그대로인 경우가 대부분 → 바뀌는 것이 확인될 때만 반복 변수로
         regs = [k for k, v in s.r.items() if k not in ('sp', 'pc', 'lr') and not isret(v) and not has_sp(v)]
         offs = [o for o, (v, sz) in s.mem.items() if not isret(v) and not has_sp(v)]
@@ -576,18 +633,28 @@ class Lifter:
         sp = self.reg(s, 'sp')
         if nargs > 4:
             args += tuple(self.load(s, ('sp', sp[1] + 4 * k), 4) for k in range(nargs - 4))
-        def has_sp(e):
-            return isinstance(e, tuple) and (e[0] == 'sp' or any(has_sp(x) for x in e[1:]))
         spill = []
         if any(has_sp(a) for a in args):
             # 지역 변수 주소를 넘기는 호출: 스택 값을 실제 프레임 메모리에 쓰고, 호출 뒤 다시 읽는다
             isret = lambda v: v == 'RET' or (isinstance(v, tuple) and v[0] == 'retaddr')
+            def undef_in(e):
+                if not isinstance(e, tuple): return e is None or isinstance(e, str)
+                seen, st = set(), [e]
+                while st:
+                    x = st.pop()
+                    if not isinstance(x, tuple) or id(x) in seen: continue
+                    seen.add(id(x))
+                    if x and x[0] in ('undef', 'undef_ret', 'undef_switch'): return True
+                    st.extend(x[1:])
+                return False
             for off, (val, size) in sorted(s.mem.items()):
                 if isret(val): continue          # 복귀 주소는 호출한 함수가 바꾸지 않는다
+                if undef_in(val): continue       # 들어올 때 값을 모르는 저장 레지스터 (쓰이지 않음)
                 spill.append(('store', size, ('sp', off), val))
             for off, (val, size) in list(s.mem.items()):
                 if isret(val): continue
                 s.mem[off] = (('load', size, ('sp', off)), size)
+            s.membacked = True
         for k in range(4): s.r['r%d' % k] = ('undef_ret',)
         v = self.newvar()
         s.r['r0'] = v; s.pc = nxt; s.flags = None
@@ -654,4 +721,6 @@ def show(t, ind=0, names={}):
         return p + '%s = %s(%s)\n%s' % (fmt(t[1]), fname, ', '.join(fmt(a) for a in c[2]), show(t[3], ind, names))
     if k == 'store':
         return p + 'm%d[%s] = %s\n%s' % (t[1] * 8, fmt(t[2]), fmt(t[3]), show(t[4], ind, names))
+    if k == 'bind':
+        return p + 'v%d := %s\n%s' % (t[1], fmt(t[2]), show(t[3], ind, names))
     return p + repr(t)

@@ -26,7 +26,9 @@ namespace SennenKazoku.Core.Orig
         public readonly Dictionary<uint, OrigEvent> Events = new Dictionary<uint, OrigEvent>();
         /// <summary>결과 기록 주소 → (+0x18 시작 함수, +0x1C 효과 함수).</summary>
         public readonly Dictionary<uint, string[]> VariantData = new Dictionary<uint, string[]>();
-        public object TreesJson;
+        public object TreesJson;           // 실행기에 넣을 트리 (한 파일에 함께 넣은 경우)
+        public byte[] TreesText;           // 트리 파일 내용 (treesFile, 한 줄에 함수 하나 — 부를 때 해석)
+        public string TreesFile = "";
 
         public sealed class OrigEvent
         {
@@ -114,6 +116,7 @@ namespace SennenKazoku.Core.Orig
                     r.VariantData[Convert.ToUInt32(kv.Key.Substring(2), 16)] = new[] { dd["pre"] as string, dd["post"] as string };
                 }
             r.TreesJson = d.TryGetValue("trees", out var tj) ? tj : null;
+            r.TreesFile = J.Str(d, "treesFile");
             r.RomJson = J.List(d, "rom");
             return r;
         }
@@ -130,6 +133,7 @@ namespace SennenKazoku.Core.Orig
             var vm = new OrigVm(mem) { Rules = this };
             if (TreesJson is Dictionary<string, object> t)
                 foreach (var kv in t) vm.AddTree(kv.Key, kv.Value);
+            if (TreesText != null) vm.SetTreeSource(TreesText);
             return vm;
         }
 

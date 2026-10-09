@@ -39,13 +39,13 @@ def ev(e, env, ctx):
     return binop(k, ev(e[1], env, ctx), ev(e[2], env, ctx))
 
 
-FRAME_TOP, FRAME_SIZE = 0x03006000, 0x400
+FRAME_TOP, FRAME_SIZE = 0x0F100000, 0x1000   # 변환한 함수의 지역 변수 프레임 (GBA 에 없는 빈 주소 영역)
 
 
 def run(t, ctx, env=None, args=()):
     depth = getattr(ctx, 'depth', 0); ctx.depth = depth + 1
     try:
-        return _run(t, ctx, env, args, FRAME_TOP - FRAME_SIZE * depth)
+        return _run(t, ctx, env, args, FRAME_TOP - 0x100 - FRAME_SIZE * depth)   # 위쪽 0x100 은 받은 스택 인자 자리
     finally:
         ctx.depth = depth
 
@@ -109,7 +109,12 @@ def _run(t, ctx, env, args, frame):
             env[t[1][1]] = (run(sub, ctx, None, args) if sub is not None else ctx.natives(fn, args)) & M32
             t = t[3]
         elif k == 'store':
-            ctx.write(ev(t[2], env, ctx), t[1], ev(t[3], env, ctx))
+            try: val = ev(t[3], env, ctx)
+            except ValueError: val = 0      # 호출한 쪽이 남긴 레지스터 값 (원작에서도 의미 없는 값)
+            ctx.write(ev(t[2], env, ctx), t[1], val)
             t = t[4]
+        elif k == 'bind':
+            env[t[1]] = ev(t[2], env, ctx)
+            t = t[3]
         else:
             raise ValueError(k)

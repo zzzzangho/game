@@ -20,9 +20,11 @@ from lift import Lifter, Unsupported, B, M32  # noqa: E402
 
 # C# 손 이식 함수 (Core/Orig): 난수·나눗셈(libgcc)·관계 판정·관계 슬롯표·가족 명단 검색·다음 관심사 선택
 NATIVES = {0x08000614: 0, 0x0824F640: 2, 0x0824F5C8: 2, 0x0824F460: 2, 0x0824F4F8: 2,
-           0x08115778: 2, 0x08110B90: 2, 0x08110608: 1, 0x08028524: 3}
+           0x08115778: 2, 0x08110B90: 2, 0x08110608: 1, 0x08028524: 3,
+           0x0824F700: 3, 0x0824E2BC: 3, 0x08248EE0: 1, 0x082494CC: 1, 0x080955C8: 0, 0x080959DC: 4}
 NATIVE_NAMES = {0x08000614: "rand", 0x0824F640: "umod", 0x0824F5C8: "udiv", 0x0824F460: "sdiv", 0x0824F4F8: "smod",
-                0x08115778: "rel", 0x08110B90: "slots", 0x08110608: "inhouse", 0x08028524: "select"}
+                0x08115778: "rel", 0x08110B90: "slots", 0x08110608: "inhouse", 0x08028524: "select",
+                0x0824F700: "memcpy", 0x0824E2BC: "cpuset", 0x08248EE0: "noop", 0x082494CC: "noop", 0x080955C8: "noop", 0x080959DC: "noop"}
 STATE_TABLE, CAND_TABLE = 0x085BD4A0, 0x085BD4B4
 OPS = {'add': '+', 'sub': '-', 'mul': '*', 'and': '&', 'or': '|', 'xor': '^', 'shl': '<<', 'lsr': '>>', 'asr': '>>>',
        'udiv': '/', 'umod': '%', 'sdiv': '/s', 'smod': '%s'}
@@ -62,6 +64,7 @@ def enc_t(t):
         # 함수 포인터 호출: 첫 인자 자리에 대상 주소 식
         return ['l', t[1][1], '*', [enc_e(fn[1])] + [enc_e(a) for a in c[2]], enc_t(t[3])]
     if k == 'store': return ['s', t[1], enc_e(t[2]), enc_e(t[3]), enc_t(t[4])]
+    if k == 'bind': return ['d', t[1], enc_e(t[2]), enc_t(t[3])]
     if k == 'fail': return ['f', t[1]]
     asg = lambda pairs: [[v, enc_e(x)] for v, x in pairs]
     if k == 'if2': return ['j', t[1][0], enc_e(t[1][1]), enc_e(t[1][2]), enc_t(t[2]), enc_t(t[3]), enc_t(t[4])]
@@ -98,7 +101,7 @@ def trees_raw_consts(trees):
     def wt(n):
         if not isinstance(n, list): return
         for x in n[1:]:
-            if isinstance(x, list) and x and isinstance(x[0], str) and len(x[0]) == 1 and x[0] in 'rijlsfeocb': wt(x)
+            if isinstance(x, list) and x and isinstance(x[0], str) and len(x[0]) == 1 and x[0] in 'rijlsfeocbd': wt(x)
             else: we(x, False)
     for t in trees.values(): wt(t)
     return out
@@ -160,6 +163,7 @@ def icall_tables(t, rom, out):
         elif k == 'if2': wt(n[2]); wt(n[3]); wt(n[4])
         elif k == 'loop': wt(n[3]); wt(n[4])
         elif k == 'store': wt(n[4])
+        elif k == 'bind': we(n[2]); wt(n[3])
     wt(t)
 
 
@@ -170,7 +174,7 @@ def _work(args):
     def al(*a): raise TO()
     signal.signal(signal.SIGALRM, al)
     rb = open(path, 'rb').read(); rom = Rom(rb)
-    L = Lifter(rb, NATIVES, max_steps=50000, max_nodes=5000); L.auto_subs = True
+    L = Lifter(rb, NATIVES, max_steps=50000, max_nodes=50000); L.auto_subs = True
     trees, fails, tabs = {}, [], set()
     for f in fns:
         signal.alarm(60)
@@ -232,6 +236,8 @@ def main():
                                     "raw": rb[d - B:d - B + 0x30].hex()}
                         if thumb_fn(rom, post): preds[post] = None
                 events[ev] = {"dayMode": rom.u8(ev + 1), "count": n, "variants": vs, "list": lst}
+    # 앱 진행에 쓰는 원작 함수: 관심사 하루 처리, 시대, 나이 단계
+    for f in (0x08027E78, 0x08111A58, 0x08111888): preds[f] = None
     print('관심사 %d, 사건 %d, 결과 기록 %d, 변환할 함수 %d' % (len(interests), len(events), len(vdata), len(preds)), flush=True)
     trees, fails, tabs = lift_all(sys.argv[1], preds)
     # 함수 포인터 표의 대상도 변환 (새 표가 안 나올 때까지)
@@ -284,14 +290,18 @@ def main():
         specials.append([[rom.u16(ents + 8 * k), rom.u16(ents + 8 * k + 4), rom.u16(ents + 8 * k + 6)] for k in range(n)] if rom.ok(ents) else [])
     out = {"format": 1, "source": "ROM 해독 (tools/romlift). 로컬 전용",
            "natives": {('0x%08X' % a): n for a, n in NATIVE_NAMES.items()},
-           "interests": interests, "trees": trees, "candidates": cands,
+           "interests": interests, "treesFile": os.path.basename(sys.argv[2]) + ".trees", "candidates": cands,
            "events": {('0x%08X' % a): v for a, v in events.items()}, "variantData": {('0x%08X' % a): v for a, v in vdata.items()},
            "modeTable": mode_table, "b15Table": b15_table, "jobs": jobs, "specials": specials,
            "rom": rom_spans(rom, trees_raw_consts(trees), list(events) + list(vdata)), "liftFailures": fails}
     with open(sys.argv[2], 'w', encoding='utf8') as fp:
         json.dump(out, fp, separators=(',', ':'))
-    print('관심사 %d, 트리 %d (실패 %d), 직업 %d, 특별 후보표 %d, ROM 조각 %d, 크기 %.1f KB' % (
-        len(interests), len(trees), len(fails), len(jobs), len(specials), len(out['rom']), os.path.getsize(sys.argv[2]) / 1024))
+    # 트리는 한 줄에 함수 하나 ("0x주소\t트리 JSON") — 앱은 부르는 함수만 그때 읽는다
+    with open(sys.argv[2] + '.trees', 'w', encoding='utf8') as fp:
+        for a in sorted(trees): fp.write(a + '\t' + json.dumps(trees[a], separators=(',', ':')) + '\n')
+    print('관심사 %d, 트리 %d (실패 %d), 직업 %d, 특별 후보표 %d, ROM 조각 %d, 크기 %.1f KB + 트리 %.1f KB' % (
+        len(interests), len(trees), len(fails), len(jobs), len(specials), len(out['rom']), os.path.getsize(sys.argv[2]) / 1024,
+        os.path.getsize(sys.argv[2] + '.trees') / 1024))
     return 0
 
 

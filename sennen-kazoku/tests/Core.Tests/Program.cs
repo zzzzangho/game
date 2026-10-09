@@ -39,6 +39,7 @@ namespace SennenKazoku.Tests
         static void OrigVectors(string dir)
         {
             var rules = SennenKazoku.Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "orig_rules.json")))));
+            if (rules.TreesFile != "" && File.Exists(Path.Combine(dir, rules.TreesFile))) rules.TreesText = File.ReadAllBytes(Path.Combine(dir, rules.TreesFile));
             var vec = J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "vectors.json"))));
             var shared = new SennenKazoku.Core.Orig.OrigMem();
             var vm0 = rules.CreateVm(shared);
