@@ -161,7 +161,42 @@ namespace SennenKazoku.Core.Orig
         }
 
         public bool Choose(string choiceId) { return false; }
-        public Prediction Predict(int personId, bool max) { return null; }
+        /// <summary>
+        /// 결과 예고: 지금 관심사가 MAX(255)/MIN(0) 에서 끝나면 무엇이 오르고 내리는지. 원작 메모리를 잠시 보관해 두고
+        /// 같은 VM 으로 그 사건(변형 고르기 + 효과 함수, OrigEvents.Run)을 실제로 돌린 뒤 능력치 차이를 보고 메모리를 되돌린다.
+        /// 변형 판정·효과에 난수가 섞이면 지금 난수 상태에서의 한 경우다(HasRandom). 원작 화면이 예고를 어떻게 계산하는지는 확인하지 않았다.
+        /// </summary>
+        public Prediction Predict(int personId, bool max)
+        {
+            var m = Game.Mem; int n = -1;
+            for (int k = 0; k < 8; k++) if (OrigGame.Present(m, k) && (int)m.R16(OrigMem.PersonAddr(k) + 0x3C) == personId) { n = k; break; }
+            if (n < 0 || m.R16(OrigMem.PersonAddr(n) + 0x80) == 0xFFFF) return null;
+            var ew = (byte[])m.Ewram.Clone(); var iw = (byte[])m.Iwram.Clone(); var fr = (byte[])m.Frames.Clone(); var io = (byte[])m.Io.Clone();
+            var before = new Dictionary<int, int[]>();
+            for (int k = 0; k < 8; k++) if (OrigGame.Present(m, k)) before[k] = Stats(m, k);
+            try
+            {
+                uint data = OrigEvents.Run(Game.Vm, Rules, n, max);
+                var pr = new Prediction { OutcomeId = "0x" + data.ToString("X8"), HasRandom = true };
+                OrigText.Rec rec; if (Text.Records.TryGetValue(data, out rec)) { pr.OutcomeId = rec.Id; pr.Title = rec.Title; }
+                foreach (var kv in before)
+                {
+                    if (!OrigGame.Present(m, kv.Key)) continue;
+                    var after = Stats(m, kv.Key); int id = (int)m.R16(OrigMem.PersonAddr(kv.Key) + 0x3C);
+                    for (int i = 0; i < 4; i++) if (after[i] != kv.Value[i]) pr.Changes.Add(new EffectChange { PersonId = id, Key = "s" + i, Delta = after[i] - kv.Value[i] });
+                }
+                return pr;
+            }
+            catch (OrigUnmodeled) { return null; }
+            finally { Array.Copy(ew, m.Ewram, ew.Length); Array.Copy(iw, m.Iwram, iw.Length); Array.Copy(fr, m.Frames, fr.Length); Array.Copy(io, m.Io, io.Length); }
+        }
+
+        static int[] Stats(OrigMem m, int n)
+        {
+            uint a = OrigMem.PersonAddr(n); var r = new int[4];
+            for (int i = 0; i < 4; i++) r[i] = (int)m.R16(a + 0x50 + 2 * (uint)i);
+            return r;
+        }
 
         // ---------- 원작 레코드 → 화면용 가족 ----------
         public void Project()

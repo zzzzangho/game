@@ -763,6 +763,14 @@ namespace SennenKazoku.Tests
                     var s = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234);
                     T.True(s.Family.Members.Count >= 2, "가족 인원 " + s.Family.Members.Count);
                     Console.WriteLine("       시작 " + GameDate.Format(s.Family.Today) + " " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + "(" + (p.Gender == 0 ? "남" : "여") + p.Age(s.Family.Today) + "세 " + p.PlannedTitle + ")")));
+                    // 결과 예고: 원작 메모리를 바꾸지 않아야 한다
+                    var mem0 = Convert.ToBase64String(s.Game.Mem.SaveBlock()); var seed0 = s.Game.Mem.R32(0x02000000);
+                    foreach (var p in s.Family.Members)
+                    {
+                        var hi = s.Predict(p.Id, true); var lo = s.Predict(p.Id, false);
+                        Console.WriteLine("       예고 " + p.Name + " 255: " + (hi == null ? "-" : hi.Title + " " + EffectChange.Format(s.Family, hi.Changes)) + " / 0: " + (lo == null ? "-" : lo.Title + " " + EffectChange.Format(s.Family, lo.Changes)));
+                    }
+                    T.True(mem0 == Convert.ToBase64String(s.Game.Mem.SaveBlock()) && seed0 == s.Game.Mem.R32(0x02000000), "결과 예고가 원작 메모리를 바꿨다");
                     int shown = 0, withText = 0, pagesTotal = 0; string sample = null;
                     void Drain(SennenKazoku.Core.Orig.OrigSession ss)
                     {
