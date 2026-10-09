@@ -16,6 +16,7 @@ class Ctx:
 
 def ev(e, env, ctx):
     if isinstance(e, int): return e & M32
+    if e is None or isinstance(e, str): raise ValueError('정의되지 않은 값')
     k = e[0]
     if k == 'v':
         x = env[e[1]]
@@ -30,8 +31,11 @@ def ev(e, env, ctx):
     if k == 'arg': return env['args'][e[1]] if e[1] < len(env['args']) else 0
     if k == 'sarg': return env['args'][4 + e[1]] if 4 + e[1] < len(env['args']) else 0
     if k == 'sp': return (env['frame'] + e[1]) & M32
-    if k in ('undef', 'undef_stack', 'undef_ret', 'undef_switch'):
+    if k == 'undef_stack': return 0          # 원작이 초기화하지 않은 스택 바이트 (보통 상위 바이트, 결과에 안 쓰임)
+    if k in ('undef', 'undef_ret', 'undef_switch'):
         raise ValueError('unbound %r' % (e,))
+    if len(e) != 3 or k not in ('add', 'sub', 'mul', 'and', 'or', 'xor', 'shl', 'lsr', 'asr', 'udiv', 'umod', 'sdiv', 'smod'):
+        raise ValueError('정의되지 않은 값 %r' % (k,))
     return binop(k, ev(e[1], env, ctx), ev(e[2], env, ctx))
 
 
@@ -82,7 +86,9 @@ def _run(t, ctx, env, args, frame):
             if k == 'cont': t = conts[-1][2]
             else: t = conts.pop()[3]
             continue
-        if k == 'ret': return ev(t[1], env, ctx)
+        if k == 'ret':
+            try: return ev(t[1], env, ctx)
+            except (ValueError, IndexError, KeyError): return 0   # 돌려주는 값이 없는 함수
         if k == 'fail': raise ValueError('lifted path not supported: ' + t[1])
         if k == 'if':
             cc, a, b = t[1]
@@ -93,8 +99,14 @@ def _run(t, ctx, env, args, frame):
             for a in c[2]:
                 try: args.append(ev(a, env, ctx))
                 except ValueError: args.append(0)   # 재귀 호출의 쓰지 않는 인자
-            sub = getattr(ctx, 'subs', {}).get(c[1])
-            env[t[1][1]] = (run(sub, ctx, None, args) if sub is not None else ctx.natives(c[1], args)) & M32
+            fn = c[1]
+            if isinstance(fn, tuple) and fn[0] == 'icall':      # 함수 포인터 호출
+                fn = ev(fn[1], env, ctx) & ~1
+                getattr(ctx, 'icalls', set()).add(fn)
+                lift_sub = getattr(ctx, 'lift_sub', None)
+                if lift_sub and fn not in ctx.subs: lift_sub(fn)
+            sub = getattr(ctx, 'subs', {}).get(fn)
+            env[t[1][1]] = (run(sub, ctx, None, args) if sub is not None else ctx.natives(fn, args)) & M32
             t = t[3]
         elif k == 'store':
             ctx.write(ev(t[2], env, ctx), t[1], ev(t[3], env, ctx))

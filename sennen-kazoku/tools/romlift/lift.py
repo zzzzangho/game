@@ -95,7 +95,7 @@ class Lifter:
         self.cache = {}; self.nvar = 0; self.max_steps = max_steps; self.max_nodes = max_nodes
         self.unknown_calls = set()
         self.subs = set(); self.subtrees = {}; self.auto_subs = False; self.nosub = set(); self.inprog = set()
-        self.join_cache = {}; self.head_cache = {}; self.use_joins = True; self.use_loops = True; self.ntag = 0
+        self.join_cache = {}; self.head_cache = {}; self.exit_cache = {}; self.use_joins = True; self.use_loops = True; self.ntag = 0
 
     def u(self, a, n):
         return int.from_bytes(self.rom[a - B:a - B + n], 'little')
@@ -144,19 +144,19 @@ class Lifter:
     def load(self, s, addr, size, signed=False):
         if is_sp(addr):
             off = addr[1]
-            if off in s.mem:
-                v, sz = s.mem[off]
-                if sz == size or size == 4 and sz == 4: val = v
-                elif size < sz or isinstance(v, int): val = binop('and', v, (1 << (8 * size)) - 1)
-                else: val = binop('and', v, (1 << (8 * size)) - 1)
+            if off in s.mem and s.mem[off][1] == size:
+                val = s.mem[off][0]
             else:
-                # 부분 겹침
-                hit = [(o, v, sz) for o, (v, sz) in s.mem.items() if o < off < o + sz]
-                if hit:
-                    o, v, sz = hit[0]
-                    val = binop('and', binop('lsr', v, 8 * (off - o)), (1 << (8 * size)) - 1)
-                else:
-                    val = ('undef_stack', off)
+                # 크기가 다른 칸들에서 바이트별로 모은다
+                val = 0
+                for b in range(size):
+                    byte = None
+                    for o, (v, sz) in s.mem.items():
+                        if o <= off + b < o + sz:
+                            sh = 8 * (off + b - o)
+                            byte = binop('and', binop('lsr', v, sh), 0xFF); break
+                    if byte is None: byte = ('undef_stack', off + b)
+                    val = binop('or', val, binop('shl', byte, 8 * b)) if b else byte
             if signed and size < 4: val = ('sext', val, 8 * size)
             return val
         if isinstance(addr, int):
@@ -241,7 +241,26 @@ class Lifter:
             if nxt is None: state[a] = 2; stack.pop(); continue
             if state.get(nxt) == 1: heads.add(nxt)
             elif nxt not in state: state[nxt] = 1; stack.append((nxt, iter(succ.get(nxt, []))))
-        self.join_cache[fn] = res; self.head_cache[fn] = heads
+        # 반복문 출구: 머리의 후지배자 중 반복문 몸체(머리와 서로 닿는 명령들) 밖에서 가장 가까운 것
+        pred = {}
+        for a, ss in succ.items():
+            for b in ss: pred.setdefault(b, []).append(a)
+        exits = {}
+        for h in heads:
+            fw, st = set(), [h]
+            while st:
+                a = st.pop()
+                if a in fw: continue
+                fw.add(a); st.extend(succ.get(a, []))
+            bw, st = set(), [h]
+            while st:
+                a = st.pop()
+                if a in bw: continue
+                bw.add(a); st.extend(pred.get(a, []))
+            body = fw & bw
+            cand = [x for x in pd[h] if x not in body and x != EXIT]
+            if cand: exits[h] = max(cand, key=lambda x: len(pd[x]))
+        self.join_cache[fn] = res; self.head_cache[fn] = heads; self.exit_cache[fn] = exits
         return res
 
     def loop_heads(self, fn):
@@ -501,10 +520,13 @@ class Lifter:
     def make_loop(self, s):
         """반복문: 머리 H 에서 모든 레지스터·스택 칸을 반복 변수로 바꾸고, H 로 돌아오면 cont, 출구 E 에 닿으면 brk."""
         H = s.pc; d = len(s.fns)
-        E = self.joins(s.fns[-1]).get(H)
+        self.joins(s.fns[-1]); E = self.exit_cache.get(s.fns[-1], {}).get(H)
         isret = lambda v: v == 'RET' or (isinstance(v, tuple) and v[0] == 'retaddr')
-        regs = [k for k, v in s.r.items() if k not in ('sp', 'pc', 'lr') and not isret(v)]
-        offs = [o for o, (v, sz) in s.mem.items() if not isret(v)]
+        def has_sp(e):
+            return isinstance(e, tuple) and (e[0] == 'sp' or any(has_sp(x) for x in e[1:]))
+        # 지역 변수 주소는 반복 중에도 그대로인 경우가 대부분 → 바뀌는 것이 확인될 때만 반복 변수로
+        regs = [k for k, v in s.r.items() if k not in ('sp', 'pc', 'lr') and not isret(v) and not has_sp(v)]
+        offs = [o for o, (v, sz) in s.mem.items() if not isret(v) and not has_sp(v)]
         for attempt in range(3):
             self.ntag += 1; tag = self.ntag
             lv = {}; init = []; bs = s.copy(); bs.flags = None
@@ -518,8 +540,10 @@ class Lifter:
             bs.skip = True
             body = self.run(bs)
             # 본문에서 새로 생긴 칸이 다음 반복으로 넘어가면 다시 (반복 변수로 포함)
-            new_regs = {k for _, st in conts for k, v in st.r.items() if k not in regs and k not in ('sp', 'pc', 'lr') and not isret(v)}
-            new_offs = {o for _, st in conts for o, (v, sz) in st.mem.items() if o not in offs and not isret(v) and o >= min(offs + [0])}
+            new_regs = {k for _, st in conts for k, v in st.r.items() if k not in regs and k not in ('sp', 'pc', 'lr') and not isret(v)
+                        and v != s.r.get(k)}
+            new_offs = {o for _, st in conts for o, (v, sz) in st.mem.items() if o not in offs and not isret(v) and o >= min(offs + [0])
+                        and (o not in s.mem or v != s.mem[o][0])}
             if not new_regs and not new_offs: break
             regs += sorted(new_regs); offs += sorted(new_offs)
         cassign = {}

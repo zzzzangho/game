@@ -22,7 +22,17 @@ namespace SennenKazoku.Core.Orig
         public int[] B15Table = new int[3];
         public readonly List<OrigJob> Jobs = new List<OrigJob>();
         public readonly List<List<int[]>> Specials = new List<List<int[]>>();   // [확률, 표, 번호]
-        public object TreesJson;           // 실행기에 넣을 트리 (지연 생성)
+        /// <summary>MAX/MIN 사건 항목 주소 → (변형 수 n, 변형 [판정 함수, 결과 기록] × (n+1)).</summary>
+        public readonly Dictionary<uint, OrigEvent> Events = new Dictionary<uint, OrigEvent>();
+        /// <summary>결과 기록 주소 → (+0x18 시작 함수, +0x1C 효과 함수).</summary>
+        public readonly Dictionary<uint, string[]> VariantData = new Dictionary<uint, string[]>();
+        public object TreesJson;
+
+        public sealed class OrigEvent
+        {
+            public int DayMode, Count; public uint List;
+            public string[] Preds; public uint[] Data;
+        }           // 실행기에 넣을 트리 (지연 생성)
         public List<object> RomJson;
 
         public sealed class OrigJob
@@ -82,6 +92,27 @@ namespace SennenKazoku.Core.Orig
                 foreach (var e in (List<object>)o) set.Add(Ints(e).ToArray());
                 r.Specials.Add(set);
             }
+            var evs = J.Child(d, "events");
+            if (evs != null)
+                foreach (var kv in evs)
+                {
+                    var ed = (Dictionary<string, object>)kv.Value; var vl = J.List(ed, "variants");
+                    var oe = new OrigEvent { DayMode = J.Int(ed, "dayMode"), Count = J.Int(ed, "count"), List = (uint)J.Long(ed, "list"), Preds = new string[vl.Count], Data = new uint[vl.Count] };
+                    for (int i = 0; i < vl.Count; i++)
+                    {
+                        if (!(vl[i] is List<object> pair)) continue;
+                        oe.Preds[i] = pair[0] as string;
+                        oe.Data[i] = pair[1] is string ds ? Convert.ToUInt32(ds.Substring(2), 16) : 0;
+                    }
+                    r.Events[Convert.ToUInt32(kv.Key.Substring(2), 16)] = oe;
+                }
+            var vd = J.Child(d, "variantData");
+            if (vd != null)
+                foreach (var kv in vd)
+                {
+                    var dd = (Dictionary<string, object>)kv.Value;
+                    r.VariantData[Convert.ToUInt32(kv.Key.Substring(2), 16)] = new[] { dd["pre"] as string, dd["post"] as string };
+                }
             r.TreesJson = d.TryGetValue("trees", out var tj) ? tj : null;
             r.RomJson = J.List(d, "rom");
             return r;
@@ -96,7 +127,7 @@ namespace SennenKazoku.Core.Orig
                     var l = (List<object>)o;
                     mem.AddRom((uint)Convert.ToInt64(l[0]), Hex((string)l[1]));
                 }
-            var vm = new OrigVm(mem);
+            var vm = new OrigVm(mem) { Rules = this };
             if (TreesJson is Dictionary<string, object> t)
                 foreach (var kv in t) vm.AddTree(kv.Key, kv.Value);
             return vm;

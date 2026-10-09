@@ -24,7 +24,9 @@ namespace SennenKazoku.Core.Orig
         public void AddTree(string addr, object json) { trees[Norm(addr)] = ParseNode(json); }
         public bool HasTree(string addr) { return trees.ContainsKey(Norm(addr)); }
         public int TreeCount { get { return trees.Count; } }
-        static string Norm(string a) { return Convert.ToUInt32(a.StartsWith("0x") || a.StartsWith("0X") ? a.Substring(2) : a, 16).ToString("X8"); }
+        static string Norm(string a) { return (Convert.ToUInt32(a.StartsWith("0x") || a.StartsWith("0X") ? a.Substring(2) : a, 16) & ~1u).ToString("X8"); }
+        /// <summary>다음 관심사 선택(0x08028524)을 효과 함수가 부를 때 쓰는 규칙 데이터.</summary>
+        public OrigRules Rules;
 
         int depth;
         public uint Call(string fn, params uint[] args)
@@ -46,6 +48,19 @@ namespace SennenKazoku.Core.Orig
                 case "sdiv": return args[1] == 0 ? 0 : (uint)((int)args[0] / (int)args[1]);
                 case "smod": return args[1] == 0 ? args[0] : (uint)((int)args[0] % (int)args[1]);
                 case "rel": return OrigFamily.Rel(Mem, (int)args[0], (int)args[1]);
+                case "slots":
+                    if (args.Length > 1 && args[1] != 0) throw new OrigUnmodeled("관계 슬롯표 작성의 두 번째 인자 경로(0x08112788) 미이식");
+                    OrigFamily.BuildSlots(Mem, args[0] & 0xFFFF); return 0;
+                case "inhouse": return OrigFamily.InHouse(Mem, args[0] & 0xFFFF);
+                case "select":
+                    if (Rules == null) throw new OrigUnmodeled("규칙 데이터 없음");
+                    new OrigSelect(Mem, this, Rules).Select(args[0], args[1], args[2]); return 0;
+                case "*":
+                    {
+                        var rest = new uint[Math.Max(0, args.Length - 1)];
+                        Array.Copy(args, 1, rest, 0, rest.Length);
+                        return Call((args[0] & ~1u).ToString("X8"), rest);
+                    }
             }
             if (!trees.TryGetValue(Norm(fn), out var t)) throw new OrigUnmodeled("옮기지 않은 원작 함수 " + fn);
             return Run(t, args);
@@ -82,7 +97,9 @@ namespace SennenKazoku.Core.Orig
                 if (++steps > 20_000_000) throw new OrigUnmodeled("반복이 너무 많음");
                 switch (t)
                 {
-                    case Ret r: return Ev(r.E, env, args, frame, undef);
+                    case Ret r:
+                        try { return Ev(r.E, env, args, frame, undef); }
+                        catch (UndefValue) { return 0; }   // 돌려주는 값이 없는 함수
                     case If f:
                         t = Cmp(f.Cc, Ev(f.A, env, args, frame, undef), Ev(f.B, env, args, frame, undef)) ? f.Then : f.Else; break;
                     case If2 f:
@@ -138,7 +155,9 @@ namespace SennenKazoku.Core.Orig
                         return v;
                     }
                 case Bin b: return Op(b.Op, Ev(b.A, env, args, frame, undef), Ev(b.B, env, args, frame, undef));
-                case Undef u: throw new UndefValue(u.Why);
+                case Undef u:
+                    if (u.Why == "stack") return 0;   // 원작이 초기화하지 않은 스택 바이트 (보통 쓰지 않는 상위 바이트)
+                    throw new UndefValue(u.Why);
             }
             throw new OrigUnmodeled("알 수 없는 식");
         }

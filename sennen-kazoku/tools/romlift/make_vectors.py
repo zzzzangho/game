@@ -16,7 +16,7 @@ PERSON = 0x0202C6C4
 def main():
     rom = open(sys.argv[1], 'rb').read()
     rules = json.load(open(sys.argv[2], encoding='utf8'))
-    out = {"preds": [], "select": []}
+    out = {"preds": [], "select": [], "events": []}
     preds = sorted({x[5] for x in rules["interests"]})
     for rp in sys.argv[4:]:
         ram = open(rp, 'rb').read(); cpu = RomCpu(rom, ram)
@@ -33,6 +33,25 @@ def main():
                 try: res.append(cpu.call(int(f, 16)))
                 except Exception: res.append(None)
             out["preds"].append({"ram": name, "person": n, "id": pid, "preds": preds, "expect": res})
+            # 1-2) MAX/MIN 사건: 변형 고르기(0x08119CA0) + 효과 함수(결과 기록 +0x1C)
+            for ev_off in (0x1C, 0x20):
+                cpu.set_ram(ram)
+                t, i = struct.unpack_from('<HH', ram, base + 0x80 - 0x02000000)
+                u32 = lambda a: struct.unpack_from('<I', rom, a - 0x08000000)[0]
+                entry = u32(u32(0x085BD4A0 + 4 * t) + 4 * i); ev = u32(entry + ev_off)
+                if not (0x08000000 <= ev < 0x0A000000): continue
+                for seed in (5, 0x1234567):
+                    cpu.set_ram(ram); cpu.call(0x08110B90, pid, 0); cpu.w32(0x02000000, seed)
+                    before = cpu.ram()
+                    try:
+                        data = cpu.call(0x08119CA0, ev)
+                        post = u32(data + 0x1C)
+                        cpu.call(post, 0x03007D00, 0, 0, 0)
+                    except Exception as ex:
+                        out["events"].append({"ram": name, "person": n, "max": ev_off == 0x1C, "seed": seed, "error": str(ex)}); continue
+                    after = cpu.ram()
+                    out["events"].append({"ram": name, "person": n, "max": ev_off == 0x1C, "seed": seed, "data": data,
+                                          "writes": [[0x02000000 + k, after[k]] for k in range(0x40000) if before[k] != after[k]]})
             # 2) 관심사 선택: 여러 seed 로 0x08028524 실행
             for seed in (1, 12345, 0xDEADBEEF, 777, 0x13579BDF, 42, 99991, 0x0BADF00D):
                 cpu.set_ram(ram)
@@ -49,7 +68,7 @@ def main():
                 diffs = [[0x02000000 + i, after[i]] for i in range(0x40000) if before[i] != after[i]]
                 out["select"].append({"ram": name, "person": n, "seed": seed, "era": era, "stage": stage, "writes": diffs})
     json.dump(out, open(sys.argv[3], 'w'), separators=(',', ':'))
-    print('판정 %d명분, 선택 %d건' % (len(out["preds"]), len(out["select"])))
+    print('판정 %d명분, 선택 %d건, 사건 %d건' % (len(out["preds"]), len(out["select"]), len(out["events"])))
 
 
 if __name__ == '__main__':

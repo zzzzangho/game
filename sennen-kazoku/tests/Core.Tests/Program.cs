@@ -12,7 +12,7 @@ namespace SennenKazoku.Tests
         public static void Run(string name, Action a)
         {
             try { a(); Pass++; Console.WriteLine("  ok   " + name); }
-            catch (Exception e) { Fail++; Console.WriteLine("  FAIL " + name + "\n       " + e.Message.Replace("\n", "\n       ")); }
+            catch (Exception e) { Fail++; Console.WriteLine("  FAIL " + name + "\n       " + e.Message.Replace("\n", "\n       ")); if (Environment.GetEnvironmentVariable("SK_TRACE") != null) Console.WriteLine(e.StackTrace); }
         }
         public static void True(bool c, string m = "assert") { if (!c) throw new Exception(m); }
         public static void Eq<X>(X a, X b, string m = "") { if (!EqualityComparer<X>.Default.Equals(a, b)) throw new Exception(m + " 기대=" + b + " 실제=" + a); }
@@ -90,6 +90,38 @@ namespace SennenKazoku.Tests
             }
             Console.WriteLine("       관심사 선택 " + sN + "건 중 원작과 메모리 변화가 같음 " + sOk);
             T.Eq(sOk, sN, "관심사 선택 결과가 원작과 다름");
+            int eOk = 0, eN = 0, eUnm = 0;
+            foreach (var o in J.List(vec, "events"))
+            {
+                var d = J.Obj(o); if (d.ContainsKey("error")) continue;
+                var mem = Fresh(J.Str(d, "ram")); var vm = rules.CreateVm(mem);
+                int n = J.Int(d, "person"); uint p = SennenKazoku.Core.Orig.OrigMem.PersonAddr(n);
+                SennenKazoku.Core.Orig.OrigFamily.BuildSlots(mem, mem.R16(p + 0x3C));
+                mem.W32(SennenKazoku.Core.Orig.OrigMem.Seed, (uint)J.Long(d, "seed"));
+                var before = (byte[])mem.Ewram.Clone();
+                eN++;
+                uint data;
+                try
+                {
+                    uint ev = SennenKazoku.Core.Orig.OrigEvents.EventOf(mem, n, J.Bool(d, "max"));
+                    int k = SennenKazoku.Core.Orig.OrigEvents.PickVariant(vm, rules, ev);
+                    data = rules.Events[ev].Data[k];
+                    SennenKazoku.Core.Orig.OrigEvents.RunEffect(vm, rules, data);
+                }
+                catch (SennenKazoku.Core.Orig.OrigUnmodeled ex) { eUnm++; Console.WriteLine("       사건 옮기지 못함: " + ex.Message); continue; }
+                if (data != (uint)J.Long(d, "data")) { Console.WriteLine("       변형이 다름 " + data.ToString("X8") + " / " + J.Long(d, "data").ToString("X8")); continue; }
+                var want = new Dictionary<int, byte>();
+                foreach (var w in J.List(d, "writes")) { var l = (List<object>)w; want[(int)(Convert.ToInt64(l[0]) - 0x02000000)] = (byte)Convert.ToInt32(l[1]); }
+                bool ok = true;
+                for (int i = 0; i < before.Length && ok; i++)
+                {
+                    byte expect = want.TryGetValue(i, out var b) ? b : before[i];
+                    if (mem.Ewram[i] != expect) { ok = false; Console.WriteLine("       사건 효과 불일치 @" + (0x02000000 + i).ToString("X8") + " 결과기록 " + data.ToString("X8")); }
+                }
+                if (ok) eOk++;
+            }
+            Console.WriteLine("       MAX/MIN 사건(변형 고르기+효과) " + eN + "건 중 원작과 같음 " + eOk + " (옮기지 못함 " + eUnm + ")");
+            T.Eq(eOk, eN, "사건 결과가 원작과 다름");
         }
 
         static List<Pack> Bundled() { return new List<Pack> { LoadPack(Read("sk.sample")), LoadPack(Read("nova.pack001")) }; }

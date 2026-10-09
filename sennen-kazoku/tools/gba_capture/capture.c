@@ -37,6 +37,13 @@ static void bp_log(void) {
     uint32_t r[6] = {0}; const char* nm[6] = { "pc", "lr", "r0", "r1", "r2", "r3" };
     for (int i = 0; i < 6; i++) g_core->readRegister(g_core, nm[i], &r[i]);
     fprintf(g_wlog, "%ld BP pc=%08x lr=%08x r0=%08x r1=%08x r2=%08x r3=%08x\n", g_frame, r[0], r[1], r[2], r[3], r[4], r[5]);
+    static int ndump = 0; const char* dd = getenv("CAP_BPDUMP");   /* 중단점마다 RAM 덤프 (앞 20개) */
+    if (dd && ndump < 20) {
+        char p[512]; snprintf(p, sizeof p, "%s_%02d_%08x.ram", dd, ndump++, r[0]); FILE* f = fopen(p, "wb");
+        for (unsigned a = 0x02000000; a < 0x02040000; a++) fputc(g_core->busRead8(g_core, a), f);
+        for (unsigned a = 0x03000000; a < 0x03008000; a++) fputc(g_core->busRead8(g_core, a), f);
+        fclose(f);
+    }
 }
 static struct mDebugger g_dbg;
 
