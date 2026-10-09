@@ -22,9 +22,15 @@ from lift import Lifter, Unsupported, B, M32  # noqa: E402
 NATIVES = {0x08000614: 0, 0x0824F640: 2, 0x0824F5C8: 2, 0x0824F460: 2, 0x0824F4F8: 2,
            0x08115778: 2, 0x08110B90: 2, 0x08110608: 1, 0x08028524: 3,
            0x0824F700: 3, 0x0824E2BC: 3, 0x08248EE0: 1, 0x082494CC: 1, 0x080955C8: 0, 0x080959DC: 4}
+# 새 가족 장면의 화면 정리 함수 (0x0802D7A0 끝부분) — 규칙 상태를 바꾸지 않음
+UI_NOOP = (0x08047024, 0x08048390, 0x08047864, 0x08046F80, 0x08046804, 0x08003FE8, 0x0800695C)
+NATIVES.update({a: 1 for a in UI_NOOP})
+# 크게 변환해야 하는 새 가족 함수: 추천 가족 틀, 구성원 마무리(채우기 0x0804B1F0 포함), 가족 레코드 만들기
+BIG = (0x0804BC2C, 0x0802D7A0, 0x080417E0)
 NATIVE_NAMES = {0x08000614: "rand", 0x0824F640: "umod", 0x0824F5C8: "udiv", 0x0824F460: "sdiv", 0x0824F4F8: "smod",
                 0x08115778: "rel", 0x08110B90: "slots", 0x08110608: "inhouse", 0x08028524: "select",
                 0x0824F700: "memcpy", 0x0824E2BC: "cpuset", 0x08248EE0: "noop", 0x082494CC: "noop", 0x080955C8: "noop", 0x080959DC: "noop"}
+NATIVE_NAMES.update({a: "noop" for a in UI_NOOP})
 STATE_TABLE, CAND_TABLE = 0x085BD4A0, 0x085BD4B4
 OPS = {'add': '+', 'sub': '-', 'mul': '*', 'and': '&', 'or': '|', 'xor': '^', 'shl': '<<', 'lsr': '>>', 'asr': '>>>',
        'udiv': '/', 'umod': '%', 'sdiv': '/s', 'smod': '%s'}
@@ -127,6 +133,9 @@ def rom_spans(rom, consts=(), extra=()):
     for base in (0x088915C8, 0x0889D3B8, 0x088A309C):
         walk(base, 4 * n_ptrs(base), 3)
     walk(0x08891D9C, 28 * 512, 0)
+    # 새 가족: 성(姓) 256개 표, 추천 가족 틀 8개(20바이트씩)
+    walk(0x088A3F84, 4 * 256, 1)
+    walk(0x08587DBC, 8 * 20, 0)
     for c in consts: walk(c, 0x200, 2)
     for a in extra: walk(a, 0x30, 2)
     for t in range(5):
@@ -168,16 +177,16 @@ def icall_tables(t, rom, out):
 
 
 def _work(args):
-    path, fns = args
+    path, fns = args[:2]; big = len(args) > 2
     import signal
     class TO(Exception): pass
     def al(*a): raise TO()
     signal.signal(signal.SIGALRM, al)
     rb = open(path, 'rb').read(); rom = Rom(rb)
-    L = Lifter(rb, NATIVES, max_steps=50000, max_nodes=50000); L.auto_subs = True
+    L = Lifter(rb, NATIVES, max_steps=200000 if big else 50000, max_nodes=500000 if big else 50000); L.auto_subs = True
     trees, fails, tabs = {}, [], set()
     for f in fns:
-        signal.alarm(60)
+        signal.alarm(5400 if big else 60)
         try:
             t = L.lift(f); trees[f] = t; icall_tables(t, rom, tabs)
         except (Unsupported, TO, RecursionError) as ex:
@@ -189,12 +198,12 @@ def _work(args):
     return {('0x%08X' % a): enc_t(t) for a, t in trees.items()}, fails, tabs
 
 
-def lift_all(path, fns, procs=4):
+def lift_all(path, fns, procs=4, big=False):
     from multiprocessing import Pool
-    fns = sorted(fns); chunks = [fns[i::procs * 4] for i in range(procs * 4)]
+    fns = sorted(fns); chunks = [[f] for f in fns] if big else [fns[i::procs * 4] for i in range(procs * 4)]
     trees, fails, tabs = {}, [], set()
     with Pool(procs) as pool:
-        for k, (t, f, tb) in enumerate(pool.imap_unordered(_work, [(path, c) for c in chunks if c])):
+        for k, (t, f, tb) in enumerate(pool.imap_unordered(_work, [(path, c, 1) if big else (path, c) for c in chunks if c])):
             trees.update(t); fails += f; tabs |= tb
             print('  변환 묶음 %d/%d' % (k + 1, len(chunks)), flush=True)
     return trees, fails, tabs
@@ -276,10 +285,14 @@ def main():
             if thumb_fn(rom, f): preds[f] = None
         events[ev] = {"dayMode": rom.u8(ev + 1), "count": n, "variants": vs, "list": lst,
                       "f18": '0x%08X' % rom.u32(ev + 0x18), "f1c": '0x%08X' % rom.u32(ev + 0x1C), "raw": rb[ev - B:ev - B + 0x28].hex()}
-    # 앱 진행에 쓰는 원작 함수: 관심사 하루 처리, 시대, 나이 단계
-    for f in (0x08027E78, 0x08111A58, 0x08111888, 0x08119C5C, 0x08119B8C): preds[f] = None
+    # 앱 진행에 쓰는 원작 함수: 관심사 하루 처리, 시대, 나이 단계, 새 가족 구성원 채우기·가족 레코드 만들기
+    for f in (0x08027E78, 0x08111A58, 0x08111888, 0x08119C5C, 0x08119B8C, 0x0804B1F0): preds[f] = None
     print('관심사 %d, 사건 %d, 결과 기록 %d, 변환할 함수 %d' % (len(interests), len(events), len(vdata), len(preds)), flush=True)
     trees, fails, tabs = lift_all(sys.argv[1], preds)
+    print('새 가족 함수 변환 (오래 걸림)', flush=True)
+    t2, f2, tb2 = lift_all(sys.argv[1], BIG, procs=len(BIG), big=True)
+    for a, t in t2.items(): trees.setdefault(a, t)
+    fails += f2; tabs |= tb2
     # 함수 포인터 표의 대상도 변환 (새 표가 안 나올 때까지)
     done_tabs = set()
     while tabs - done_tabs:

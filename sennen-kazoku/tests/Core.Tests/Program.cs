@@ -145,6 +145,45 @@ namespace SennenKazoku.Tests
                 foreach (var tl in titles.Take(6)) Console.WriteLine("         " + tl);
                 T.True(nev > 0, "60일 동안 사건이 없음");
             }
+
+            // 새 가족 만들기: 원작 실행 중단점 덤프(newg_*.ram)에서 같은 단계를 변환 트리로 돌려 원작 결과와 비교
+            if (File.Exists(Path.Combine(dir, "newg_fin0.ram")) && rules.CreateVm(shared).HasTree("0802D7A0"))
+            {
+                const uint E = SennenKazoku.Core.Orig.OrigMem.EwramBase;
+                SennenKazoku.Core.Orig.OrigMem Full(string n)
+                {
+                    var m = Fresh(n); Array.Copy(Ram(n), (int)SennenKazoku.Core.Orig.OrigMem.EwramSize, m.Iwram, 0, m.Iwram.Length); return m;
+                }
+                int Diff(SennenKazoku.Core.Orig.OrigMem m, byte[] want, uint lo, uint hi, uint skipLo = 0, uint skipHi = 0)
+                {
+                    int n = 0;
+                    for (uint a = lo; a < hi; a++)
+                        if ((a < skipLo || a >= skipHi) && m.Ewram[a - E] != want[a - E]) { if (n < 5) Console.WriteLine("         다름 @" + a.ToString("X8") + " " + m.Ewram[a - E] + " / " + want[a - E]); n++; }
+                    return n;
+                }
+                const uint S = SennenKazoku.Core.Orig.OrigNewGame.Setup, SEnd = S + 0x44 + 8 * 0x9F0;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var mf = Full("newg_fin0.ram"); var vmf = rules.CreateVm(mf);
+                mf.W32(SennenKazoku.Core.Orig.OrigNewGame.SceneObj, S); mf.W8(SennenKazoku.Core.Orig.OrigNewGame.SceneObj + 0x11, 0);
+                vmf.Call("0802D7A0", SennenKazoku.Core.Orig.OrigNewGame.SceneObj);
+                var w1 = Ram("newg_fin1.ram");
+                int d1 = Diff(mf, w1, S, SEnd) + Diff(mf, w1, SennenKazoku.Core.Orig.OrigMem.SaveStart, SennenKazoku.Core.Orig.OrigMem.SaveEnd);
+                Console.WriteLine("       구성원 마무리(0x0802D7A0): 설정 블록·저장 영역 원작과 다른 바이트 " + d1 + " (" + sw.ElapsedMilliseconds + "ms)");
+                T.Eq(d1, 0, "구성원 마무리 결과가 원작과 다름");
+                sw.Restart();
+                var mc = Full("newg_pre.ram"); var vmc = rules.CreateVm(mc);
+                vmc.Call("080417E0", S);
+                // 가족 머리말 0x0202C6A0~C3 의 성 문자열 뒤·패딩 칸은 원작 스택 찌꺼기라 비교에서 뺀다
+                int d2 = Diff(mc, Ram("newg_create.ram"), SennenKazoku.Core.Orig.OrigMem.SaveStart, SennenKazoku.Core.Orig.OrigMem.SaveEnd, 0x0202C6A0, 0x0202C6C4);
+                Console.WriteLine("       가족 레코드 만들기(0x080417E0): 저장 영역 원작과 다른 바이트 " + d2 + " (머리말 36바이트 제외, " + sw.ElapsedMilliseconds + "ms)");
+                T.Eq(d2, 0, "가족 레코드 만들기 결과가 원작과 다름");
+                // 처음부터 추천 가족 만들기: 예외 없이 돌고 가족이 생겨야 한다
+                var mn = Fresh("main.ram"); var vmn = rules.CreateVm(mn);
+                SennenKazoku.Core.Orig.OrigNewGame.Recommended(vmn);
+                int people = 0; for (int k = 0; k < 8; k++) if (SennenKazoku.Core.Orig.OrigGame.Present(mn, k)) people++;
+                Console.WriteLine("       추천 가족 새로 만들기: " + people + "명");
+                T.True(people >= 2, "새 가족 인원이 너무 적음");
+            }
         }
 
         static List<Pack> Bundled() { return new List<Pack> { LoadPack(Read("sk.sample")), LoadPack(Read("nova.pack001")) }; }
