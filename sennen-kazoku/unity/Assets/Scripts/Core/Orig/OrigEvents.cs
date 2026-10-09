@@ -54,6 +54,11 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         public static uint RunScene(OrigVm vm, OrigRules rules, uint data, uint personId)
         {
+            // 장면 시작 0x0804C66C 의 규칙 부분 (원작 실행 중단점으로 확인: 시작 함수 전에 0x0804C76C 에서 슬롯표를 다시 만든다):
+            // 0x0800E57C — 인물 레코드 앞 0x38 바이트를 가계 표(0x0202EB9C + 60×번호)에 옮겨 적기,
+            // 0x08110B90(사건 인물, 0) — 사건 인물 중심 슬롯표. 큐에 넣은 뒤 다른 인물 처리로 슬롯표가 바뀌었어도 여기서 바로잡힌다.
+            vm.Call("0800E57C");
+            vm.Call("slots", personId, 0);
             uint v = 0;
             var fns = Fns(vm, rules, data);
             if (fns[0] != null) v = vm.Call(fns[0], 0, data, 0, 0) & 0xFFFF;

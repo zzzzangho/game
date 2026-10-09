@@ -375,11 +375,14 @@ class Lifter:
                 # 한쪽 가지에서만 쓴 칸: 쓰지 않은 가지는 그 자리의 이전 메모리(초기화되지 않은 스택) 그대로다.
                 # (예: 0x08027090 의 "가장 이른 칸 번호" 바이트 — 버리면 합류 뒤 읽기가 쓰레기가 된다)
                 # 그 가지에 이 자리와 겹치는 다른 모양의 칸이 있으면 값을 알 수 없으므로 전처럼 버린다.
+                # 메모리 백업 상태(프레임 메모리에도 쓰는 상태)의 가지는 그 칸 값이 프레임 메모리에 있으므로 메모리에서 읽는다
+                # (예: 0x080111B8 의 날짜 지역 변수는 0x0800E430 이 포인터로 채운다).
                 sz = have[0][1]
                 if any(x is None and any(p < o + sz and o < p + q for p, (_, q) in st.mem.items()) for x, st in zip(vals, sts)): continue
                 und = ('undef_stack', o)
                 for b in range(1, sz): und = binop('or', und, binop('shl', ('undef_stack', o + b), 8 * b))
-                vals = [x if x is not None else (und, sz) for x in vals]
+                vals = [x if x is not None else ((('load', sz, ('sp', o)) if (self.mem_mode or st.membacked) else und), sz)
+                        for x, st in zip(vals, sts)]
             if all(x == vals[0] for x in vals): base.mem[o] = vals[0]; continue
             v = self.newvar(); base.mem[o] = (v, vals[0][1])
             for (i, _), val in zip(ends, vals): assigns[i].append((v[1], val[0]))

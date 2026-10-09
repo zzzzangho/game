@@ -788,6 +788,22 @@ namespace SennenKazoku.Tests
                             recPre = null;
                         };
                     }
+                    // 검증용: SK_TRACE_SCHED 가 있으면 일정 풀 목록 머리(0x02038F70~)를 바꾼 맨 바깥 호출을 적는다
+                    if (Environment.GetEnvironmentVariable("SK_TRACE_SCHED") != null && g.Vm.AfterTop == null)
+                    {
+                        byte[] heads = new byte[14];
+                        g.Vm.BeforeTop = (fn, a) => Array.Copy(m.Ewram, 0x38F70, heads, 0, 14);
+                        g.Vm.AfterTop = (fn, a, r) =>
+                        {
+                            for (int k = 0; k < 14; k++) if (m.Ewram[0x38F70 + k] != heads[k])
+                                {
+                                    var sb = new System.Text.StringBuilder();
+                                    for (int i = 0; i < 12; i++) { var e = new byte[12]; Array.Copy(m.Ewram, 0x38BEC + 12 * i, e, 0, 12); if (e[8] != 0x12 && e[0] != 0xFF) sb.Append(" [" + i + ":" + BitConverter.ToString(e).Replace("-", "") + "]"); }
+                                    Console.WriteLine("         일정 일" + curDay + " " + fn + "(" + string.Join(",", Array.ConvertAll(a, x => x.ToString("X"))) + ") 머리 " + BitConverter.ToString(heads) + " → " + BitConverter.ToString(m.Ewram, 0x38F70, 14) + sb);
+                                    break;
+                                }
+                        };
+                    }
                     for (int dd = 0; dd < days; dd++)
                     {
                         curDay = dd;
