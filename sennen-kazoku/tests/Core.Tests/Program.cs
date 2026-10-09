@@ -797,7 +797,7 @@ namespace SennenKazoku.Tests
                             foreach (var e in g.TickDay())
                             {
                                 nev++; kinds[e.Type] = kinds.TryGetValue(e.Type, out var c) ? c + 1 : 1; perYear[dd / 365]++;
-                                if (Environment.GetEnvironmentVariable("SK_ORIG_LOGEV") != null && dd >= int.Parse(Environment.GetEnvironmentVariable("SK_ORIG_LOGEV")) && dd < int.Parse(Environment.GetEnvironmentVariable("SK_ORIG_LOGEV")) + 30)
+                                if (Environment.GetEnvironmentVariable("SK_ORIG_LOGEV") != null && dd >= int.Parse(Environment.GetEnvironmentVariable("SK_ORIG_LOGEV")) && dd < int.Parse(Environment.GetEnvironmentVariable("SK_ORIG_LOGEV")) + int.Parse(Environment.GetEnvironmentVariable("SK_ORIG_LOGEV_N") ?? "30"))
                                 {
                                     uint pp = SennenKazoku.Core.Orig.OrigMem.PersonAddr(Math.Max(0, e.Person));
                                     Console.WriteLine("         일" + dd + " 인물" + e.Person + " 종류" + e.Type + " 코드" + e.Code + " 결과" + e.Data.ToString("X8") + " 관심사 " + m.R16(pp + 0x80) + "," + m.R16(pp + 0x82) + " 게이지 " + m.R8(pp + 0x5A) + " +5F " + m.R8(pp + 0x5F) + " 일정칸 " + string.Join(",", Enumerable.Range(0, 10).Select(k => m.R8(pp + 0x76 + (uint)k).ToString("X2"))) + " 풀0 " + m.R32(0x02038BEC).ToString("X8") + " 풀1 " + m.R32(0x02038BEC + 12).ToString("X8"));

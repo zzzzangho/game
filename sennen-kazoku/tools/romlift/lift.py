@@ -369,7 +369,17 @@ class Lifter:
         offs = set().union(*[set(st.mem) for st in sts]); base.mem = {}
         for o in offs:
             vals = [st.mem.get(o) for st in sts]
-            if any(x is None for x in vals) or any(x[1] != vals[0][1] for x in vals): continue
+            have = [x for x in vals if x is not None]
+            if any(x[1] != have[0][1] for x in have): continue
+            if len(have) < len(vals):
+                # 한쪽 가지에서만 쓴 칸: 쓰지 않은 가지는 그 자리의 이전 메모리(초기화되지 않은 스택) 그대로다.
+                # (예: 0x08027090 의 "가장 이른 칸 번호" 바이트 — 버리면 합류 뒤 읽기가 쓰레기가 된다)
+                # 그 가지에 이 자리와 겹치는 다른 모양의 칸이 있으면 값을 알 수 없으므로 전처럼 버린다.
+                sz = have[0][1]
+                if any(x is None and any(p < o + sz and o < p + q for p, (_, q) in st.mem.items()) for x, st in zip(vals, sts)): continue
+                und = ('undef_stack', o)
+                for b in range(1, sz): und = binop('or', und, binop('shl', ('undef_stack', o + b), 8 * b))
+                vals = [x if x is not None else (und, sz) for x in vals]
             if all(x == vals[0] for x in vals): base.mem[o] = vals[0]; continue
             v = self.newvar(); base.mem[o] = (v, vals[0][1])
             for (i, _), val in zip(ends, vals): assigns[i].append((v[1], val[0]))

@@ -76,10 +76,11 @@ def main():
             r = cpu.call(fn | 1, *args, limit=200_000_000)
         except Exception as ex:   # noqa: BLE001
             print('%s 일%d %08X(%s): 원작 실행 실패 %s' % (os.path.basename(p), day, fn, ','.join('%X' % a for a in args), ex)); diff += 1; continue
-        got = cpu.ram()
-        want = post[:EW + IW]
+        # 결과 버퍼 자리(0x0F000000~0x0F000FFF, 앱의 OutBuf·장면 객체)도 비교한다
+        got = cpu.ram() + bytes(cpu.mu.mem_read(0x0F000000, 0x1000))
+        want = post[:EW + IW] + post[EW + IW:EW + IW + 0x1000]
         # IWRAM 위쪽(0x03007000~)은 원작 실행의 스택이라 빼고 비교한다
-        bad = [i for i in range(EW + 0x7000) if got[i] != want[i]]
+        bad = [i for i in list(range(EW + 0x7000)) + list(range(EW + IW, EW + IW + 0x1000)) if got[i] != want[i]]
         heap = [i for i in bad if 0x2BFB0 <= i < 0x2C010]
         rest = [i for i in bad if not (0x2BFB0 <= i < 0x2C010)]
         rok = (r & 0xFFFFFFFF) == ret or (r & 0xFFFFFF00) == 0x03007F00   # 돌려주는 값이 없는 함수: 원작 r0 = 복귀 주소 찌꺼기
@@ -91,7 +92,7 @@ def main():
             diff += 1
             print(tag + ': 다름  돌려준 값 원작 %X / C# %X' % (r & 0xFFFFFFFF, ret))
             for a, b in ranges(rest)[:12]:
-                base = 0x02000000 if a < EW else 0x03000000 - EW
+                base = 0x02000000 if a < EW else 0x03000000 - EW if a < EW + IW else 0x0F000000 - EW - IW
                 print('   %08X~%08X 원작 %s / C# %s' % (base + a, base + b, got[a:b + 1][:16].hex(), want[a:b + 1][:16].hex()))
     print('같음 %d / 다름 %d' % (same, diff))
 

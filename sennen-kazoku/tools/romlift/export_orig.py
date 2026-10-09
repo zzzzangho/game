@@ -207,6 +207,30 @@ def add_funcs(rom_path, out_path, addrs):
     return respan(rom_path, out_path)
 
 
+def relift(rom_path, out_path):
+    """트리 파일의 모든 함수를 지금 lift.py 로 다시 변환해 바꿔 넣는다 (--relift). 변환기를 고친 뒤 쓴다.
+    다시 변환에 실패한 함수는 이전 트리를 그대로 두고 실패 목록에 적는다."""
+    trees = {}
+    for line in open(out_path + '.trees', encoding='utf8'):
+        a, _, t = line.rstrip('\n').partition('\t'); trees[a] = t
+    addrs = [int(a, 16) for a in trees]
+    procs = max(1, (os.cpu_count() or 4))
+    t1, f1, _ = lift_all(rom_path, [a for a in addrs if a not in BIG], procs=procs)
+    t2, f2, _ = lift_all(rom_path, [a for a in addrs if a in BIG], procs=len(BIG), big=True)
+    changed = 0
+    for a, t in list(t1.items()) + list(t2.items()):
+        j = json.dumps(t, separators=(',', ':'))
+        if trees.get(a) != j: changed += 1
+        trees[a] = j
+    with open(out_path + '.trees', 'w', encoding='utf8') as fp:
+        for a in sorted(trees): fp.write(a + '\t' + trees[a] + '\n')
+    out = json.load(open(out_path, encoding='utf8'))
+    out['liftFailures'] = f1 + f2
+    with open(out_path, 'w', encoding='utf8') as fp: json.dump(out, fp, separators=(',', ':'))
+    print('다시 변환 %d개 중 바뀐 트리 %d개, 실패 %s' % (len(addrs), changed, (f1 + f2)[:20]))
+    return respan(rom_path, out_path)
+
+
 def icall_tables(t, rom, out):
     """트리 안의 함수 포인터 호출에서 ROM 함수 표 주소를 찾는다 (m32[표 + k*4])."""
     def we(e):
@@ -433,6 +457,8 @@ if __name__ == '__main__':
     rc = []
     if '--add' in sys.argv:
         go = lambda: add_funcs(sys.argv[1], sys.argv[2], [int(x, 16) for x in sys.argv[sys.argv.index('--add') + 1:] if x != '--big'])
+    elif '--relift' in sys.argv:
+        go = lambda: relift(sys.argv[1], sys.argv[2])
     elif '--respan' in sys.argv:
         go = lambda: respan(sys.argv[1], sys.argv[2])
     else:
