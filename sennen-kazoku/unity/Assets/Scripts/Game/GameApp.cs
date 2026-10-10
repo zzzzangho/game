@@ -870,7 +870,10 @@ namespace SennenKazoku.Game
             UpdateActors();
             UpdateGauge();
             UpdateTip();
-            if (popupOpen || session.Paused || EffectiveSpeed == 0) return;
+            if (popupOpen || session.Paused) return;
+            // 원작: 가장이 가장인 채로 죽으면 가문이 끊긴 장면 — 진행을 멈추고 책갈피 되돌리기를 묻는다
+            if (session is Core.Orig.OrigSession eos && eos.LineageEnded) { OpenLineageEnd(eos); return; }
+            if (EffectiveSpeed == 0) return;
             acc += Time.deltaTime * EffectiveSpeed;
             bool started = false;
             while (acc >= SecondsPerDay && !started)
@@ -881,7 +884,6 @@ namespace SennenKazoku.Game
                 if (MemberIds() != before) RebuildActors();   // 결혼·출생·사망·독립 (같은 날 들고 나도 알아챈다)
                 if (session.Family.Today - lastAutoDay >= 30) { lastAutoDay = session.Family.Today; SaveSlot("auto", true); }
             }
-            if (session.Family.Members.Count == 0 && session is Core.Orig.OrigSession eos) { OpenLineageEnd(eos); return; }
             if (started)
             {
                 acc = 0; SaveSlot("auto", true);

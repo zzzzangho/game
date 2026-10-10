@@ -160,7 +160,7 @@ namespace SennenKazoku.Core.Orig
             if (pending.Count > 0) { StartNext(); return true; }
             SyncIn();
             Game.NextDate();
-            foreach (var e in Game.TickDay()) pending.Enqueue(e);
+            foreach (var e in Game.TickDay()) { pending.Enqueue(e); if (e.Result[0] == 2) lineageEnded = true; }
             Project();
             if (pending.Count > 0) { StartNext(); return true; }
             return false;
@@ -211,12 +211,21 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         public bool HasBookmark { get { return (Game.Mem.R32(0x0202C678) & 0x80) != 0; } }
 
+        /// <summary>
+        /// 가문이 끊김 (원작): 가장(0x0202C67C)이 가장인 채로 죽으면 죽음 처리 0x08114658 이 가문의 기록을 남기고(0x0801045C)
+        /// 결과 첫 단어 = 2 → 사건 장면 끝 0x0804DB9C 가 가문이 끊긴 장면(0x0809AF60(5,2) → 0x0809EAAC)으로 간다.
+        /// 가장 자리는 후계자가 결혼할 때 넘어가므로(장기 진행 시험에서 확인) 그 전에 가장이 죽으면 끝난다.
+        /// 앱 판정: 그 장면 끝이 나왔거나, 가장 번호가 살아 있는 가족에 없으면.
+        /// </summary>
+        public bool LineageEnded { get { return lineageEnded || (Family.Members.Count > 0 ? Family.Get(Family.HeadId) == null : true); } }
+        bool lineageEnded;
+
         /// <summary>책갈피를 쓴 날로 돌아간다 (원작 0x08010AB4). 성공하면 true.</summary>
         public bool RestoreBookmark()
         {
             if (!HasBookmark) return false;
             uint r = Game.Vm.Call("08010AB4");
-            pending.Clear(); cur = null;
+            pending.Clear(); cur = null; lineageEnded = false;
             Project();
             return r != 0;
         }

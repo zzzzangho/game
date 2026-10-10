@@ -850,6 +850,15 @@ namespace SennenKazoku.Tests
                         Console.WriteLine("       시간의 책갈피: 되돌리기 " + rb + ", 체력 " + st0 + " → 1234 → " + s.Family.Get(who.Id).Stats[1]);
                         T.True(rb && s.Family.Get(who.Id).Stats[1] == st0, "책갈피로 되돌아가지 않음");
                     }
+                    // 가문이 끊김: 책갈피를 쓴 뒤 가장을 원작 죽음 처리(0x08114658)로 죽이면 결과 첫 단어 2 → 끊김, 책갈피로 되돌리면 이어진다
+                    {
+                        s.Family.Items["item.bookmark"] = 1; T.True(s.Use(s.Family.Get(who.Id), "item.bookmark") == null, "책갈피 쓰기");
+                        int head = s.Family.HeadId; T.True(!s.LineageEnded, "시작에는 가문이 이어짐");
+                        mm.W32(0x0203C440, 0); s.Game.Vm.Call("slots", (uint)head, 0); s.Game.Vm.Call("08114658", 0, 0x0203C440); s.Project();
+                        Console.WriteLine("       가장 " + head + " 죽음 → 결과 " + mm.R32(0x0203C440) + ", 가문이 끊김 " + s.LineageEnded + ", 가족 " + s.Family.Members.Count + "명");
+                        T.True(mm.R32(0x0203C440) == 2 && s.LineageEnded, "가장이 죽으면 가문이 끊겨야 함");
+                        T.True(s.RestoreBookmark() && !s.LineageEnded && s.Family.Get(head) != null, "책갈피로 되돌아가 가문이 이어져야 함");
+                    }
                     s.Game.Vm.BeforeTop = null; s.Game.Vm.AfterTop = null;
                     s.StepDay(); while (s.Paused) s.Advance();
                     var who2 = s.Family.Get(who.Id);
