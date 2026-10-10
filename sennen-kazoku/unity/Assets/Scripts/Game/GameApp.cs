@@ -1199,7 +1199,8 @@ namespace SennenKazoku.Game
             var body = Window("설정", 600); float w = BodyW(body), bw = (w - Px(18)) / 4f, y = 0;
             if (session.Family.GodRank >= 0)
             {
-                var gl = UiKit.Label(body, "god", "신님의 정보 — 신님 랭크 " + session.Family.GodRank + "성 · 감사의 마음 " + session.Family.Gratitude + "개", Px(14), UiKit.Ink, TextAnchor.MiddleLeft, FontStyle.Bold);
+                string gen = session is Core.Orig.OrigSession gos ? GenLabel(gos.Generation(session.Family.HeadId)) + "째 " + session.Family.Name + "가 · " : "";   // 원작 메뉴 머리 "N대째 ○○가" — 가장의 세대로 보여 준다(추정: 실기 "1대째" = 가장 세대 1 과 일치, 머리 글을 만드는 원작 코드는 확인하지 않음)
+                var gl = UiKit.Label(body, "god", gen + "신님 랭크 " + session.Family.GodRank + "성 · 감사의 마음 " + session.Family.Gratitude + "개", Px(14), UiKit.Ink, TextAnchor.MiddleLeft, FontStyle.Bold);
                 UiKit.SetPx(gl.rectTransform, 0, y, w, Px(24)); y += Px(28);
             }
             var sl = UiKit.Label(body, "sl", "진행 (원작: 하루 약 88초, 배속 코너를 누르고 있으면 약 ×6.5)", Px(13), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(sl.rectTransform, 0, y, w, Px(22)); y += Px(24);
