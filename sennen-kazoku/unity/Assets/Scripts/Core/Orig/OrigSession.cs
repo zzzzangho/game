@@ -372,19 +372,44 @@ namespace SennenKazoku.Core.Orig
             OrigText.Rec rec;
             if (Text.Records.TryGetValue(cur.Data, out rec) && !string.IsNullOrEmpty(rec.Script))
                 pages = OrigText.Pages(rec.Script, SlotName);
+            else if (Text.HasCharset)   // 참고 대사가 없으면 ROM 대사(결과 기록 +0x14)를 글자표로 직접 푼다
+                pages = Text.Decode(OrigText.ReadRaw(Game.Mem, Game.Mem.R32(cur.Data + 0x14)), SlotName, MarkName);
             else pages = new List<string>();
             if (pages.Count == 0) pages.Add("(원작 사건 " + cur.Data.ToString("X8") + " — 대사 자료 없음)");
-            var god = GodPage(cur); if (god != null) pages.Add(god);
+            // 결과 스크립트가 낸 원작 결과 문구(능력 변화·감사·랭크·보상 안내). 글자표가 없으면 앱이 쓴 요약.
+            // 번역 패치가 옮기지 않은 일본어 장(랭크 보상 설명 일부)은 빼고, 대신 앱 요약(받은 것 목록)을 붙인다.
+            bool decoded = Text.HasCharset && cur.Shown.Length > 0, untranslated = false;
+            if (decoded)
+                foreach (var pg in Text.Decode(cur.Shown, SlotName, MarkName))
+                    if (OrigText.Untranslated(pg)) untranslated = true; else pages.Add(pg);
+            if (!decoded || untranslated) { var god = GodPage(cur, untranslated); if (god != null) pages.Add(god); }
+        }
+
+        /// <summary>플레이어 이름 — 원작은 처음에 입력받지만(0x0202C660) 앱은 아직 입력 화면이 없어 "신님"을 쓴다(앱이 정한 기본값).</summary>
+        public string PlayerName
+        {
+            get { string s; return Family.OrigNames.TryGetValue(PlayerNameKey, out s) && !string.IsNullOrEmpty(s) ? s : "신님"; }
+            set { Family.OrigNames[PlayerNameKey] = value; }
+        }
+        const int PlayerNameKey = -2;
+
+        /// <summary>결과 문구의 이름 표지(OrigResultScript.NameMarks) → 앱 이름.</summary>
+        string MarkName(int id)
+        {
+            if (id == (int)OrigResultScript.MarkFamily) return Family.Name;
+            if (id == (int)OrigResultScript.MarkPlayer) return PlayerName;
+            return NameOf(id, -1);
         }
 
         /// <summary>
-        /// 결과 스크립트가 바꾼 신님 쪽 값(감사·랭크·보상)을 알리는 장 — 원작은 번역 글로 보여 주는 부분이라 앱이 쓴 요약 문장이다.
+        /// 결과 스크립트가 바꾼 신님 쪽 값(감사·랭크·보상)을 알리는 장 — 글자표(로컬 팩 charset)가 없을 때만 쓰는, 앱이 쓴 요약 문장이다.
         /// </summary>
-        string GodPage(OrigGame.DayEvent e)
+        /// <param name="giftsOnly">원작 문구가 감사·랭크는 보여 줬고 보상 설명만 번역이 없을 때 — 받은 것 목록만.</param>
+        string GodPage(OrigGame.DayEvent e, bool giftsOnly = false)
         {
             var sb = new System.Text.StringBuilder();
-            if (e.Points1 > e.Points0) sb.Append(NameOf((int)e.PersonId, -1)).Append("이(가) 신님에게 감사! 감사의 마음 +").Append(e.Points1 - e.Points0).Append(" (모두 ").Append(e.Points1).Append("개)");
-            if (e.Rank1 > e.Rank0) { if (sb.Length > 0) sb.Append('\n'); sb.Append("신님 랭크가 ").Append(e.Rank1).Append("성이 됐다!"); }
+            if (!giftsOnly && e.Points1 > e.Points0) sb.Append(NameOf((int)e.PersonId, -1)).Append("이(가) 신님에게 감사! 감사의 마음 +").Append(e.Points1 - e.Points0).Append(" (모두 ").Append(e.Points1).Append("개)");
+            if (!giftsOnly && e.Rank1 > e.Rank0) { if (sb.Length > 0) sb.Append('\n'); sb.Append("신님 랭크가 ").Append(e.Rank1).Append("성이 됐다!"); }
             var gifts = new List<string>();
             foreach (var t in Interventions.Tools)
             {
@@ -393,7 +418,7 @@ namespace SennenKazoku.Core.Orig
                 if (d > 0) gifts.Add(t.Name + " ×" + d);
             }
             if (gifts.Count > 0) { if (sb.Length > 0) sb.Append('\n'); sb.Append("받은 것: ").Append(string.Join(", ", gifts)); }
-            return sb.Length > 0 ? sb.ToString() : null;
+            return sb.Length > 0 ? "[앱 요약] " + sb : null;   // 원작 글이 아님을 표시
         }
 
         string SlotName(int code)

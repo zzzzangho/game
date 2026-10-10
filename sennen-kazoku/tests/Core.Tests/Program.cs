@@ -138,13 +138,21 @@ namespace SennenKazoku.Tests
                 var mem = Fresh("main.ram");
                 var game = new SennenKazoku.Core.Orig.OrigGame(mem, rules);
                 var sw = System.Diagnostics.Stopwatch.StartNew(); int nev = 0, days = 60;
-                var titles = new List<string>(); string gratLog = null;
+                var titles = new List<string>(); string gratLog = null, gratText = null; int shownN = 0;
+                var otext = File.Exists(Path.Combine(dir, "orig_text.json")) ? SennenKazoku.Core.Orig.OrigText.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "orig_text.json"))))) : null;
                 for (int dday = 0; dday < days; dday++)
                 {
                     uint pts0 = mem.R32(0x0202C670);
                     foreach (var ev in game.TickDay())
                     {
                         nev++;
+                        if (ev.Shown.Length > 0) shownN++;
+                        if (otext != null && otext.HasCharset && gratText == null && ev.Points1 > ev.Points0)
+                        {
+                            gratText = string.Join(" / ", otext.Decode(ev.Shown, a => "이름" + a, id => "인물" + id));
+                            if (Environment.GetEnvironmentVariable("SK_SHOWN_HEX") != null)
+                                for (int q = 0; q + 3 < ev.Shown.Length; q++) if (ev.Shown[q] == 0x1A && (ev.Shown[q + 1] == 5 || ev.Shown[q + 1] == 6)) Console.WriteLine("       토큰 " + BitConverter.ToString(ev.Shown, q, 4));
+                        }
                         uint p = SennenKazoku.Core.Orig.OrigMem.PersonAddr(ev.Person);
                         titles.Add("일" + dday + " 인물" + ev.Person + " 큐종류" + ev.Type + " 코드" + ev.Code + " 결과 " + ev.Data.ToString("X8") + " → 관심사 " + mem.R16(p + 0x80) + "," + mem.R16(p + 0x82) + " 게이지 " + mem.R8(p + 0x5A));
                     }
@@ -155,6 +163,7 @@ namespace SennenKazoku.Tests
                 }
                 // 실기(같은 시작 main.state, 자동 진행): 인물0(힘내라 화살 효과 중)의 관심사가 이루어지며 감사의 마음 0→5·인물0 감사 5, 이어서 랭크 0→1, 화살 4·5 → 10·10
                 Console.WriteLine("       첫 감사: " + (gratLog ?? "없음") + "  (실기: 감사의 마음 0→5, 랭크 1, 화살 10·10, 인물0 감사 5)");
+                Console.WriteLine("       결과 문구가 있는 사건 " + shownN + "번, 첫 감사 사건의 결과 문구: " + (gratText ?? "(글자표 없음)").Replace("\n", " "));
                 T.True(gratLog != null && gratLog.Contains("0→5, 랭크 1, 화살 10·10, 인물0 감사 5"), "감사·랭크 진행이 실기와 다름: " + gratLog);
                 SennenKazoku.Core.Orig.OrigDate.Get(mem, SennenKazoku.Core.Orig.OrigMem.Date, out int yy, out int mm, out int dd);
                 Console.WriteLine("       원작 코드로 " + days + "일 진행: 사건 " + nev + "번, " + sw.ElapsedMilliseconds + "ms, 날짜 " + yy + "-" + mm + "-" + dd);
@@ -873,18 +882,24 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       개입: 지력 " + s0 + " → 고리 → 다음 날 " + who2.Stats[0] + ", 힘내라 화살 남은 수 " + Interventions.Count(s.Family, "arrow.encourage") + ", 화살 표시 " + who2.ArrowFlags);
                     T.True(who2.Stats[0] >= Math.Min(Stat.Max, s0 + 1000) - 50 && Interventions.Count(s.Family, "arrow.encourage") == 4, "개입이 원작 메모리에 남지 않음");
                     int shown = 0, withText = 0, pagesTotal = 0; string sample = null;
+                    string grat = null, unkSample = null; int unknownGlyph = 0;
                     void Drain(SennenKazoku.Core.Orig.OrigSession ss)
                     {
                         while (ss.Paused)
                         {
                             var v = ss.View(); pagesTotal++;
                             if (ss == s && sample == null && v.TextSource != "none" && v.Text.Length > 20) sample = v.Title + " / " + v.Text.Replace("\n", " ");
+                            if (ss == s && v.Text.Contains("□")) { unknownGlyph++; if (unkSample == null || unkSample.Length < 1500) unkSample += " ‖ " + v.Text.Replace("\n", " "); }
+                            if (ss == s && grat == null && v.Text.Contains("감사의 마음")) grat = v.Text.Replace("\n", " ");
                             if (ss.Advance()) { shown++; if (v.TextSource != "none") withText++; }
                         }
                     }
                     for (int d = 0; d < 730; d++) { s.StepDay(); Drain(s); }
                     Console.WriteLine("       2년: 보여 준 사건 " + shown + "개 (대사 있음 " + withText + "), 장 " + pagesTotal + ", " + GameDate.Format(s.Family.Today));
                     Console.WriteLine("       예: " + sample);
+                    Console.WriteLine("       원작 결과 문구 예: " + (grat ?? "없음") + " / 글자표에 없는 글자가 든 장 " + unknownGlyph);
+                    if (unknownGlyph > 0) Console.WriteLine("       글자표에 없는 코드: " + string.Join(" ", s.Text.Missing.Select(c => c.ToString("X4"))) + " / 예: " + unkSample);
+                    if (s.Text.HasCharset) T.Eq(unknownGlyph, 0, "글자표에 없는 글자");
                     Console.WriteLine("       2년 뒤 보유: " + string.Join(", ", Interventions.Tools.FindAll(t => Interventions.Count(s.Family, t.Id) > 0).ConvertAll(t => t.Name + "×" + Interventions.Count(s.Family, t.Id)))
                         + " / 신님에게 감사 " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + " " + p.Gratitude))
                         + " / 감사의 마음 " + s.Game.Mem.R32(0x0202C670) + ", 신님 랭크 " + s.Game.Mem.R16(0x0202C66E));
