@@ -116,6 +116,7 @@ HEAVEN_MSGS = 0x085D5CB0     # 글 번호 → 글
 HEAVEN_TYPES = 0x085BBD10    # 가족 유형 → {화면 글 번호(칭호), 신님 평 글 번호}
 HEAVEN_LIVES = 0x085BBD58    # 인생 평가(가계 기록 +0x33) → {화면 글 번호, 평가 글 번호}
 SPECIALS = 0x088915C8   # 관심사 → 특별 기록 (+0 글 = 꿈 이름, 0x0811978C)
+ERA_MSGS, ERA_BANDS = 0x0858A854, 0x0858A874   # 시대 연출(0x0806AC04): 시대−1 → 큐피트 글 번호 · 띠 화면 글 번호
 
 
 def heaven_pack(rom, table):
@@ -128,7 +129,9 @@ def heaven_pack(rom, table):
     lists = [struct.unpack_from('<i', rom, a - 0x08000000)[0] for a in range(base, HEAVEN_STATES, 4)]
     types = [[u32(HEAVEN_TYPES + 8 * x), u32(HEAVEN_TYPES + 8 * x + 4)] for x in range(9)]
     lives = [[u32(HEAVEN_LIVES + 8 * x), u32(HEAVEN_LIVES + 8 * x + 4)] for x in range(12)]
-    ids = {v for v in lists if v >= 0} | {t[1] for t in types} | {t[1] for t in lives}
+    era_msgs = [u32(ERA_MSGS + 4 * k) for k in range(3)]
+    era_bands = [u32(ERA_BANDS + 4 * k) for k in range(3)]
+    ids = {v for v in lists if v >= 0} | {t[1] for t in types} | {t[1] for t in lives} | set(era_msgs)
     msgs = {}
     for v in sorted(ids):
         p = u32(HEAVEN_MSGS + 4 * v) - 0x08000000
@@ -141,7 +144,7 @@ def heaven_pack(rom, table):
         t = u32(q)
         if 0x08000000 <= t < 0x0A000000: dreams[str(i)] = decode(rom, table, t, 60)
     return {"base": '0x%08X' % base, "lists": lists, "states": {str(st): (p - base) // 4 for st, p in ptrs.items()},
-            "msgs": msgs, "types": types, "lives": lives, "dreams": dreams}
+            "msgs": msgs, "types": types, "lives": lives, "dreams": dreams, "eraMsgs": era_msgs, "eraBands": era_bands}
 
 
 def main():

@@ -1081,7 +1081,7 @@ namespace SennenKazoku.Tests
                         // 진입값 2: 0~4 (2대째 처음 → 3 가계도 설명) · 진입값 5: 고인 없음 → 0x25, 2대째 → 통신 결혼의 화살, 1세기 = 새 시대(0x37) → 0x38 · 진입값 6: 0x39~0x44(첫 새 시대) → 0x45 → 0x47(진입값 2)
                         string want = "0 1 2 3 4 5 6 7 8 9 A B 25 26 27 28 29 2A 2B 2C 2D 35 37 38 39 3A 3B 3C 3D 3E 3F 40 41 42 43 44 45 47 48";
                         T.Eq(string.Join(" ", hv.Trace.ConvertAll(x => x.ToString("X"))), want, "천계 상태 차례");
-                        if (text.Heaven.Ok) T.True(hv.Pages.Exists(x => x.MsgId == 371) && hv.Pages.Exists(x => x.MsgId == 400) && hv.Pages.Exists(x => x.MsgId == 403) && hv.Pages.Exists(x => x.MsgId == 481) && hv.Pages.Exists(x => x.MsgId == 435), "천계 대사");
+                        if (text.Heaven.Ok) T.True(hv.Pages.Exists(x => x.MsgId == 371) && hv.Pages.Exists(x => x.MsgId == 400) && hv.Pages.Exists(x => x.MsgId == 403) && hv.Pages.Exists(x => x.MsgId == 481) && hv.Pages.Exists(x => x.MsgId == 435) && hv.Pages.Exists(x => x.MsgId == 260), "천계 대사");
                     }
                     var wdump = Environment.GetEnvironmentVariable("SK_WEDDING_DUMP");
                     if (!string.IsNullOrEmpty(wdump))

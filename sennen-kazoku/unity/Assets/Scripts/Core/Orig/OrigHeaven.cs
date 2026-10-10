@@ -29,6 +29,8 @@ namespace SennenKazoku.Core.Orig
             public readonly Dictionary<int, byte[]> Msgs = new Dictionary<int, byte[]>();
             public readonly List<int[]> Types = new List<int[]>(), Lives = new List<int[]>();
             public readonly Dictionary<int, string> Dreams = new Dictionary<int, string>();
+            /// <summary>시대 연출(0x0806AC04): 시대−1 → 큐피트 글 번호(0x0858A854) · 띠 화면 글 번호(0x0858A874).</summary>
+            public readonly List<int> EraMsgs = new List<int>(), EraBands = new List<int>();
             public bool Ok { get { return Lists.Count > 0 && Msgs.Count > 0; } }
 
             public static Data FromJson(Dictionary<string, object> h)
@@ -41,6 +43,8 @@ namespace SennenKazoku.Core.Orig
                 foreach (var x in J.Arr(J.Get(h, "types")) ?? new List<object>()) { var p = J.Arr(x); d.Types.Add(new[] { Convert.ToInt32(p[0]), Convert.ToInt32(p[1]) }); }
                 foreach (var x in J.Arr(J.Get(h, "lives")) ?? new List<object>()) { var p = J.Arr(x); d.Lives.Add(new[] { Convert.ToInt32(p[0]), Convert.ToInt32(p[1]) }); }
                 var dr = J.Child(h, "dreams"); if (dr != null) foreach (var kv in dr) d.Dreams[int.Parse(kv.Key)] = kv.Value as string ?? "";
+                foreach (var x in J.Arr(J.Get(h, "eraMsgs")) ?? new List<object>()) d.EraMsgs.Add(Convert.ToInt32(x));
+                foreach (var x in J.Arr(J.Get(h, "eraBands")) ?? new List<object>()) d.EraBands.Add(Convert.ToInt32(x));
                 return d;
             }
             static byte[] Hex(string s)
@@ -77,8 +81,11 @@ namespace SennenKazoku.Core.Orig
             if (Exit == 3) { Screen("가계도", "[원작 가계도 화면 — 앱 요약] " + m.R8(Fam + 0x6A3) + "대째 가족이 가계도에 더해졌다."); Run(5); }
             if (Exit == 4)
             {
-                int era = (int)m.R8(Fam + 0x682);
-                Screen("시대 연출", "[원작 시대 연출 화면 — 앱 요약] " + text.UiText(392 + era, "새 시대가 열렸다!"));
+                // 시대 연출 0x0806AC04 (실기: 도시 그림 → 새 시대 도시, 띠 "근미래" 등, 큰 글씨 "과학 미래 시대가 열렸다!", 큐피트 한마디)
+                int era = (int)m.R8(Fam + 0x682), k = era - 1;
+                string band = k >= 0 && k < data.EraBands.Count ? text.UiText(data.EraBands[k], "") : "";
+                Screen("시대 연출", "[원작 시대 연출 화면 — 앱 요약] " + (band.Length > 0 ? band + " — " : "") + text.UiText(392 + era, "새 시대가 열렸다!"));
+                if (k >= 0 && k < data.EraMsgs.Count) Say(-2, data.EraMsgs[k]);
                 Run(6);
             }
         }
