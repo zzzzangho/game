@@ -200,6 +200,19 @@ namespace SennenKazoku.Tests
                 int okp = 0; for (uint i = 1; i <= 14; i++) if (pm.R16(buf + 2 * i) == want[i - 1]) okp++;
                 Console.WriteLine("       인물 팔레트(0x08099448): 실기 사건 그림 팔레트와 같은 칸 " + okp + "/14");
                 T.Eq(okp, 14, "인물 팔레트가 실기와 다름");
+                // 몸통 세트 0~3(가족 +0x682 — 세기가 바뀐 뒤 1~3)·몸통 번호 0~83(사건 옷 포함)·나이 구분 0~6 의 색이 팩 ROM 조각만으로 계산돼야 한다.
+                // (세트 4~7 은 뒷모습 묶음이라 원작이 색 함수에 넘기지 않는다 — 뒷모습 색도 세트 0 으로 계산, 실기 확인)
+                int pcalls = 0; string pmiss = "";
+                for (uint set = 0; set < 4 && pmiss == ""; set++)
+                    for (uint bodyNo = 0; bodyNo < 84 && pmiss == ""; bodyNo++)
+                        for (uint cls = 0; cls < 7 && pmiss == ""; cls++)
+                        {
+                            pm.W8(look + 7, bodyNo);
+                            try { pvm.Call("08099448", buf, look + 8, look, cls, 0, set); pcalls++; }
+                            catch (Exception ex) { pmiss = "세트 " + set + " 몸통 " + bodyNo + " 구분 " + cls + ": " + ex.Message; }
+                        }
+                Console.WriteLine("       인물 색: 몸통 세트 0~3 × 몸통 84 × 나이 구분 7 = " + pcalls + "번 계산" + (pmiss == "" ? "" : " — 실패 " + pmiss));
+                T.True(pmiss == "", "인물 색 계산에 팩에 없는 ROM: " + pmiss);
             }
             // 원작 외형 → 앱 조합: 실기 사건 장면의 잇세이(인물 3, 말풍선 없는 동작) 그림과 픽셀 색 비교 (로컬 캡처 cap_actor3.png 가 있을 때)
             if (File.Exists(Path.Combine(dir, "cap_actor3.png")) && File.Exists(Path.Combine(dir, "parts.json")))

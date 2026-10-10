@@ -159,6 +159,15 @@ def rom_spans(rom, consts=(), extra=(), more=()):
         walk(STATE_TABLE + 4 * t, 4, 0)
         n = table_len(rom, t); walk(tb, 4 * n, 0)
         for i in range(n): walk(rom.u32(tb + 4 * i), 0x28, 0)
+    # 몸통 자원(0x080973F4 분류 7·8·11·12, 세트 0~7 × 84 = 자원 627~1970)의 묶음 머리·색 보조표: 인물 색 0x08099448 → 0x08099670 이
+    # 몸통 묶음 머리 바이트3 과 +0xC 보조표[옷 색]를 읽는다. 세트 1~3 은 세기가 바뀐 뒤(몸통 세트 +0x682)에만 쓰여 실행 수집에 빠졌었다.
+    res = lambda i: 0x08A00000 + rom.u32(0x08A00004 + 16 * i)
+    for i in range(627, 627 + 84 * 16):
+        g = res(i)
+        if not (B <= g < B + len(rom.b) - 0x40): continue
+        spans.add((g, 0x20))
+        aux = rom.u32(g + 0xC)
+        if 0 < aux < 0x400: spans.add((g + aux, 0x40))
     for a, size in more: spans.add((a, size))   # 실행해서 모은 범위 (newgame_spans.py)
     # 겹치는 구간 합치기
     iv = sorted((a, a + s) for a, s in spans)
