@@ -125,6 +125,14 @@ namespace SennenKazoku.Tests
             Console.WriteLine("       MAX/MIN 사건(변형 고르기+효과) " + eN + "건 중 원작과 같음 " + eOk + " (옮기지 못함 " + eUnm + ")");
             T.Eq(eOk, eN, "사건 결과가 원작과 다름");
 
+            // 세대(0x08025DFC): 실기 선대의 마음 목록 — 번호 0·1 "1대", 번호 2 "2대" (같은 main.state, 족보 아버지 칸을 지우면 2 → 1대)
+            {
+                var gm = Fresh("main.ram"); var gvm = rules.CreateVm(gm);
+                uint g0 = gvm.Call("08025DFC", 0), g1 = gvm.Call("08025DFC", 1), g2 = gvm.Call("08025DFC", 2);
+                gm.W16(SennenKazoku.Core.Orig.OrigMem.Gene + 2 * SennenKazoku.Core.Orig.OrigMem.GeneSize + 0x10, 0xFFFF); uint g2b = gvm.Call("08025DFC", 2);
+                Console.WriteLine("       세대: 번호0 " + g0 + "대, 번호1 " + g1 + "대, 번호2 " + g2 + "대, 번호2(아버지 칸 지움) " + g2b + "대  (실기: 1·1·2·1)");
+                T.True(g0 == 1 && g1 == 1 && g2 == 2 && g2b == 1, "세대가 실기와 다름");
+            }
             // 원작 코드로 60일 진행 (관심사 하루 처리 → 사건 → 다음 관심사). 예외 없이 돌고 사건이 나야 한다.
             {
                 var mem = Fresh("main.ram");

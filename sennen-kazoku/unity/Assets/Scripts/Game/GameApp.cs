@@ -1169,6 +1169,8 @@ namespace SennenKazoku.Game
         }
 
         /// <summary>선대 마음의 결정: 원작처럼 선대의 마음 목록(0x0202C328)을 보여 주고 고른 마음을 이어받게 한다.</summary>
+        static string GenLabel(int g) { return (g > 0 ? g.ToString() : "?") + "대"; }
+
         void OpenLegacyHearts(Core.Orig.OrigSession os)
         {
             var p = Sel(); if (p == null) return;
@@ -1177,7 +1179,7 @@ namespace SennenKazoku.Game
             for (int k = 0; k < list.Count; k++)
             {
                 int idx = k;
-                var b = UiKit.Btn(body, "lg" + k, os.LegacyName(list[k][0]) + "의 마음  (스킬 " + list[k][1] + "번)", Px(15), Color.white, UiKit.Ink, () =>
+                var b = UiKit.Btn(body, "lg" + k, GenLabel(os.Generation(list[k][0])) + "  " + os.LegacyName(list[k][0]) + "의 마음  (스킬 " + list[k][1] + "번)", Px(15), Color.white, UiKit.Ink, () =>
                 {
                     var err = os.UseLegacyHeart(Sel(), idx);
                     ClosePopup(); Toast(err ?? (Sel().Name + "이(가) 선대의 마음을 이어받았습니다"));

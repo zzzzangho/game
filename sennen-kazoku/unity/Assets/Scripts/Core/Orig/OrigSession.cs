@@ -248,6 +248,12 @@ namespace SennenKazoku.Core.Orig
         /// <summary>선대의 마음 목록에 보이는 이름 (앱이 붙인 이름 — 세상을 떠난 사람도 저장된 이름을 쓴다).</summary>
         public string LegacyName(int personId) { return NameOf(personId, -1); }
 
+        /// <summary>세대 (원작 0x08025DFC — 족보의 부모를 거슬러 센다, 0 = 모름 → 원작 목록은 "?"). 실기 목록과 같음(시험).</summary>
+        public int Generation(int personId)
+        {
+            try { return (int)Game.Vm.Call("08025DFC", (uint)personId); } catch (OrigUnmodeled) { return 0; }
+        }
+
         /// <summary>
         /// 선대 마음의 결정: 목록 k 번째 마음을 target 에게 (원작 0x0801D8B0 의 100번대 경로 그대로).
         /// 메뉴+0x18E = 인물 번호, +0x190 = 스킬, +0x192 = 0xFFFF → 0x08024B80(100+k, 레코드, 스킬, 메뉴) 가 0 이면
