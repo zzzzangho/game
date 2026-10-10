@@ -1047,18 +1047,28 @@ namespace SennenKazoku.Tests
                     var s = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234);
                     T.True(s.Family.Members.Count >= 2, "가족 인원 " + s.Family.Members.Count);
                     Console.WriteLine("       시작 " + GameDate.Format(s.Family.Today) + " " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + "(" + (p.Gender == 0 ? "남" : "여") + p.Age(s.Family.Today) + "세 " + p.PlannedTitle + ")")));
-                    {   // 세기 확인: 시작일을 "내일이 꼭 100년째" 가 되게 옮기면 다음 날 몸통 세트 0 → 1, 가족 직업이 새 시대 것으로 (원작 0x080A113C)
+                    {   // 세기 확인: 시작일을 100년 전으로, 세대 기록 수(+0x6A3)를 2(비교 날짜 = 시작일)로 두고 세대교체 때처럼 부르면
+                        // 몸통 세트 0 → 1, 가족 직업이 새 시대 것으로, 시간의 책갈피 +1 (원작 0x080A113C + 새 시대 순서 상태 0x3B)
                         var cs = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234); var cmm = cs.Game.Mem;
                         SennenKazoku.Core.Orig.OrigDate.Get(cmm, SennenKazoku.Core.Orig.OrigMem.Date, out int ty, out int tmo, out int tdd);
-                        var tomorrow = GameDate.Make(ty, tmo, tdd) + 1;
-                        SennenKazoku.Core.Orig.OrigDate.Set(cmm, 0x0202C688, GameDate.Year(tomorrow) - 100, GameDate.Month(tomorrow), GameDate.Day(tomorrow));
-                        var jobs0 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job));
-                        cs.StepDay(); while (cs.Paused) { cs.View(); cs.Advance(); }
-                        int era1 = (int)cmm.R8(0x0202C692); var jobs1 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job));
-                        cs.StepDay(); while (cs.Paused) { cs.View(); cs.Advance(); }
-                        int era2 = (int)cmm.R8(0x0202C692);
-                        Console.WriteLine("       세기 확인(100년째 날): 몸통 세트 " + era1 + " → 다음 날 " + era2 + ", 직업 " + jobs0 + " → " + jobs1 + ", 화면 세트 " + cs.Family.BodySet);
-                        T.True(era1 == 1 && era2 == 1 && cs.Family.BodySet == 1 && jobs0 != jobs1, "세기 확인(100년째)");
+                        SennenKazoku.Core.Orig.OrigDate.Set(cmm, 0x0202C688, ty - 100, tmo, tdd); cmm.W8(0x0202C6B3, 2);
+                        var jobs0 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job)); uint bm0 = cmm.R8(0x0202C65A);
+                        cs.CenturyCheck(); cs.Project();
+                        int era1 = (int)cmm.R8(0x0202C692); var jobs1 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job)); uint bm1 = cmm.R8(0x0202C65A);
+                        Console.WriteLine("       세기 확인(100년째 세대교체): 몸통 세트 " + era1 + ", 직업 " + jobs0 + " → " + jobs1 + ", 시간의 책갈피 " + bm0 + " → " + bm1 + ", 화면 세트 " + cs.Family.BodySet);
+                        T.True(era1 == 1 && cs.Family.BodySet == 1 && jobs0 != jobs1 && bm1 == bm0 + 1, "세기 확인(100년째)");
+                    }
+                    if (Environment.GetEnvironmentVariable("SK_LONG") != null)
+                    {   // 장기(환경변수 SK_LONG): 300년 동안 세대 기록 수·몸통 세트·시간의 책갈피 변화
+                        var ls = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x4321); var lm = ls.Game.Mem;
+                        uint g0 = lm.R8(0x0202C6B3), e0 = lm.R8(0x0202C692); var log = new List<string>();
+                        for (int d = 0; d < 365 * 300 && !ls.LineageEnded; d++)
+                        {
+                            ls.StepDay(); while (ls.Paused) { ls.View(); ls.Advance(); }
+                            uint g = lm.R8(0x0202C6B3), e = lm.R8(0x0202C692);
+                            if (g != g0 || e != e0) { log.Add(GameDate.Format(ls.Family.Today) + " 세대기록 " + g + " 세트 " + e + " 책갈피 " + lm.R8(0x0202C65A)); g0 = g; e0 = e; }
+                        }
+                        Console.WriteLine("       300년: " + string.Join(" / ", log) + (ls.LineageEnded ? " (가문 끊김)" : ""));
                     }
                     // 결과 예고: 원작 메모리를 바꾸지 않아야 한다
                     var mem0 = Convert.ToBase64String(s.Game.Mem.SaveBlock()); var seed0 = s.Game.Mem.R32(0x02000000);

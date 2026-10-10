@@ -174,32 +174,32 @@ namespace SennenKazoku.Core.Orig
             if (pending.Count > 0) { StartNext(); return true; }
             SyncIn();
             Game.NextDate();
+            uint genBefore = Game.Mem.R8(0x0202C6B3);
             foreach (var e in Game.TickDay()) { pending.Enqueue(e); if (e.Result[0] == 2) lineageEnded = true; }
-            CenturyCheck();
+            uint genAfter = Game.Mem.R8(0x0202C6B3);
+            if (genAfter != 0xFF && genBefore != 0xFF && genAfter > genBefore) CenturyCheck();   // 세대 기록이 늘었다 = 세대교체
             Project();
             if (pending.Count > 0) { StartNext(); return true; }
             return false;
         }
 
         /// <summary>
-        /// 세기 확인 (원작 0x080A113C, 변환 트리 그대로 — unicorn 원작 실행과 저장 영역 바이트까지 같음):
-        /// 시작일(0x0202C688)부터 지난 햇수/100 = 세기 c 가 1·4·7 이 되면 몸통 세트(가족 +0x682)를 하나 올리고, 가족 8명의 직업(+0x58)·
-        /// 관심사(+0x3E) 등을 새 시대 것으로 바꾸고, 가족 +0x20 의 세기 비트를 켠다.
-        /// 원작은 전원을 켤 때 도는 알림 순서(모드 3, 0x0809F938 상태 0x35)에서 부르고 비교 기준 날짜를 다른 단계에서 갱신하는 것으로
-        /// 보인다(미해독). 임시 규칙(앱): 세기에 맞는 몸통 세트(1·4·7세기 → 1·2·3)보다 원작 메모리 값이 작으면 그날 한 번 부른다
-        /// — 원작은 세기가 바뀐 뒤 처음 켤 때 바뀌므로, 계속 켜 두는 앱에서는 바뀐 날이 가장 가깝다. 큐피트 알림 글은 아직 없다.
+        /// 세기 확인 (원작 0x080A113C, 변환 트리 그대로 — unicorn 원작 실행과 저장 영역 바이트까지 같음).
+        /// 시작일(0x0202C688)부터 지난 햇수/100 을, 세대 기록(0x0800F57C 가 세대교체 때 0x0202E528 + 28·k 에 쓰고 가족 +0x6A3 = k 를 올림) 중
+        /// 하나 앞 기록 날짜까지의 세기와 비교해 1·4·7세기가 되면 몸통 세트(가족 +0x682)를 올리고 가족 8명의 직업·관심사를 새 시대 것으로 바꾼다.
+        /// 원작은 이것을 알림 순서(0x0809F938, 진입값 5 → 상태 0x35)에서 부르는데, 같은 순서가 "2대째(+0x6A3 == 2)" 첫 세대교체 안내를 하고
+        /// 비교 날짜도 세대 기록이라 세대교체 뒤에 도는 순서로 본다(정적 해독 — 실기에서 세대교체 순간은 아직 확인하지 못함).
+        /// 앱: 세대 기록 수(+0x6A3)가 오른 날 한 번 부른다. 결과가 새 시대(0x37)이면 원작 "새 시대" 순서(진입값 6, 상태 0x3B)처럼
+        /// 아이템 칸 10(시간의 책갈피, 가족 +0x64A)을 하나 준다. 알림 글(큐피트)은 아직 없다.
         /// </summary>
-        void CenturyCheck()
+        public void CenturyCheck()
         {
-            var m = Game.Mem;
-            OrigDate.Get(m, 0x0202C688, out int sy, out int sm, out int sd);
-            OrigDate.Get(m, OrigMem.Date, out int ty, out int tm, out int td);
-            if (sy <= 0 || sy > 9999 || ty <= 0 || ty > 9999) return;
-            int years = ty - sy - ((tm * 100 + td) < (sm * 100 + sd) ? 1 : 0), c = years / 100;
-            int want = c >= 7 ? 3 : c >= 4 ? 2 : c >= 1 ? 1 : 0;
-            if (c != 1 && c != 4 && c != 7) return;
-            if ((int)m.R8(0x0202C692) >= want) return;
-            try { Game.Vm.Call("080A113C", 0x0F03B480); }
+            var m = Game.Mem; const uint Out = 0x0F03B480;
+            try
+            {
+                Game.Vm.Call("080A113C", Out);
+                if (m.R32(Out) == 0x37) { uint b = m.R8(ItemInv + 10); if (b < 255) m.W8(ItemInv + 10, b + 1); }
+            }
             catch (OrigUnmodeled) { }
         }
 
