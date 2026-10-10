@@ -843,7 +843,8 @@ namespace SennenKazoku.Tests
                         T.True(lr == null, "선대 마음의 결정: " + lr);
                         T.Eq((int)mm.R8(whoRec + 0x62), 5); T.Eq(s.LegacyHearts().Count, 1); T.Eq(s.LegacyHearts()[0][1], 9);
                         T.Eq(Interventions.Count(s.Family, "item.heart_crystal"), 0);
-                        Console.WriteLine("       선대 마음의 결정: 스킬 " + string.Join(",", s.Family.Get(who.Id).Skills) + ", 남은 마음 " + s.LegacyHearts().Count);
+                        Console.WriteLine("       선대 마음의 결정: 스킬 " + string.Join(",", s.Family.Get(who.Id).Skills.ConvertAll(k => k + " " + s.SkillName(k))) + ", 남은 마음 " + s.LegacyHearts().Count + ", 스킬 이름 " + s.Text.Skills.Count + "개");
+                        if (s.Text.HasCharset) T.True(s.Text.Skills.Count == 183 && !s.SkillName(12).Contains("번"), "스킬 이름 표");
                     }
                     foreach (var t in Interventions.Tools)
                         if (t.Kind == "arrow" && t.OrigSlot >= 2 && s.CanUse(t.Id))

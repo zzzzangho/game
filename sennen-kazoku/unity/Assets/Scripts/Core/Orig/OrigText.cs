@@ -22,6 +22,8 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         public readonly Dictionary<int, string> Charset = new Dictionary<int, string>();
         public bool HasCharset { get { return Charset.Count > 0; } }
+        /// <summary>스킬 이름 (스킬 표 0x088A309C 의 항목 +0 글 — 스킬 번호 = 레코드 +0x62~0x64 값). orig_text.json "skills".</summary>
+        public readonly List<string> Skills = new List<string>();
         /// <summary>Decode 에서 만난, 글자표에 없는 코드 (점검용).</summary>
         public readonly HashSet<int> Missing = new HashSet<int>();
 
@@ -45,6 +47,8 @@ namespace SennenKazoku.Core.Orig
                 }
             var cs = J.Child(d, "charset");
             if (cs != null) foreach (var kv in cs) t.Charset[Convert.ToInt32(kv.Key, 16)] = kv.Value as string ?? "";
+            var sk = d.ContainsKey("skills") ? d["skills"] as List<object> : null;
+            if (sk != null) foreach (var x in sk) t.Skills.Add(x as string ?? "");
             return t;
         }
 

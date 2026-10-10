@@ -75,6 +75,18 @@ def runs(units):
     return out
 
 
+SKILLS = 0x088A309C
+
+
+def decode(rom, table, p, limit=64):
+    """ROM 글 하나를 글자표로 푼다 (글자만 — 0 이나 1A 에서 끝)."""
+    o, out = p - 0x08000000, []
+    while len(out) < limit and rom[o] not in (0, 0x1A):
+        if rom[o] >= 0x80: out.append(table.get('%04X' % (rom[o] << 8 | rom[o + 1]), '□')); o += 2
+        else: out.append(table.get('%04X' % rom[o], '□')); o += 1
+    return ''.join(out)
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__); return 2
@@ -113,8 +125,15 @@ def main():
             p = line.split()
             if len(p) >= 2 and not line.startswith('#'): table[p[0].upper()] = p[1]; manual += 1
     pack['charset'] = dict(sorted(table.items()))
+    # 스킬 이름: 스킬 표 0x088A309C (스킬 번호 → 항목 포인터, 항목 +0 이름 글 · +4 설명 글). 이름은 번역돼 있고 설명은 일본어 그대로다.
+    skills = []
+    for k in range(256):
+        e = struct.unpack_from('<I', rom, SKILLS - 0x08000000 + 4 * k)[0]
+        if not 0x08000000 <= e < 0x0A000000: break
+        skills.append(decode(rom, table, struct.unpack_from('<I', rom, e - 0x08000000)[0]))
+    pack['skills'] = skills
     json.dump(pack, open(sys.argv[2], 'w', encoding='utf8'), ensure_ascii=False, separators=(',', ':'))
-    print('글자 %d개 (대사 맞추기 %d, 손으로 읽음 %d, 나머지 Shift-JIS)' % (len(table), voted, manual))
+    print('글자 %d개 (대사 맞추기 %d, 손으로 읽음 %d, 나머지 Shift-JIS), 스킬 이름 %d개' % (len(table), voted, manual, len(skills)))
 
 
 if __name__ == '__main__':

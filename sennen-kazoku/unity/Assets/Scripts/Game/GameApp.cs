@@ -1085,7 +1085,9 @@ namespace SennenKazoku.Game
             var now = UiKit.Label(body, "now", "현재  " + PlannedTitle(p), Px(16), new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.UpperLeft, FontStyle.Bold);
             UiKit.SetPx(now.rectTransform, 0, Px(200), w, Px(48));
             string desc = st != null && !string.IsNullOrEmpty(st.Desc) ? st.Desc : "(예정 상태 설명은 원작 문구 팩에서 제공)";
-            var dd = UiKit.Label(body, "desc", desc + "\n\n직업 코드 " + p.Job + " · 숙련 " + p.JobMastery + " · 몰입도 " + p.Immersion + "\n※ 직업 이름·하트 단위는 원작 확인 전 임시 표기", Px(14), UiKit.Ink, TextAnchor.UpperLeft);
+            var os2 = session as Core.Orig.OrigSession;
+            string skills = p.Skills.Count == 0 ? "없음" : string.Join(" · ", p.Skills.ConvertAll(k => os2 != null ? os2.SkillName(k) : "스킬 " + k + "번"));
+            var dd = UiKit.Label(body, "desc", desc + "\n\n스킬  " + skills + "\n직업 코드 " + p.Job + " · 숙련 " + p.JobMastery + " · 몰입도 " + p.Immersion + "\n※ 직업 이름·하트 단위는 원작 확인 전 임시 표기", Px(14), UiKit.Ink, TextAnchor.UpperLeft);
             UiKit.SetPx(dd.rectTransform, 0, Px(250), w, BodyH(body) - Px(250));
         }
 
@@ -1179,7 +1181,7 @@ namespace SennenKazoku.Game
             for (int k = 0; k < list.Count; k++)
             {
                 int idx = k;
-                var b = UiKit.Btn(body, "lg" + k, GenLabel(os.Generation(list[k][0])) + "  " + os.LegacyName(list[k][0]) + "의 마음  (스킬 " + list[k][1] + "번)", Px(15), Color.white, UiKit.Ink, () =>
+                var b = UiKit.Btn(body, "lg" + k, GenLabel(os.Generation(list[k][0])) + "  " + os.LegacyName(list[k][0]) + "의 마음  (" + os.SkillName(list[k][1]) + ")", Px(15), Color.white, UiKit.Ink, () =>
                 {
                     var err = os.UseLegacyHeart(Sel(), idx);
                     ClosePopup(); Toast(err ?? (Sel().Name + "이(가) 선대의 마음을 이어받았습니다"));
