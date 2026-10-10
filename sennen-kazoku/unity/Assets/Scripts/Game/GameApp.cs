@@ -359,7 +359,7 @@ namespace SennenKazoku.Game
             bool orig = OrigAvailable();
             var a = UiKit.Btn(body, "yes", "네, 알겠습니다!", Px(16), new Color32(0xE8, 0x70, 0x40, 255), Color.white, () => { if (orig) BeginOrig(); else BeginNew(false); });
             UiKit.SetPx(a.GetComponent<RectTransform>(), 0, Px(70), w, Px(52));
-            var b = UiKit.Btn(body, "no", orig ? "어… 잠깐만요… (내가 아는 가족 · 원작 규칙 미이식)" : "어… 잠깐만요… (내가 아는 가족)", Px(16), new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => BeginNew(true));
+            var b = UiKit.Btn(body, "no", "어… 잠깐만요… (내가 아는 가족)", Px(16), new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => BeginNew(true));
             UiKit.SetPx(b.GetComponent<RectTransform>(), 0, Px(132), w, Px(52));
         }
 
@@ -384,8 +384,8 @@ namespace SennenKazoku.Game
         readonly int[] childSlots = new int[4];          // 0 없음 · 1 아들 · 2 딸
         bool[] adultSlots = new bool[4];                 // 할아버지 · 할머니 · 아버지 · 어머니
         static readonly string[] RoleNames = { "할아버지", "할머니", "아버지", "어머니", "아들", "딸" };
-        // 원작 직업 이름표는 아직 추출하지 못했다 — 원작 화면에서 본 코드만 이름을 붙인다
-        static readonly Dictionary<int, string> KnownJobs = new Dictionary<int, string> { { 15, "의사" }, { 8, "사립 엘리트 고등학생" } };
+        // 원작 직업 이름: 원작 직업 화면에서 읽은 것(Core.Orig.OrigJobs). 모르는 번호는 "직업 #번호"
+        static readonly Dictionary<int, string> KnownJobs = Core.Orig.OrigJobs.Names;
 
         void OpenSetupStart()
         {
@@ -475,8 +475,22 @@ namespace SennenKazoku.Game
             }
             var rs = UiKit.Btn(body, "abr", "다시", Px(13), new Color32(0x10, 0x4E, 0x6E, 255), Color.white, () => { m.AbilityRank = new[] { 0, 0, 0, 0 }; redraw(); });
             UiKit.SetPx(rs.GetComponent<RectTransform>(), w - Px(64), y, Px(64), rh); y += rh + Px(6);
-            string jn; KnownJobs.TryGetValue(m.Job, out jn);
-            Stepper(body, "직업", "코드 " + m.Job + (jn != null ? " " + jn : ""), 0, y, w, rh, k => { m.Job = Wrap(m.Job + k, 172); redraw(); }); y += rh + Px(8);
+            if (OrigAvailable() && LoadOrig())
+            {
+                // 원작 직업 화면: 나이·성별·관계로 원작 후보 목록(0x081114CC)을 만들고 그중에서 고른다
+                List<int> cand;
+                try { cand = Core.Orig.OrigJobs.Candidates(origRules, setup.StartDay, m.BirthDay, m.Gender, Core.Orig.OrigJobs.Relation(m.Role, m.Gender)); }
+                catch (Exception) { cand = new List<int>(); }
+                if (cand.Count > 0 && !cand.Contains(m.Job)) m.Job = cand[0];
+                int ci = Math.Max(0, cand.IndexOf(m.Job));
+                Stepper(body, "직업", cand.Count == 0 ? "-" : Core.Orig.OrigJobs.Name(m.Job) + "  (" + (ci + 1) + "/" + cand.Count + ")", 0, y, w, rh,
+                    k => { if (cand.Count > 0) { m.Job = cand[Wrap(ci + k, cand.Count)]; redraw(); } }); y += rh + Px(8);
+            }
+            else
+            {
+                string jn; KnownJobs.TryGetValue(m.Job, out jn);
+                Stepper(body, "직업", "코드 " + m.Job + (jn != null ? " " + jn : ""), 0, y, w, rh, k => { m.Job = Wrap(m.Job + k, 172); redraw(); }); y += rh + Px(8);
+            }
             NextBtn(body, y, "결정", () =>
             {
                 if (m.Name.Length == 0) { Toast("이름을 입력해 줘"); return; }
@@ -502,6 +516,17 @@ namespace SennenKazoku.Game
         {
             var err = setup.Validate();
             if (err.Count > 0) { Toast(err[0]); OpenMemberInfo(0); return; }
+            if (OrigAvailable() && LoadOrig())
+            {
+                // 원작 "내가 아는 가족" 경로: 원작 마무리·입력 확인·가족 레코드 만들기(능력치도 원작이 정한다)
+                try
+                {
+                    session = Core.Orig.OrigSession.NewCustom(origRules, origText, setup, (uint)DateTime.UtcNow.Ticks);
+                    var name = session.Family.Name; setup = null; EnterGame(); Toast("이제 모두 끝! " + name + "가를 지켜보자 (원작 규칙)");
+                }
+                catch (Exception e) { Toast("원작 가족 만들기 실패: " + e.Message); }
+                return;
+            }
             var f = setup.Build((ulong)DateTime.UtcNow.Ticks);
             session = new GameSession(f, catalog); setup = null; EnterGame(); Toast("이제 모두 끝! " + f.Name + "을(를) 지켜보자");
         }
@@ -1008,6 +1033,7 @@ namespace SennenKazoku.Game
             var fig = UiKit.Box(body, "fig", Color.white, Figure(p, false, 0) ?? UiKit.Circle); fig.preserveAspect = true;
             UiKit.SetPx(fig.rectTransform, 0, 0, Px(96), Px(150));
             var age = UiKit.Label(body, "age", p.Age(f.Today) + "세", Px(16), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold); UiKit.SetPx(age.rectTransform, 0, Px(150), Px(96), Px(24));
+            var job = UiKit.Label(body, "job", Core.Orig.OrigJobs.Name(p.Job), Px(12), UiKit.Ink, TextAnchor.MiddleCenter); UiKit.SetPx(job.rectTransform, 0, Px(174), Px(96), Px(22));
             float x = Px(106), cw = w - x;
             Line(body, "꿈", string.IsNullOrEmpty(p.Dream) ? "지금은 없어…" : p.Dream, x, 0, cw);
             Line(body, "화살", (p.ArrowFlags & 1) == 0 || string.IsNullOrEmpty(p.ArrowId) ? "맞은 화살 없음" : Interventions.Find(p.ArrowId).Name + " (지금 관심사가 끝날 때까지)", x, Px(34), cw);

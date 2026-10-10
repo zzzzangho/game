@@ -800,6 +800,63 @@ namespace SennenKazoku.Tests
                     T.True(Convert.ToBase64String(s.Game.Mem.SaveBlock()) == Convert.ToBase64String(s2.Game.Mem.SaveBlock()), "60일 뒤 원작 메모리가 다름");
                     Console.WriteLine("       저장·불러오기 뒤 60일 사건 " + a.Count + "개 같음, 원작 메모리 같음");
                 });
+            if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "custom_create.ram")))
+                T.Run("원작 내가 아는 가족: 입력값 → 설정 블록이 실기(가족 레코드 만들기 직전)와 같음 (로컬)", () =>
+                {
+                    var rules = SennenKazoku.Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(origDir, "orig_rules.json")))));
+                    rules.TreesText = File.ReadAllBytes(Path.Combine(origDir, rules.TreesFile));
+                    var want = File.ReadAllBytes(Path.Combine(origDir, "custom_create.ram"));
+                    var m = new SennenKazoku.Core.Orig.OrigMem(); var vm = rules.CreateVm(m);
+                    SennenKazoku.Core.Orig.OrigNewGame.BlankCartridge(vm); SennenKazoku.Core.Orig.OrigNewGame.TitleNewGame(vm);
+                    // 실기 입력: 아버지·어머니 1986-01-01 A형 내향적 능력 순위 지·체·매·운 직업 첫 번째 체격 첫 번째, 아들 2004-01-01
+                    uint S0 = SennenKazoku.Core.Orig.OrigNewGame.Setup, M0 = SennenKazoku.Core.Orig.OrigNewGame.Members, MS = SennenKazoku.Core.Orig.OrigNewGame.MemberSize;
+                    byte[] Bytes(uint a, int n) { var b = new byte[n]; Array.Copy(want, (int)(a - 0x02000000), b, 0, n); return b; }
+                    var ms = new List<SennenKazoku.Core.Orig.OrigNewGame.CustomMember>();
+                    int[] slots = { 2, 3, 4 }; int[] years = { 1986, 1986, 2004 };
+                    for (int k = 0; k < 3; k++)
+                        ms.Add(new SennenKazoku.Core.Orig.OrigNewGame.CustomMember { Slot = slots[k], Year = years[k], Name = Bytes(M0 + MS * (uint)k + 0x0E, 14), Look = Bytes(M0 + MS * (uint)k + 0x30, 16) });
+                    SennenKazoku.Core.Orig.OrigNewGame.Custom(vm, 2005, 1, 1, ms, false);
+                    int diff = 0; var sb = new System.Text.StringBuilder();
+                    void Cmp(uint a, int n, string tag)
+                    {
+                        for (int i = 0; i < n; i++)
+                        {
+                            uint got = m.R8(a + (uint)i), w = want[a - 0x02000000 + i];
+                            if (got != w) { diff++; if (diff <= 30) sb.Append(" " + tag + "+" + i.ToString("X") + ":" + w.ToString("X2") + "/" + got.ToString("X2")); }
+                        }
+                    }
+                    Cmp(S0, 0x44, "머리");
+                    for (int k = 0; k < 3; k++) Cmp(M0 + MS * (uint)k, (int)MS, "m" + k);
+                    Console.WriteLine("       설정 블록 다른 바이트 " + diff + " (실기/C#)" + sb);
+                    T.True(diff == 0, "설정 블록이 실기와 다름");
+                    // 앱 입력(FamilySetup) → OrigSession.NewCustom 이 같은 사람들(생일·성별·직업·능력치)을 만드는지: 실기 덤프 위 원작 만들기 결과와 비교
+                    var fsu = new FamilySetup { StartDay = GameDate.Make(2005, 1, 1), Surname = "김" };
+                    var fa = fsu.Add(FamilyRole.Father); fa.Name = "민준"; fa.BirthDay = GameDate.Make(1986, 1, 1); fa.Blood = "A"; fa.Personality = 0; fa.Job = 21;
+                    var mo = fsu.Add(FamilyRole.Mother); mo.Name = "지우"; mo.BirthDay = GameDate.Make(1986, 1, 1); mo.Blood = "A"; mo.Personality = 0; mo.Job = 21;
+                    var so = fsu.Add(FamilyRole.Child, 0); so.Name = "서준"; so.BirthDay = GameDate.Make(2004, 1, 1); so.Blood = "A"; so.Personality = 0; so.Job = 1;
+                    Console.WriteLine("       직업 후보(아버지): " + string.Join(", ", SennenKazoku.Core.Orig.OrigJobs.Candidates(rules, fsu.StartDay, fa.BirthDay, 0, 2).ConvertAll(SennenKazoku.Core.Orig.OrigJobs.Name)));
+                    var cs = SennenKazoku.Core.Orig.OrigSession.NewCustom(rules, null, fsu, 0x1234);
+                    var mref = new SennenKazoku.Core.Orig.OrigMem(); Array.Copy(want, mref.Ewram, 0x40000);
+                    rules.CreateVm(mref).Call("080417E0", S0);
+                    int pd = 0;
+                    for (int n = 0; n < 3; n++)
+                    {
+                        uint a = SennenKazoku.Core.Orig.OrigMem.PersonAddr(n);
+                        // 능력치(+0x50~)는 만들기 때 난수가 섞인다(난수 상태가 실기 진행과 달라 다름) — 정해지는 값만 비교
+                        foreach (uint off in new uint[] { 0x2E, 0x2F, 0x30, 0x31, 0x3C, 0x58, 0x59, 0x5A, 0x5B })
+                            if (cs.Game.Mem.R8(a + off) != mref.R8(a + off)) { pd++; Console.WriteLine("         레코드" + n + " +" + off.ToString("X") + " 원작 " + mref.R8(a + off) + " / 앱 " + cs.Game.Mem.R8(a + off)); }
+                    }
+                    Console.WriteLine("       앱 입력 → 원작 경로: " + string.Join(", ", cs.Family.Members.ConvertAll(p => p.Name + " " + SennenKazoku.Core.Orig.OrigJobs.Name(p.Job) + " 능력 " + string.Join("/", p.Stats))) + " — 실기 만들기와 다른 바이트 " + pd);
+                    T.True(pd == 0, "앱 입력으로 만든 가족이 실기와 다름");
+                    // 가족 레코드 만들기: 실기 덤프(만들기 직전) 위에서 C# 로 0x080417E0 을 돌려 저장 영역을 남긴다 → romlift 로 원작 실행과 비교
+                    var dump = Environment.GetEnvironmentVariable("SK_CUSTOM_OUT");
+                    if (!string.IsNullOrEmpty(dump))
+                    {
+                        var m2 = new SennenKazoku.Core.Orig.OrigMem(); Array.Copy(want, m2.Ewram, 0x40000);
+                        var vm2 = rules.CreateVm(m2); vm2.Call("080417E0", S0);
+                        File.WriteAllBytes(dump, m2.Ewram);
+                    }
+                });
             var years = Environment.GetEnvironmentVariable("SK_ORIG_YEARS");
             if (!string.IsNullOrEmpty(origDir) && !string.IsNullOrEmpty(years))
                 T.Run("원작 코드로 새 가족 장기 진행 (로컬)", () =>

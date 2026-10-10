@@ -56,6 +56,58 @@ namespace SennenKazoku.Core.Orig
             return s;
         }
 
+        /// <summary>
+        /// 원작 "내가 아는 가족" 경로로 새로 시작 (OrigNewGame.Custom). 앱 입력 화면의 값(구성·생일·혈액형·성격·능력 순위·직업)을 원작 입력 화면과 같은 형식으로 넣는다.
+        /// 능력치 등은 원작 가족 레코드 만들기가 정한다. 입력한 이름은 표시 이름(OrigNames)으로 쓴다.
+        /// 체격·외형 바이트는 원작 기본값(화면 외형은 앱의 Look) — 규칙 판정에는 쓰이지 않는 값이다.
+        /// </summary>
+        public static OrigSession NewCustom(OrigRules rules, OrigText text, FamilySetup setup, uint seed)
+        {
+            var ordered = new List<MemberSetup>(); var slots = new List<int>();
+            int child = 4;
+            foreach (var r in new[] { FamilyRole.Grandfather, FamilyRole.Grandmother, FamilyRole.Father, FamilyRole.Mother })
+                foreach (var ms in setup.Members) if (ms.Role == r) { ordered.Add(ms); slots.Add((int)r); }
+            foreach (var ms in setup.Members) if (ms.Role == FamilyRole.Child && child < 8) { ordered.Add(ms); slots.Add(child++); }
+            var cms = new List<OrigNewGame.CustomMember>();
+            for (int k = 0; k < ordered.Count; k++)
+            {
+                var ms = ordered[k];
+                var c = new OrigNewGame.CustomMember
+                {
+                    Slot = slots[k], Daughter = ms.Gender == 1, Year = GameDate.Year(ms.BirthDay), Month = GameDate.Month(ms.BirthDay), Day = GameDate.Day(ms.BirthDay),
+                    Blood = Math.Max(0, Array.IndexOf(MemberSetup.Bloods, ms.Blood)), Personality = ms.Personality
+                };
+                for (int st = 0; st < 4; st++) { int rk = ms.AbilityRank[st]; if (rk >= 1 && rk <= 4) c.RankStats[rk - 1] = st; }
+                // 외형 바이트: 원작 캐릭터 화면은 목록을 그때그때 무작위로 만든다(0x08048B4C). 여기서는 실기 캐릭터 화면이 만든 한 예를 성별로 쓴다.
+                // (규칙 판정 속성 49종은 이 바이트를 읽지 않는다. 6세 이하 아이는 원작처럼 부모 외형에서 만든다(0x08049AF0).)
+                c.Look = (byte[])(ms.Gender == 1 ? DefaultLookF : DefaultLookM).Clone();
+                var cand = OrigJobs.Candidates(rules, setup.StartDay, ms.BirthDay, ms.Gender, OrigJobs.Relation(ms.Role, ms.Gender));
+                c.JobChoice = Math.Max(0, cand.IndexOf(ms.Job));
+                cms.Add(c);
+            }
+            var m = new OrigMem(); var vm = rules.CreateVm(m);
+            OrigNewGame.BlankCartridge(vm);
+            OrigNewGame.TitleNewGame(vm);
+            m.W32(OrigMem.Seed, seed);
+            OrigNewGame.Custom(vm, GameDate.Year(setup.StartDay), GameDate.Month(setup.StartDay), GameDate.Day(setup.StartDay), cms);
+            string surname = string.IsNullOrEmpty(setup.Surname) ? Surnames[(int)(seed % (uint)Surnames.Length)] : setup.Surname;
+            var f = new Family { Name = surname };
+            // 원작 가족 레코드 만들기는 설정 블록 순서대로 레코드를 만든다 → n 번째 레코드 = n 번째 구성원
+            for (int n = 0; n < ordered.Count && n < 8; n++)
+                if (OrigGame.Present(m, n) && !string.IsNullOrEmpty(ordered[n].Name)) f.OrigNames[(int)m.R16(OrigMem.PersonAddr(n) + 0x3C)] = ordered[n].Name;
+            var s = new OrigSession(rules, text, f, m);
+            for (int n = 0; n < ordered.Count && n < s.Family.Members.Count; n++)
+            {
+                var p = s.Family.Get((int)m.R16(OrigMem.PersonAddr(n) + 0x3C));
+                if (p != null && ordered[n].Look != null) p.Look = ordered[n].Look.Clone();
+            }
+            s.PrepareSave();
+            return s;
+        }
+
+        static readonly byte[] DefaultLookM = { 0x00, 0x43, 0x22, 0x00, 0x00, 0x05, 0x43, 0x01, 0x00, 0x02, 0x03, 0, 0, 0, 0, 0 };
+        static readonly byte[] DefaultLookF = { 0x0E, 0x12, 0x12, 0x00, 0x12, 0x22, 0x12, 0x0F, 0x00, 0x02, 0x03, 0, 0, 0, 0, 0 };
+
         /// <summary>저장한 원작 가족 이어 하기 (Family.OrigState).</summary>
         public static OrigSession Load(OrigRules rules, OrigText text, Family f)
         {

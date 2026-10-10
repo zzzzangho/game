@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 namespace SennenKazoku.Core.Orig
 {
     /// <summary>
@@ -62,6 +64,78 @@ namespace SennenKazoku.Core.Orig
             // +0xD34A: 장면 시작에서 1, 확인 화면에서 결정하면 0. 0 이 아니면 0x080417E0 은 가족을 만들지 않고 끝부분(0x080423F2)으로 간다.
             m.W8(Setup + 0xD34A, 0);
             vm.Call("080417E0", Setup);
+        }
+
+        /// <summary>"내가 아는 가족" 구성원 입력 (원작 입력 화면 순서: 이름 → 생일 → 혈액형 → 성격 → 능력 순위 → 직업 → 체격·캐릭터).</summary>
+        public sealed class CustomMember
+        {
+            /// <summary>구성 칸: 0 할아버지 · 1 할머니 · 2 아버지 · 3 어머니 · 4~7 자녀 칸.</summary>
+            public int Slot;
+            public bool Daughter;                    // 자녀 칸만
+            public int Year, Month = 1, Day = 1;
+            public int Blood;                        // 0 A · 1 B · 2 O · 3 AB · 4 ? (원작 선택지 순서)
+            public int Personality;                  // 0 내향적 · 1 보통 · 2 외향적 (원작 선택지 순서)
+            public int[] RankStats = { 0, 1, 2, 3 }; // 1~4번째로 높은 능력: 0 지력 · 1 체력 · 2 매력 · 3 운
+            public int JobChoice;                    // 원작 직업 후보 목록(0x081114CC)에서 고른 번호
+            public int Body;                         // 체격: 0 마름 · 1 보통 · 2 큼 (아이는 원작이 고르지 않음)
+            public byte[] Name;                      // 원작 이름 글자(14바이트, 없으면 빈 이름) — 앱은 한국식 표시 이름을 따로 쓴다
+            public byte[] Look;                      // 레코드 앞 16바이트 외형(+0x30~+0x3F). 없으면 마무리 기본값 그대로
+        }
+
+        /// <summary>
+        /// 원작 "내가 아는 가족" 경로 (실기 측정: 구성 화면 → 구성 확인(0x0802CA1C/0x0802CAF8 = Confirm) → 마무리 0x0802D7A0(+0xD340 = 0,
+        /// 역할 번호·성별·기본값) → 구성원마다 입력 화면(능력 순위 +0x55~, 직업 후보 0x081114CC → +0x59, 확인 0x08037344, 체격 +0x48, 캐릭터 +0x30~, 완료 +0x4C)
+        /// → 가족 레코드 만들기 0x080417E0). 입력 확인 0x08037344 는 원작 함수(변환 트리)를 그대로 부른다(임시 입력 구조체를 원작과 같은 배치로 만든다).
+        /// </summary>
+        public static void Custom(OrigVm vm, int year, int month, int day, IList<CustomMember> members, bool create = true)
+        {
+            var m = vm.Mem;
+            OrigDate.Set(m, 0x0202C688, year, month, day);
+            Init(m, year, month, day);
+            uint mask = 0;
+            foreach (var c in members)
+            {
+                mask |= 1u << c.Slot;
+                if (c.Slot >= 4) m.W8(Setup + 0x1C + (uint)(c.Slot - 4), c.Daughter ? 1u : 0u);
+            }
+            m.W8(Setup + 0x28, mask);
+            Confirm(m);
+            m.W32(SceneObj, Setup); m.W8(SceneObj + 0x11, 0);
+            m.W32(Setup + 0xD340, 0);
+            vm.Call("0802D7A0", SceneObj);
+            // 구성원 순서 = 구성 비트 순서
+            var order = new List<CustomMember>(members); order.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+            const uint Temp = 0x0F000400, Done = 0x0F000380, DateTmp = 0x0F000390;
+            m.W32(Done, 0);
+            for (int k = 0; k < order.Count; k++)
+            {
+                var c = order[k]; uint mem = Members + (uint)k * MemberSize;
+                for (uint i = 0; i < 4; i++) m.W8(mem + 0x55 + i, (uint)c.RankStats[i]);
+                // 나이 = 0x08095D3C(생일, 시작 날짜) — 입력 화면이 직업 후보를 만들 때 쓰는 값
+                m.W16(DateTmp, (uint)c.Year); m.W8(DateTmp + 2, (uint)c.Month); m.W8(DateTmp + 3, (uint)c.Day);
+                uint age = vm.Call("08095D3C", DateTmp, Setup) & 0xFF;
+                uint gender = m.R8(mem + 0x20);
+                // 직업 화면(0x08036EB6~): 관계 코드(+0x4D)가 0·1·2·4(조부모·부모)면 후보 종류 0x14, 아니면(자녀) 0x24
+                uint rel = m.R8(mem + 0x4D);
+                vm.Call("081114CC", mem + 0x5C, age, gender, rel == 0 || rel == 1 || rel == 2 || rel == 4 ? 0x14u : 0x24u);
+                uint n = m.R8(mem + 0x5C); int pick = Math.Max(0, Math.Min(c.JobChoice, (int)n - 1));
+                m.W8(mem + 0x59, (uint)pick);
+                uint job = m.R8(mem + 0x60 + 4 * (uint)pick);
+                // 입력 확인 0x08037344 의 임시 구조체 (원작 0x0200F254 와 같은 배치)
+                for (uint i = 0; i < 0xC70; i += 4) m.W32(Temp + i, 0);
+                m.W32(Temp, Setup); m.W32(Temp + 0x14, Done); m.W32(Temp + 0x18, mem);
+                m.W16(Temp + 0x1C, (uint)c.Year); m.W16(Temp + 0x1E, (uint)c.Month); m.W16(Temp + 0x20, (uint)c.Day);
+                m.W16(Temp + 0x24, age); m.W16(Temp + 0x26, age); m.W8(Temp + 0x28, gender);
+                m.W8(Temp + 0x29, (uint)c.Blood); m.W8(Temp + 0x2A, (uint)c.Personality); m.W8(Temp + 0x2B, job);
+                for (uint i = 0; i < 14; i++) m.W8(Temp + 0xC5C + i, c.Name != null && i < c.Name.Length ? c.Name[i] : 0u);
+                m.W32(Setup + 0xD358, (uint)k);
+                vm.Call("08037344", Temp);
+                if (age > 6) m.W8(mem + 0x48, (uint)c.Body);
+                if (c.Look != null) for (uint i = 0; i < 16 && i < c.Look.Length; i++) m.W8(mem + 0x30 + i, c.Look[i]);
+                m.W8(mem + 0x4C, 1);
+            }
+            m.W8(Setup + 0xD34A, 0);
+            if (create) vm.Call("080417E0", Setup);
         }
 
         /// <summary>장면 시작 0x0804134C 의 데이터 부분: 설정 블록을 0xFF 로 채우고(0x08049CC8, 0x08049C20) 시작 날짜를 넣는다.</summary>
