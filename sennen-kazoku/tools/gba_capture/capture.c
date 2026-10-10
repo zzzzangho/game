@@ -23,7 +23,17 @@ static void quiet(struct mLogger* l, int cat, enum mLogLevel lv, const char* fmt
 /* ---- 쓰기 감시점: 원작 코드가 특정 RAM 을 쓰는 순간의 PC·LR·값 기록 (규칙 역분석용) ---- */
 static FILE* g_wlog; static struct mCore* g_core;
 static void bp_log(void);
+/* bpload: 중단점 주소에 처음 닿을 때 파일을 메모리에 쓴다 (한 번만) */
+static unsigned g_bpl_addr, g_bpl_mem; static char g_bpl_file[512]; static int g_bpl_done = 1;
+static void bp_load(void) {
+    uint32_t pc = 0; g_core->readRegister(g_core, "pc", &pc);
+    if (g_bpl_done || pc < g_bpl_addr || pc > g_bpl_addr + 4) return;
+    FILE* f = fopen(g_bpl_file, "rb"); long cnt = 0; int ch;
+    if (f) { while ((ch = fgetc(f)) != EOF) { g_core->busWrite8(g_core, g_bpl_mem + (unsigned)cnt, (uint8_t)ch); cnt++; } fclose(f); }
+    g_bpl_done = 1; printf("bpload @%ld %08x %ld\n", g_frame, g_bpl_mem, cnt);
+}
 static void wp_entered(struct mDebugger* d, enum mDebuggerEntryReason r, struct mDebuggerEntryInfo* info) {
+    if (r == DEBUGGER_ENTER_BREAKPOINT) bp_load();
     if (g_wlog && r == DEBUGGER_ENTER_BREAKPOINT) bp_log();
     if (g_wlog && info && r == DEBUGGER_ENTER_WATCHPOINT) {
         uint32_t pc = 0, lr = 0; g_core->readRegister(g_core, "pc", &pc); g_core->readRegister(g_core, "lr", &lr);
@@ -188,6 +198,15 @@ int main(int argc, char** argv) {
                 for (int k = 0; k < 240 * 160; k++) { unsigned q = pix[k]; unsigned char rgb[3] = { q & 0xFF, (q >> 8) & 0xFF, (q >> 16) & 0xFF }; fwrite(rgb, 1, 3, f); }
                 fclose(f);
             }
+        } else if (!strcmp(cmd, "bpload")) {   /* bpload <중단점 주소> <메모리 주소> <파일> : 그 주소에 처음 닿을 때 파일을 메모리에 쓴다 (장면이 만들어지기 직전에 상태 심기) */
+            unsigned addr = 0, mem = 0; if (sscanf(line, "%*s %i %i %199s", &addr, &mem, arg) != 3) continue;
+            if (!g_dbg.platform) {
+                memset(&g_dbg, 0, sizeof g_dbg); g_dbg.entered = wp_entered; g_dbg.paused = wp_paused; g_core = c;
+                mDebuggerAttach(&g_dbg, c); g_dbg.state = DEBUGGER_RUNNING;
+            }
+            snprintf(g_bpl_file, sizeof g_bpl_file, "%s/%s", argv[2], arg); g_bpl_addr = addr & ~1u; g_bpl_mem = mem; g_bpl_done = 0;
+            struct mBreakpoint bp; memset(&bp, 0, sizeof bp); bp.address = addr & ~1u; bp.segment = -1; bp.type = BREAKPOINT_HARDWARE;
+            g_dbg.platform->setBreakpoint(g_dbg.platform, &bp);
         } else if (!strcmp(cmd, "memload")) {   /* memload <주소> <파일> : 파일(출력 폴더 기준) 바이트를 그 주소부터 메모리에 쓴다 (C# 진행 상태 옮겨 심기) */
             unsigned addr = 0; if (sscanf(line, "%*s %i %199s", &addr, arg) != 2) continue;
             char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); FILE* f = fopen(p, "rb"); long cnt = 0; int ch;
