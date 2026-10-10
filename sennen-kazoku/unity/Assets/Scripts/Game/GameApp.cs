@@ -106,7 +106,7 @@ namespace SennenKazoku.Game
             if (!LoadOrig()) { Toast("원작 팩을 불러오지 못했습니다"); return; }
             try
             {
-                session = Core.Orig.OrigSession.NewRecommended(origRules, origText, "", (uint)DateTime.UtcNow.Ticks);
+                session = Core.Orig.OrigSession.NewRecommended(origRules, origText, "", OrigSeed());
                 EnterGame(); Toast("원작 규칙으로 시작합니다 (신님이 추천하는 가족)");
             }
             catch (Exception e) { Toast("원작 진행 시작 실패: " + e.Message); session = null; }
@@ -318,8 +318,13 @@ namespace SennenKazoku.Game
         }
 
         // =============================================================== 타이틀
+        float titleAt;
+        /// <summary>원작 난수 시작값 (OrigSession.BootSeed): 부팅 주사선 대신 시각, 타이틀에서 돈 횟수 대신 타이틀에 머문 프레임 수(60/초).</summary>
+        uint OrigSeed() { return Core.Orig.OrigSession.BootSeed((uint)(DateTime.UtcNow.Ticks % 228), (uint)Mathf.Max(0f, (Time.realtimeSinceStartup - titleAt) * 60f)); }
+
         void ShowTitle()
         {
+            titleAt = Time.realtimeSinceStartup;
             playing = false; popupOpen = false; ClearPopup();
             gameRoot.gameObject.SetActive(false); titleRoot.gameObject.SetActive(true); Clear(titleRoot);
             if (lay == null) return;
@@ -521,7 +526,7 @@ namespace SennenKazoku.Game
                 // 원작 "내가 아는 가족" 경로: 원작 마무리·입력 확인·가족 레코드 만들기(능력치도 원작이 정한다)
                 try
                 {
-                    session = Core.Orig.OrigSession.NewCustom(origRules, origText, setup, (uint)DateTime.UtcNow.Ticks);
+                    session = Core.Orig.OrigSession.NewCustom(origRules, origText, setup, OrigSeed());
                     var name = session.Family.Name; setup = null; EnterGame(); Toast("이제 모두 끝! " + name + "가를 지켜보자 (원작 규칙)");
                 }
                 catch (Exception e) { Toast("원작 가족 만들기 실패: " + e.Message); }

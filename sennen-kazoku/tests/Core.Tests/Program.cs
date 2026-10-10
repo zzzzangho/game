@@ -404,6 +404,9 @@ namespace SennenKazoku.Tests
             });
             T.Run("원작 난수기: seed×0x6D+0x3FD (ROM 0x08000614)", () => {
                 var r = new Rng(1); T.Eq(r.NextU32(), 1u * 0x6Du + 0x3FDu); T.Eq(r.NextU32(), unchecked((1u * 0x6Du + 0x3FDu) * 0x6Du + 0x3FDu));
+                // 부팅 씨앗 = VCOUNT × 0xAD (0x080089DC, 실기 감시: 4498 = 26×173 → 다음 값 491303 → 53553048)
+                T.Eq(SennenKazoku.Core.Orig.OrigSession.BootSeed(26, 0), 4498u); T.Eq(SennenKazoku.Core.Orig.OrigSession.BootSeed(26, 1), 491303u);
+                T.Eq(SennenKazoku.Core.Orig.OrigSession.BootSeed(26, 2), 53553048u);
             });
             T.Run("원작 열중 게이지 하루 규칙 (ROM 0x08027E78 해독)", () => {
                 T.Eq(GameSession.ThresholdDays(0, 2), 11); T.Eq(GameSession.ThresholdDays(1, 0), 11);

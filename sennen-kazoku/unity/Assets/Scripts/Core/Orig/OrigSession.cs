@@ -41,7 +41,19 @@ namespace SennenKazoku.Core.Orig
             Project();
         }
 
-        /// <summary>원작 "신이 추천하는 가족"으로 새로 시작. seed = 원작 난수(0x02000000) 시작값(원작이 정하는 방법은 미해독 — 앱이 정한다).</summary>
+        /// <summary>
+        /// 원작 난수 시작값: 부팅 때 0x080089DC 가 VCOUNT(0x04000006, 그 순간의 주사선 0~227) × 0xAD 를 0x02000000 에 넣고(실측 26×173 = 4498),
+        /// 그 뒤 타이틀·인트로 화면이 매 프레임 난수를 여러 번 돌린다(0x080BE6A6 등) — 그래서 새 게임 때의 값은 누르는 시점에 따라 달라진다.
+        /// 앱: vcount 는 앱이 고르고, 타이틀 화면에서 돈 횟수는 앱이 넘겨준 수(타이틀에 머문 프레임 수 등)로 대신한다(원작 타이틀 화면의 호출 횟수는 옮기지 않음).
+        /// </summary>
+        public static uint BootSeed(uint vcount, uint titleSteps)
+        {
+            uint s = (vcount % 228) * 0xADu;
+            for (uint i = 0; i < titleSteps; i++) s = unchecked(s * 0x6Du + 0x3FDu);
+            return s;
+        }
+
+        /// <summary>원작 "신이 추천하는 가족"으로 새로 시작. seed = 원작 난수(0x02000000) 값(BootSeed).</summary>
         public static OrigSession NewRecommended(OrigRules rules, OrigText text, string surname, uint seed, int year = 2005, int month = 1, int day = 1)
         {
             var m = new OrigMem(); var vm = rules.CreateVm(m);
