@@ -188,6 +188,11 @@ int main(int argc, char** argv) {
                 for (int k = 0; k < 240 * 160; k++) { unsigned q = pix[k]; unsigned char rgb[3] = { q & 0xFF, (q >> 8) & 0xFF, (q >> 16) & 0xFF }; fwrite(rgb, 1, 3, f); }
                 fclose(f);
             }
+        } else if (!strcmp(cmd, "memload")) {   /* memload <주소> <파일> : 파일(출력 폴더 기준) 바이트를 그 주소부터 메모리에 쓴다 (C# 진행 상태 옮겨 심기) */
+            unsigned addr = 0; if (sscanf(line, "%*s %i %199s", &addr, arg) != 2) continue;
+            char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); FILE* f = fopen(p, "rb"); long cnt = 0; int ch;
+            if (f) { while ((ch = fgetc(f)) != EOF) { c->busWrite8(c, addr + (unsigned)cnt, (uint8_t)ch); cnt++; } fclose(f); }
+            printf("memload %08x %ld\n", addr, cnt);
         } else if (!strcmp(cmd, "poke8")) {   /* poke8 <주소> <값> */
             unsigned addr, val; if (sscanf(line, "%*s %i %i", &addr, &val) == 2) c->busWrite8(c, addr, (uint8_t)val);
         } else if (!strcmp(cmd, "savepoke")) {   /* savepoke <세이브 오프셋> <값> : 세이브(플래시) 데이터 직접 수정 */

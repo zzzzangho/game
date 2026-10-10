@@ -1083,6 +1083,30 @@ namespace SennenKazoku.Tests
                         T.Eq(string.Join(" ", hv.Trace.ConvertAll(x => x.ToString("X"))), want, "천계 상태 차례");
                         if (text.Heaven.Ok) T.True(hv.Pages.Exists(x => x.MsgId == 371) && hv.Pages.Exists(x => x.MsgId == 400) && hv.Pages.Exists(x => x.MsgId == 403) && hv.Pages.Exists(x => x.MsgId == 481) && hv.Pages.Exists(x => x.MsgId == 435), "천계 대사");
                     }
+                    var wdump = Environment.GetEnvironmentVariable("SK_WEDDING_DUMP");
+                    if (!string.IsNullOrEmpty(wdump))
+                    {   // 실기 확인용(로컬): 천계 보고가 처음 도는 날(결혼식)까지 진행하고, 그 며칠 전의 저장 영역(0x0202C010~)을 파일로 남긴다.
+                        // 결혼식은 날짜로 예약되는 사건이라 이 상태를 실기 저장 상태에 심으면(capture memload) 원작이 같은 날 결혼식 → 천계 보고를 돈다.
+                        var ws = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x4321); var wm = ws.Game.Mem;
+                        var ring = new Queue<byte[]>(); var dates = new Queue<string>();
+                        for (int d = 0; d < 365 * 80 && !ws.LineageEnded; d++)
+                        {
+                            ring.Enqueue(wm.SaveBlock()); dates.Enqueue(GameDate.Format(ws.Family.Today)); if (ring.Count > 4) { ring.Dequeue(); dates.Dequeue(); }
+                            var hv0 = ws.LastHeaven;
+                            ws.StepDay(); while (ws.Paused) { ws.View(); ws.Advance(); }
+                            if (ws.LastHeaven != hv0)
+                            {
+                                Directory.CreateDirectory(wdump);
+                                File.WriteAllBytes(Path.Combine(wdump, "pre_wedding.bin"), ring.Peek());
+                                File.WriteAllLines(Path.Combine(wdump, "pre_wedding.txt"), new[] { "저장 영역 날짜 " + dates.Peek() + " (다음 날부터 진행)", "결혼식 날 " + GameDate.Format(ws.Family.Today),
+                                    "천계 상태 " + string.Join(" ", ws.LastHeaven.Trace.ConvertAll(x => x.ToString("X"))),
+                                    "천계 글 " + string.Join(",", ws.LastHeaven.Pages.ConvertAll(x => x.MsgId)) });
+                                foreach (var pg in ws.LastHeaven.Pages) File.AppendAllText(Path.Combine(wdump, "pre_wedding.txt"), (pg.Speaker == 1 ? "신: " : pg.Speaker == 2 ? "큐: " : "화면: ") + pg.Text.Replace("\n", " / ") + "\n");
+                                Console.WriteLine("       결혼식 전 상태 저장: " + dates.Peek() + " → 결혼식 " + GameDate.Format(ws.Family.Today));
+                                break;
+                            }
+                        }
+                    }
                     if (Environment.GetEnvironmentVariable("SK_LONG") != null)
                     {   // 장기(환경변수 SK_LONG): 300년 동안 세대 기록 수·몸통 세트·시간의 책갈피 변화
                         var ls = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x4321); var lm = ls.Game.Mem;
