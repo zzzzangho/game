@@ -22,7 +22,7 @@ namespace SennenKazoku.Core
 
         /// <summary>
         /// 원작 0x080972EC: 나이 구분(0x08097398) 3 = 7~12세 → Hdr0 아래 4비트 · 4 = 13~34세 → Hdr0 위 4비트 ·
-        /// 5 = 35~60세 → Hdr1 아래 4비트 · 6 = 61세~ → Hdr1 위 4비트(= 마지막 칸). 0~2(6세 이하)는 원작이 다른 길로 그려 아직 모름 → 0번 칸.
+        /// 5 = 35~60세 → Hdr1 아래 4비트 · 6 = 61세~ → Hdr1 위 4비트(= 마지막 칸). 0~2(6세 이하)는 통째 그림("child", CharacterComposer.Compose) — 그림이 없을 때만 0번 칸.
         /// </summary>
         public PartImage AtClass(int cls, int fallback)
         {
@@ -136,6 +136,8 @@ namespace SennenKazoku.Core
         public string Preset = "";            // 원작 갤러리 프리셋 id (예: father_07)
         /// <summary>사건 옷 몸통 번호(원작 몸통 자원 24~83, CharacterComposer.EventOutfitBody). −1 = 자기 몸통. 저장하지 않는다(장면마다 정함).</summary>
         public int OutfitBody = -1;
+        /// <summary>성별(0 남 · 1 여, −1 = 몸통 번호로). 6세 이하 그림은 몸통이 아니라 이것으로 고른다(원작 레코드 +0x31).</summary>
+        public int Gender = -1;
         public int[] PresetPalette;           // 갤러리 캡처에서 읽은 프리셋 고유 색(BGR555, -1 = 없음)
 
         public CharacterLook Clone()
@@ -150,7 +152,7 @@ namespace SennenKazoku.Core
             return new Dictionary<string, object> {
                 {"body", Body}, {"face", Face}, {"hair", Hair}, {"eyes", Eyes}, {"nose", Nose}, {"mouth", Mouth},
                 {"eyesFlip", EyesFlip}, {"noseFlip", NoseFlip}, {"mouthFlip", MouthFlip},
-                {"hairColor", HairColor}, {"skinColor", SkinColor}, {"outfit", Outfit}, {"outfitColor", OutfitColor}, {"preset", Preset},
+                {"hairColor", HairColor}, {"skinColor", SkinColor}, {"outfit", Outfit}, {"outfitColor", OutfitColor}, {"preset", Preset}, {"gender", Gender},
                 {"palette", PresetPalette == null ? null : new List<object>(Array.ConvertAll(PresetPalette, x => (object)x))} };
         }
 
@@ -162,7 +164,7 @@ namespace SennenKazoku.Core
             return new CharacterLook {
                 Body = body, Face = J.Int(d, "face"), Hair = J.Int(d, "hair"), Eyes = J.Int(d, "eyes"), Nose = J.Int(d, "nose"), Mouth = J.Int(d, "mouth"),
                 EyesFlip = Flag(d, "eyesFlip"), NoseFlip = Flag(d, "noseFlip"), MouthFlip = Flag(d, "mouthFlip"),
-                HairColor = J.Int(d, "hairColor", -1), SkinColor = J.Int(d, "skinColor", -1), Outfit = J.Int(d, "outfit"), OutfitColor = J.Int(d, "outfitColor", -1),
+                HairColor = J.Int(d, "hairColor", -1), SkinColor = J.Int(d, "skinColor", -1), Outfit = J.Int(d, "outfit"), OutfitColor = J.Int(d, "outfitColor", -1), Gender = J.Int(d, "gender", -1),
                 Preset = J.Str(d, "preset"), PresetPalette = Ints(J.List(d, "palette")) };
         }
         static int[] Ints(List<object> l)
@@ -273,6 +275,16 @@ namespace SennenKazoku.Core
             var c = new byte[Width * Height];
             if (lib == null || !lib.Available || look == null) return c;
             bool back = pose == Pose.BackA || pose == Pose.BackB;
+            // 6세 이하(원작 나이 구분 0~2): 부품 조합이 아니라 통째 그림 (parts.json "child", 원작 자원 0~23).
+            // 번호 = 성별·12 + (0세 1 · 1~3세 3 · 4~6세 5) + 뒷모습 1 — 실기 사건 장면에서 얼굴·머리·몸통·옷 인자를 바꿔도 그림이 같고 성별만 바꾼다.
+            if (a.Class >= 0 && a.Class <= 2 && lib.Count("child") >= 24)
+            {
+                int g = look.Gender >= 0 ? look.Gender : GenderOf(look);
+                var cg = lib.Group("child", g * 12 + (a.Class == 0 ? 1 : a.Class == 1 ? 3 : 5) + (back ? 1 : 0));
+                // 둘째 그림(+0x21C)은 걷기 둘째 자세로 쓴다 — 실기 미확인(사건 장면은 첫 그림만 확인)
+                Put(lib, c, cg == null ? null : cg.At(pose == Pose.FrontB || pose == Pose.BackB ? 1 : 0), Width / 2, Height, false);
+                return c;
+            }
             int ox = Width / 2 - (back ? 1 : 0), oy = Height;          // 뒷모습은 원점이 1 왼쪽 (캡처와 일치)
             int block = ((outfitSet & 3) * 4 + (int)pose) * 24;
             // 사건 옷 몸통(자원 24~83)은 parts.json 의 "outfit" 분류 (블록마다 60개) — 없으면(옛 팩) 자기 몸통

@@ -35,6 +35,23 @@ def palettes(rom):
 # 앱 몸통 블록 k(24개씩) = 자원 627 + 84k 의 0~23 번(정면 서기 블록 2 = 세트 0). 24~83 번은 머리 첫 바이트가 0 인
 # 한 장짜리 묶음이라 주소 훑기로는 안 잡힌다 — 사건 옷 몸통(장면 토큰 1A 0E 01 의 옷 인자, CharacterComposer.EventOutfitBody).
 BODY_RES, BODY_BLOCKS = 627, 16
+# 6세 이하 그림: 자원 0~23 (성별 × 12). 원작은 이 나이(0x08097398 구분 0~2)에 부품 조합 대신 통째 그림을 쓴다.
+# 자원 = 머리 + 32×32 4bpp 타일 그림 2장(+0x1C, +0x21C). 번호 = 성별·12 + (0세 1 · 1~3세 3 · 4~6세 5) + 뒷모습 1 (실기 캡처로 확인).
+CHILD_RES = 24
+
+def child_group(rom, i):
+    p = R.resource(rom, i); parts = []
+    for f in range(2):
+        q = p + 0x1C + 0x200 * f
+        if i == 0 or q + 0x200 > len(rom): parts.append({"w": 0, "h": 0, "px": b""}); continue
+        px = bytearray(32 * 32)
+        for t in range(16):   # GBA 타일(8×8, 32바이트) 4×4 → 행 우선
+            tx, ty = t % 4, t // 4
+            for yy in range(8):
+                for xx in range(8):
+                    b = rom[q + t * 32 + yy * 4 + xx // 2]; px[(ty * 8 + yy) * 32 + tx * 8 + xx] = (b >> ((xx & 1) * 4)) & 15
+        parts.append({"w": 32, "h": 32, "px": bytes(px)})
+    return p, parts
 
 def main(rom_path, out_dir, presets=None):
     rom = R.load(rom_path)
@@ -52,6 +69,12 @@ def main(rom_path, out_dir, presets=None):
         # hdr: 묶음 머리 2바이트 — 원작 0x080972EC 가 나이 구분(0x08097398)별 칸을 고른다:
         # 7~12세 hdr0 아래 4비트 · 13~34세 hdr0 위 4비트 · 35~60세 hdr1 아래 4비트 · 61세~ hdr1 위 4비트
         cats.setdefault(c, []).append({"rom": "0x%X" % g["addr"], "hdr": [rom[g["addr"]], rom[g["addr"] + 1]], "parts": parts})
+    for i in range(CHILD_RES):   # 기준점 = 아래 가운데(16, 32) — 사건 장면 OBJ 32×64 의 아래 절반에 놓인다
+        p, fr = child_group(rom, i); parts = []
+        for f in fr:
+            parts.append({"w": f["w"], "h": f["h"], "ax": 16 if f["w"] else 0, "ay": 32 if f["w"] else 0, "ext": [], "off": len(blob)})
+            blob += f["px"]
+        cats.setdefault("child", []).append({"rom": "0x%X" % p, "hdr": [0, 0], "parts": parts})
     os.makedirs(out_dir, exist_ok=True)
     open(os.path.join(out_dir, "parts.bin.bytes"), "wb").write(blob)
     pre = {}

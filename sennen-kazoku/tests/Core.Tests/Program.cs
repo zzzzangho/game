@@ -274,6 +274,21 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       사건 인물 자세(" + pf + "): 실기 그림과 색까지 같은 픽셀 " + bo / 10.0 + "%");
                     T.True(bo >= 980, "사건 인물 자세가 실기 그림과 다름: " + pf);
                 }
+                // 6세 이하: 실기 사건 장면(인물 3)의 생일·성별을 바꿔 찍은 그림 cap_child_<나이>_<성별>[_back].png
+                foreach (var f in Directory.GetFiles(dir, "cap_child_*.png"))
+                {
+                    var nm = Path.GetFileNameWithoutExtension(f).Split('_'); int years = int.Parse(nm[2]), gen = int.Parse(nm[3]); bool back = nm.Length > 4 && nm[4] == "back";
+                    if (nm.Length > 4 && !back) continue;
+                    uint ra = SennenKazoku.Core.Orig.OrigMem.PersonAddr(3); var om = os3.Game.Mem;
+                    var keep = new uint[4]; for (uint i = 0; i < 3; i++) keep[i] = om.R8(ra + 0x2E + i); keep[3] = om.R8(ra + 0x31);
+                    SennenKazoku.Core.Orig.OrigDate.Set(om, ra + 0x2E, 2004 - years, 10, 12); om.W8(ra + 0x31, (uint)gen);
+                    var lo = os3.OrigLook(3, 0xFE, 0);
+                    for (uint i = 0; i < 3; i++) om.W8(ra + 0x2E + i, keep[i]); om.W8(ra + 0x31, keep[3]);
+                    var io = SennenKazoku.Core.CharacterComposer.Compose(lib, lo, SennenKazoku.Core.AgeSlots.ForAge(years), back ? SennenKazoku.Core.CharacterComposer.Pose.BackA : SennenKazoku.Core.CharacterComposer.Pose.FrontA, 0);
+                    int bo = PixMatch(io, lib.Palette(lo), f);
+                    Console.WriteLine("       6세 이하 그림(" + years + "세, 성별 " + gen + (back ? ", 뒷모습" : "") + "): 실기 그림과 색까지 같은 픽셀 " + bo / 10.0 + "%");
+                    T.True(bo >= 980, "6세 이하 그림이 실기와 다름");
+                }
                 Console.WriteLine("       원작 외형 조합(인물 3, 얼굴 " + look.Face + " 머리 " + look.Hair + " 눈 " + look.Eyes + " 코 " + look.Nose + " 입 " + look.Mouth + " 몸통 " + look.Body + "): 실기 그림과 색까지 같은 픽셀 " + best / 10.0 + "%");
                 T.True(best >= 980, "원작 외형 조합이 실기 그림과 다름");
             }

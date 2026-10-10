@@ -688,7 +688,7 @@ namespace SennenKazoku.Core.Orig
             var l = new CharacterLook
             {
                 Face = (int)m.R8(a), Hair = (int)m.R8(a + 1), Mouth = (int)m.R8(a + 2), Nose = Math.Max(0, (int)m.R8(a + 4) - 1),
-                Eyes = (int)m.R8(a + 5), Body = (int)m.R8(a + 7) % 24, Preset = "orig"
+                Eyes = (int)m.R8(a + 5), Body = (int)m.R8(a + 7) % 24, Preset = "orig", Gender = m.R8(a + 0x31) == 0 ? 0 : 1
             };
             l.Outfit = CharacterComposer.OutfitOf(l);
             l.OutfitBody = CharacterComposer.EventOutfitBody(l.Body, outfit);
@@ -700,7 +700,8 @@ namespace SennenKazoku.Core.Orig
                 for (uint i = 0; i < 32; i++) m.W8(buf + i, 0);
                 for (uint i = 0; i < 16; i++) m.W8(rec + i, m.R8(a + i));
                 if (l.OutfitBody >= 0) m.W8(rec + 7, (uint)l.OutfitBody);
-                Game.Vm.Call("08099448", buf, rec + 8, rec, (uint)AgeSlots.OrigClass(years), 0xFF, (uint)set);
+                // 다섯째 인자: 6세 이하(구분 0~2) 색 표 항목 — 성별(실기 남·여 아이 그림 색으로 확인). 그 위 나이는 쓰지 않는다.
+                Game.Vm.Call("08099448", buf, rec + 8, rec, (uint)AgeSlots.OrigClass(years), (uint)l.Gender, (uint)set);
                 var pal = new int[16]; pal[0] = -1;
                 for (uint i = 1; i < 16; i++) pal[i] = (int)m.R16(buf + 2 * i);
                 l.PresetPalette = pal;
