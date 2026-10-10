@@ -7,13 +7,13 @@ namespace SennenKazoku.Core.Orig
     /// 원작 코드(변환 트리)로 진행하는 세션 — 화면은 이전 GameSession 과 같은 방식(IGameSession)으로 쓴다.
     /// 원작 메모리가 기준이고, 화면용 Family 는 하루마다 원작 레코드에서 다시 만든다(투영).
     ///  - 인물: 레코드 0x0202C6C4+976n 중 번호(+0x3C)가 있는 것. 생일 +0x2E, 성별 +0x31, 능력치 +0x50~+0x56, 게이지 +0x5A,
-    ///    몰입도 +0x5B, 직업 +0x58, 직업 숙련 +0x5E, 스킬 +0x62~+0x64, 관심사 날짜 +0x48, 화살 표시 +0x69, 성격 +0x32, 관심사 +0x80/+0x82.
+    ///    하트(몰입도) +0x5B, 직업 +0x58, 직업 숙련 +0x5E, 스킬 +0x62~+0x64, 관심사 날짜 +0x48, 화살 표시 +0x69, 성격 +0x32, 관심사 +0x80/+0x82.
     ///  - 가족: 무드 0x0202C6AE · 집 등급 0x0202C6AF · 자산 0x0202C6B8.
     ///  - 관계: 족보 0x0202EB9C+60×번호 의 +0x10 아버지 · +0x12 어머니 · +0x14 배우자. 가장 0x0202C67C, 시작 날짜 0x0202C688.
     /// 사건은 원작처럼 그날 진행(OrigGame.TickDay) 안에서 효과까지 끝나고, 화면에는 그 뒤 대사(로컬 글 대응표)로 보여 준다.
     /// 아직 원작대로 하지 못한 것(표시):
     ///  - 이름: 한국식 이름을 앱이 붙인다(OrigNames, 가족 안에서 겹치지 않게). 원작 이름(자체 글자표)은 쓰지 않는다 — 사용자 결정.
-    ///  - 하트 표시는 원작 값이 무엇인지 아직 모른다(0).
+    ///  - 하트: 레코드 +0x5B(0~255)를 화면 3칸에 비례로 나눠 보여 준다(원작 화면의 칸 나눔은 아직 재지 않았다).
     ///  - 아직 보여 주지 않은 그날 사건 목록은 저장하지 않는다(효과는 이미 원작 메모리에 들어가 있다).
     /// </summary>
     public sealed class OrigSession : IGameSession
@@ -276,6 +276,8 @@ namespace SennenKazoku.Core.Orig
                 p.BirthDay = SafeDay(by, bm, bd);
                 for (int k = 0; k < 4; k++) p.Stats[k] = (int)m.R16(a + 0x50 + 2 * (uint)k);
                 p.Gauge = (int)m.R8(a + 0x5A); p.Immersion = (int)m.R8(a + 0x5B);
+                // 하트 = +0x5B (0~255): 참고 자료의 "하트 상승(기본+12)" 효과(0x0811ABC9)를 원작 ROM 으로 돌리면 +0x5B 가 +12. 화면 3칸에는 비례로 나눈다.
+                p.Hearts = (int)m.R8(a + 0x5B) * Person.HeartMax / 255;
                 p.Job = (int)m.R8(a + 0x58); p.JobMastery = (int)m.R8(a + 0x5E);
                 p.Skills.Clear(); for (uint k = 0; k < 3; k++) { uint sk = m.R8(a + 0x62 + k); if (sk != 0xFF) p.Skills.Add((int)sk); }
                 p.InterestDay = (int)m.R16(a + 0x48); p.ArrowFlags = (int)m.R8(a + 0x69);
