@@ -85,7 +85,7 @@ namespace SennenKazoku.Core.Orig
                 int era = (int)m.R8(Fam + 0x682), k = era - 1;
                 string band = k >= 0 && k < data.EraBands.Count ? text.UiText(data.EraBands[k], "") : "";
                 Screen("시대 연출", "[원작 시대 연출 화면 — 앱 요약] " + (band.Length > 0 ? band + " — " : "") + text.UiText(392 + era, "새 시대가 열렸다!"));
-                if (k >= 0 && k < data.EraMsgs.Count) Say(-2, data.EraMsgs[k]);
+                if (k >= 0 && k < data.EraMsgs.Count) Say(-2, data.EraMsgs[k], 2);   // 말하는 사람 토큰이 없다 — 실기에서 큐피트 말풍선
                 Run(6);
             }
         }
@@ -222,10 +222,9 @@ namespace SennenKazoku.Core.Orig
             return st + 1;
         }
 
-        void Say(int st, int id)
+        void Say(int st, int id, int speaker = 0)
         {
             byte[] b; if (!data.Msgs.TryGetValue(id, out b)) return;
-            int speaker = 0;
             for (int i = 0; i + 2 < b.Length && i < 16; i++) if (b[i] == 0x1A && b[i + 1] == 0x0A) { speaker = b[i + 2]; break; }
             foreach (var pg in text.Decode(b, Name, null, Number)) Pages.Add(new Page { Speaker = speaker, Text = pg, State = st, MsgId = id });
         }

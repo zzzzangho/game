@@ -1071,7 +1071,7 @@ namespace SennenKazoku.Tests
                         var hv = cs.LastHeaven;
                         int era1 = (int)cmm.R8(0x0202C692); var jobs1 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job)); uint bm1 = cmm.R8(0x0202C65A);
                         Console.WriteLine("       천계 상태 차례: " + string.Join(" ", hv.Trace.ConvertAll(x => x.ToString("X"))));
-                        Console.WriteLine("       천계 글 번호: " + string.Join(" ", hv.Pages.ConvertAll(x => x.MsgId < 0 ? "[" + x.Screen + "]" : (x.Speaker == 2 ? "큐" : "신") + x.MsgId)));
+                        Console.WriteLine("       천계 글 번호: " + string.Join(" ", hv.Pages.ConvertAll(x => x.MsgId < 0 ? "[" + x.Screen + "]" : (x.Speaker == 2 ? "큐" : x.Speaker == 1 ? "신" : "?") + x.MsgId)));
                         foreach (var pg in hv.Pages.Take(6)) Console.WriteLine("         " + (pg.Speaker == 1 ? "높으신 신" : pg.Speaker == 2 ? "큐피트" : "화면") + ": " + pg.Text.Replace("\n", " / "));
                         Console.WriteLine("       새 시대 직업 이름: " + string.Join(", ", cs.Family.Members.ConvertAll(p => SennenKazoku.Core.Orig.OrigJobs.Name(p.Job))));
                         Console.WriteLine("       천계 보고(100년째 첫 세대교체): 몸통 세트 " + era1 + ", 직업 " + jobs0 + " → " + jobs1 + ", 시간의 책갈피 " + bm0 + " → " + bm1 +

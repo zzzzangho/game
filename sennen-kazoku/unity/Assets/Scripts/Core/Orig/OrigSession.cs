@@ -624,9 +624,9 @@ namespace SennenKazoku.Core.Orig
                 var hp = heavenCur[Math.Min(heavenPage, heavenCur.Count - 1)];
                 return new EventView
                 {
-                    EventId = "heaven", Title = hp.Speaker == 0 ? "천계 — " + hp.Screen : "천계",
+                    EventId = "heaven", Title = hp.MsgId < 0 ? "천계 — " + hp.Screen : "천계",
                     Speaker = hp.Speaker == 1 ? "높으신 신" : hp.Speaker == 2 ? "큐피트" : "", Text = hp.Text, Phase = "pages",
-                    Origin = "original", Certainty = "rom", TextSource = hp.Speaker == 0 ? "app-summary" : "original-translation", PersonId = -1
+                    Origin = "original", Certainty = "rom", TextSource = hp.MsgId < 0 ? "app-summary" : "original-translation", PersonId = -1
                 };
             }
             if (cur == null) return null;
