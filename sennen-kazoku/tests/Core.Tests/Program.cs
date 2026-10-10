@@ -298,6 +298,20 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       말풍선 ♪ 그림 순서: " + sb2 + "(감정 " + et.Runs.Count + "가지)");
                     T.True(sb2.ToString() == "0 1 2 3 2 4 2 3 2 4 2 3 2 1 0 -1 " && et.Frame(2, 122) == 0 && et.Frame(2, 121) == -1 && et.Runs.Count == 21, "말풍선 움직임 표");
                 }
+                // 수염(레코드 +3 = 부품 분류 3): 인물 3 을 40세로 바꾸고 +3 을 바꿔 찍은 실기 그림 cap_extra_<나이>_<값>.png
+                foreach (var f in Directory.GetFiles(dir, "cap_extra_*.png"))
+                {
+                    var nm = Path.GetFileNameWithoutExtension(f).Split('_'); int years = int.Parse(nm[2]), xv = int.Parse(nm[3]);
+                    uint ra = SennenKazoku.Core.Orig.OrigMem.PersonAddr(3); var om = os3.Game.Mem;
+                    var keep = new uint[4]; for (uint i = 0; i < 3; i++) keep[i] = om.R8(ra + 0x2E + i); keep[3] = om.R8(ra + 3);
+                    SennenKazoku.Core.Orig.OrigDate.Set(om, ra + 0x2E, 2004 - years, 10, 12); om.W8(ra + 3, (uint)xv);
+                    var lo = os3.OrigLook(3, 0xFE, 0);
+                    for (uint i = 0; i < 3; i++) om.W8(ra + 0x2E + i, keep[i]); om.W8(ra + 3, keep[3]);
+                    var io = SennenKazoku.Core.CharacterComposer.Compose(lib, lo, SennenKazoku.Core.AgeSlots.ForAge(years), SennenKazoku.Core.CharacterComposer.Pose.FrontA, 0);
+                    int bo = PixMatch(io, lib.Palette(lo), f);
+                    Console.WriteLine("       수염(" + years + "세, +3 = " + xv + "): 실기 그림과 색까지 같은 픽셀 " + bo / 10.0 + "%");
+                    T.True(bo >= 980, "수염가 실기와 다름");
+                }
                 Console.WriteLine("       원작 외형 조합(인물 3, 얼굴 " + look.Face + " 머리 " + look.Hair + " 눈 " + look.Eyes + " 코 " + look.Nose + " 입 " + look.Mouth + " 몸통 " + look.Body + "): 실기 그림과 색까지 같은 픽셀 " + best / 10.0 + "%");
                 T.True(best >= 980, "원작 외형 조합이 실기 그림과 다름");
             }

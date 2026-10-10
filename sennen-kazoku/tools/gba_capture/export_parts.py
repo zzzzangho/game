@@ -55,7 +55,14 @@ def child_group(rom, i):
 
 def main(rom_path, out_dir, presets=None):
     rom = R.load(rom_path)
-    groups = [(category(g["addr"]), g) for g in R.all_groups(rom, 0xA14000, 0xA90000) if category(g["addr"])]
+    scanned = [(category(g["addr"]), g) for g in R.all_groups(rom, 0xA14000, 0xA90000) if category(g["addr"])]
+    # 코·분류3(extra)은 자원 표 순서로 다시 읽는다: 원작 0x080973F4 의 분류 3 = 자원 539~552(14개), 분류 4(코) = 553~592(40개).
+    # 주소 훑기는 머리 첫 바이트가 0 인 묶음을 빠뜨려(분류3 10개, 코 574번) 번호가 밀렸다 — 레코드 +3·+4 는 이 자원 번호 그대로다.
+    old_nose = [g["addr"] for c, g in scanned if c == "nose"]
+    groups = [(c, g) for c, g in scanned if c not in ("nose", "extra")]
+    groups += [("extra", R.group_res(rom, R.resource(rom, 539 + i))) for i in range(14)]
+    groups += [("nose", R.group_res(rom, R.resource(rom, 553 + i))) for i in range(40)]
+    new_nose = {R.resource(rom, 553 + i): i for i in range(40)}
     groups += [("outfit", R.group_res(rom, R.resource(rom, BODY_RES + 84 * k + i))) for k in range(BODY_BLOCKS) for i in range(24, 84)]
     blob = bytearray(); cats = {}
     for c, g in groups:
@@ -80,6 +87,10 @@ def main(rom_path, out_dir, presets=None):
     pre = {}
     for f in presets or []:
         pre.update(json.load(open(f)))
+    for k, v in pre.items():   # 프리셋(gallery_fit.py)의 코 번호는 옛 훑기 순서 → 자원 번호로 (이미 바꾼 것은 그대로)
+        if isinstance(v, dict) and "nose" in v and not v.get("noseRes"):
+            n = v["nose"]
+            if 0 <= n < len(old_nose): v["nose"] = new_nose[old_nose[n]]; v["noseRes"] = True
     json.dump({"format": 1, "source": "rom", "categories": cats, "palettes": palettes(rom), "presets": pre}, open(os.path.join(out_dir, "parts.json"), "w"), separators=(",", ":"))
     print({c: len(v) for c, v in cats.items()}, len(blob), "bytes")
 

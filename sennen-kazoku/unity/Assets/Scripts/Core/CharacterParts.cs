@@ -136,6 +136,8 @@ namespace SennenKazoku.Core
         public string Preset = "";            // 원작 갤러리 프리셋 id (예: father_07)
         /// <summary>사건 옷 몸통 번호(원작 몸통 자원 24~83, CharacterComposer.EventOutfitBody). −1 = 자기 몸통. 저장하지 않는다(장면마다 정함).</summary>
         public int OutfitBody = -1;
+        /// <summary>수염(원작 레코드 +3 = 부품 분류 3, 자원 539~552). −1 = 없음.</summary>
+        public int Extra = -1;
         /// <summary>성별(0 남 · 1 여, −1 = 몸통 번호로). 6세 이하 그림은 몸통이 아니라 이것으로 고른다(원작 레코드 +0x31).</summary>
         public int Gender = -1;
         public int[] PresetPalette;           // 갤러리 캡처에서 읽은 프리셋 고유 색(BGR555, -1 = 없음)
@@ -152,7 +154,7 @@ namespace SennenKazoku.Core
             return new Dictionary<string, object> {
                 {"body", Body}, {"face", Face}, {"hair", Hair}, {"eyes", Eyes}, {"nose", Nose}, {"mouth", Mouth},
                 {"eyesFlip", EyesFlip}, {"noseFlip", NoseFlip}, {"mouthFlip", MouthFlip},
-                {"hairColor", HairColor}, {"skinColor", SkinColor}, {"outfit", Outfit}, {"outfitColor", OutfitColor}, {"preset", Preset}, {"gender", Gender},
+                {"hairColor", HairColor}, {"skinColor", SkinColor}, {"outfit", Outfit}, {"outfitColor", OutfitColor}, {"preset", Preset}, {"gender", Gender}, {"extra", Extra}, {"noseRes", true},
                 {"palette", PresetPalette == null ? null : new List<object>(Array.ConvertAll(PresetPalette, x => (object)x))} };
         }
 
@@ -160,9 +162,12 @@ namespace SennenKazoku.Core
         {
             if (d == null) return null;
             var body = J.Int(d, "body");
+            // 코 번호: 예전 parts.json 은 주소 훑기 순서(자원 554~573, 575~592)였다 → 원작 자원 번호(553 기준)로 바꾼다
+            int nose = J.Int(d, "nose");
+            if (!Flag(d, "noseRes")) nose = nose + 1 + (nose >= 20 ? 1 : 0);
             if (body >= CharacterComposer.FrontBlock) body -= CharacterComposer.FrontBlock;     // gallery_fit 는 ROM 묶음 번호(48~71)를 쓴다
             return new CharacterLook {
-                Body = body, Face = J.Int(d, "face"), Hair = J.Int(d, "hair"), Eyes = J.Int(d, "eyes"), Nose = J.Int(d, "nose"), Mouth = J.Int(d, "mouth"),
+                Body = body, Face = J.Int(d, "face"), Hair = J.Int(d, "hair"), Eyes = J.Int(d, "eyes"), Nose = nose, Mouth = J.Int(d, "mouth"), Extra = J.Int(d, "extra", -1),
                 EyesFlip = Flag(d, "eyesFlip"), NoseFlip = Flag(d, "noseFlip"), MouthFlip = Flag(d, "mouthFlip"),
                 HairColor = J.Int(d, "hairColor", -1), SkinColor = J.Int(d, "skinColor", -1), Outfit = J.Int(d, "outfit"), OutfitColor = J.Int(d, "outfitColor", -1), Gender = J.Int(d, "gender", -1),
                 Preset = J.Str(d, "preset"), PresetPalette = Ints(J.List(d, "palette")) };
@@ -312,10 +317,18 @@ namespace SennenKazoku.Core
             Put(lib, c, b, ox, oy - 16, false);
             // 얼굴 세로 위치: 아이 칸(0)은 1 아래 (원작 아이 목록 대조로 확인)
             Put(lib, c, f, nx - m[7] + f.Ax, refY + m[1] - 2 + (a.Face == 0 ? 1 : 0) + f.Ay, false);
+            // 원작 0x08098EC0 은 앞머리·입·분류3·코·눈 순으로 OBJ 를 넣고 나중 것이 위에 온다 → 아래부터 앞머리·입·분류3·코·눈.
+            // (갤러리 실기 672장: 눈이 앞머리·코 위일 때 완전 일치 433 → 529명. 입 순서는 겹치는 일이 없어 갤러리로 못 가림.)
+            // 분류3 = 수염(레코드 +3, 자원 539~552, 머리색으로 칠함; 묶음 머리 바이트로 대개 35세부터 보임): 고른 칸의 머리 6바이트째가 0 이면
+            // 입 대신 입 자리(m5)에(턱수염), 아니면 입은 두고 m6 자리에(콧수염 등) 그린다.
+            var ex = look.Extra >= 0 ? Part(lib, "extra", look.Extra, a, a.Feat) : null;
+            bool keepMouth = ex == null || ex.Ext.Length < 1 || ex.Ext[0] != 0;
+            Put(lib, c, Part(lib, "hairfront", look.Hair, a, a.Hair), nx, refY + m[1], false);
+            if (keepMouth) Put(lib, c, Part(lib, "mouth", look.Mouth, a, a.Feat), nx, refY + m[5], look.MouthFlip);
+            // 수염은 머리의 x 기준값이 아니라 폭의 절반을 기준으로 놓인다(실기 40세 4종: 입을 대신하는 폭 12 수염은 기준값 5 → 6 이어야 100%).
+            if (ex != null && !ex.Empty) Put(lib, c, ex, nx - ex.W / 2 + ex.Ax, refY + (keepMouth ? m[6] : m[5]), false);
             Put(lib, c, Part(lib, "nose", look.Nose, a, a.Feat), nx, refY + m[4], look.NoseFlip);
             Put(lib, c, Part(lib, "eyes", look.Eyes, a, a.Feat), nx, refY + m[3], look.EyesFlip);
-            Put(lib, c, Part(lib, "mouth", look.Mouth, a, a.Feat), nx, refY + m[5], look.MouthFlip);
-            Put(lib, c, Part(lib, "hairfront", look.Hair, a, a.Hair), nx, refY + m[1], false);
             return c;
         }
 

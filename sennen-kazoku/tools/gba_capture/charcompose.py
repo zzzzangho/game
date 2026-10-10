@@ -9,7 +9,7 @@
          ref = 목y - m0;  얼굴 좌상단 = (목x - m7, ref + m1 - 2)
   앞머리 = 기준점 (목x, ref + m1)       뒷머리 = 같은 번호의 뒷머리, 기준점 (목x, ref + m2 + 16 - hb.ext1)
   눈 (목x, ref+m3) · 코 (목x, ref+m4) · 입 (목x, ref+m5)   — 파트 좌상단 = 기준점 - (ax, ay), 좌우반전 시 ax = w - ax
-  그리는 순서: 뒷머리 → 몸통 → 얼굴 → 코 → 눈 → 입 → 앞머리
+  그리는 순서: 뒷머리 → 몸통 → 얼굴 → 앞머리 → 입 → 분류3 → 코 → 눈 (원작 0x08098EC0, 나중 OBJ 가 위)
   연령 칸: 갤러리(성인)는 모두 1 — 0/2/3 의 의미는 미확인.
   몸통 그룹: 24개씩 16벌(방향·걸음 프레임 추정), 정면 서기 = 48~71 (남 48~59, 여 60~71). 갤러리는 48~51 / 60~63 만 사용."""
 import os, sys
@@ -25,6 +25,9 @@ class Library:
         for g in R.all_groups(rom, 0xA14000, 0xA90000):
             c = category(g["addr"])
             if c: self.cat.setdefault(c, []).append(g)
+        # 코·분류3 은 원작 자원 표 순서(export_parts.py 와 같음): 분류3 = 자원 539~552, 코 = 553~592
+        self.cat["extra"] = [R.group_res(rom, R.resource(rom, 539 + i)) for i in range(14)]
+        self.cat["nose"] = [R.group_res(rom, R.resource(rom, 553 + i)) for i in range(40)]
 
 def _put(canvas, W, H, p, ax_abs, ay_abs, flip=False):
     if not p["w"]: return
@@ -80,7 +83,13 @@ def compose(lib, look, age=1, W=32, H=64, O=(16, 64), shift=None, block=None):
     if hb["w"]: _put(c, W, H, hb, nx, ref + m[2] + 16 - hb["meta"][7] + S.get("hair", 0))
     _put(c, W, H, b, Ox, Oy - 16 + S.get("body", 0))
     _put(c, W, H, f, nx - m[7] + s8(f["meta"][4]), ref + m[1] - 2 + (1 if A["face"] == 0 else 0) + s8(f["meta"][5]) + S.get("face", 0))
-    for k, mi in (("nose", 4), ("eyes", 3), ("mouth", 5)):
-        _put(c, W, H, at(lib.cat[k][look[k]], A["feat"]), nx, ref + m[mi] + S.get("feat", 0), bool(look.get(k + "Flip")))
+    # 원작 0x08098EC0 순서(아래부터, 나중에 넣은 OBJ 가 위): 앞머리 → 입 → 분류3(레코드 +3, 수염) → 코 → 눈.
+    # 분류3 칸의 머리 6바이트째가 0 이면 입 대신 입 자리에, 아니면 입은 두고 m6 자리에 그린다.
+    ex = at(lib.cat["extra"][look["extra"]], A["feat"]) if look.get("extra", -1) >= 0 else None
+    keep = ex is None or ex["meta"][6] != 0
     _put(c, W, H, at(lib.cat["hairfront"][look["hair"]], A["hair"]), nx, ref + m[1] + S.get("hair", 0))
+    if keep: _put(c, W, H, at(lib.cat["mouth"][look["mouth"]], A["feat"]), nx, ref + m[5] + S.get("feat", 0), bool(look.get("mouthFlip")))
+    if ex is not None and ex["w"]: _put(c, W, H, ex, nx - ex["w"] // 2 + s8(ex["meta"][4]), ref + (m[6] if keep else m[5]) + S.get("feat", 0))   # 수염: 폭의 절반이 기준
+    for k, mi in (("nose", 4), ("eyes", 3)):
+        _put(c, W, H, at(lib.cat[k][look[k]], A["feat"]), nx, ref + m[mi] + S.get("feat", 0), bool(look.get(k + "Flip")))
     return c

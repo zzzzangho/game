@@ -688,7 +688,7 @@ namespace SennenKazoku.Core.Orig
             var m = Game.Mem; uint a = OrigMem.PersonAddr(n);
             var l = new CharacterLook
             {
-                Face = (int)m.R8(a), Hair = (int)m.R8(a + 1), Mouth = (int)m.R8(a + 2), Nose = Math.Max(0, (int)m.R8(a + 4) - 1),
+                Face = (int)m.R8(a), Hair = (int)m.R8(a + 1), Mouth = (int)m.R8(a + 2), Nose = (int)m.R8(a + 4), Extra = m.R8(a + 3) == 0xFF ? -1 : (int)m.R8(a + 3),
                 Eyes = (int)m.R8(a + 5), Body = (int)m.R8(a + 7) % 24, Preset = "orig", Gender = m.R8(a + 0x31) == 0 ? 0 : 1
             };
             l.Outfit = CharacterComposer.OutfitOf(l);
