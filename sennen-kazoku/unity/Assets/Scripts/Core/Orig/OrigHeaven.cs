@@ -237,18 +237,19 @@ namespace SennenKazoku.Core.Orig
             if (code == 0x2A) return personName((int)m.R16(Fam + 0x66C));                      // 세대주 (0x080AA1F4: 가족 +0x66C)
             if (code == 0x2B)
             {
-                // 남긴 기술 이름: 방금 선대의 마음 목록(0x0202C328)에 들어간 그 사람의 칸 (추정 — 글 엔진 0x080AA6EC 는 아직 읽지 않음)
-                uint who = m.R16(OrigMem.Slots), sk = 0xFFFF;
-                for (uint k = 0; k < 99; k++) { uint id = m.R16(0x0202C328 + 4 * k); if (id == 0xFFFF) break; if (id == who) sk = m.R8(0x0202C328 + 4 * k + 2); }
-                return sk != 0xFFFF && sk < text.Skills.Count ? text.Skills[(int)sk].Name : null;
+                // 남긴 기술 이름: 0x080A0EA0 이 객체 +0x78 에 고인 항목 +2 (스킬 번호)의 이름(0x081194F8)을 넣고, 글 엔진 0x080AA6EC 가 그 글을 쓴다
+                uint p = m.R32(Obj + 0x98);
+                if (p == 0) return null;
+                uint sk = m.R8(p + 2);
+                return sk < text.Skills.Count ? text.Skills[(int)sk].Name : null;
             }
             if (code < 0x1C)
             {
                 uint id = m.R16(OrigMem.Slots + 2 * (uint)code);
                 if (id == 0xFFFF) return null;
-                if (fmt == 0x1F)   // 그 사람이 남긴 꿈 (가계 기록 +0x0E 관심사 → 특별 기록 +6 → 꿈 기록 +8)
+                if (fmt == 0x1F)   // 그 사람이 남긴 꿈 (글 엔진 0x080A80E0: 가계 기록 +0x1E 관심사 → 0x0811978C = 특별 기록 +0 글)
                 {
-                    string s; return data.Dreams.TryGetValue((int)(m.R16(OrigMem.GeneAddr(id) + 0x0E) & 0x7FFF), out s) ? s : null;
+                    string s; return data.Dreams.TryGetValue((int)(m.R16(OrigMem.GeneAddr(id) + 0x1E) & 0x7FFF), out s) ? s : null;
                 }
                 return personName((int)id);
             }

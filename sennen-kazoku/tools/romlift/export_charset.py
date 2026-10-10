@@ -115,7 +115,7 @@ HEAVEN_STATES = 0x085BC2E4   # 천계 보고(0x0809F938) 상태별 글 목록 �
 HEAVEN_MSGS = 0x085D5CB0     # 글 번호 → 글
 HEAVEN_TYPES = 0x085BBD10    # 가족 유형 → {화면 글 번호(칭호), 신님 평 글 번호}
 HEAVEN_LIVES = 0x085BBD58    # 인생 평가(가계 기록 +0x33) → {화면 글 번호, 평가 글 번호}
-SPECIALS, DREAMS = 0x088915C8, 0x08891D9C   # 관심사 → 특별 기록(+6 꿈 번호) → 꿈 기록(28바이트, +3 꿈 표시, +8 글)
+SPECIALS = 0x088915C8   # 관심사 → 특별 기록 (+0 글 = 꿈 이름, 0x0811978C)
 
 
 def heaven_pack(rom, table):
@@ -138,8 +138,8 @@ def heaven_pack(rom, table):
     for i in range(4096):
         q = u32(SPECIALS + 4 * i)
         if not 0x08000000 <= q < 0x0A000000: break
-        d = DREAMS + 28 * u16(q + 6)
-        if rom[d + 3 - 0x08000000] & 1: dreams[str(i)] = decode(rom, table, u32(d + 8), 60)
+        t = u32(q)
+        if 0x08000000 <= t < 0x0A000000: dreams[str(i)] = decode(rom, table, t, 60)
     return {"base": '0x%08X' % base, "lists": lists, "states": {str(st): (p - base) // 4 for st, p in ptrs.items()},
             "msgs": msgs, "types": types, "lives": lives, "dreams": dreams}
 
