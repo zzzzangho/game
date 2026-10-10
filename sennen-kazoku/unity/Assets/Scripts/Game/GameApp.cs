@@ -1198,7 +1198,7 @@ namespace SennenKazoku.Game
         /// <summary>사건 장면 움직임: 말풍선 그림 순서(원작 프레임 표)와 확대 진행(60프레임/초).</summary>
         void UpdateStageAnim()
         {
-            if (evStage == null) return;
+            if (evStage == null) { if (!dialog.gameObject.activeSelf) dialog.gameObject.SetActive(true); return; }
             foreach (var b in stageBubbles)
             {
                 if (b.Img == null) continue;
@@ -1216,10 +1216,13 @@ namespace SennenKazoku.Game
             {
                 float ot = (Time.time - outroStart) * 60f;
                 if (stageFade != null) { stageFade.enabled = true; stageFade.color = new Color(0, 0, 0, SceneAnim.OutroBlack(ot)); }
-                if (ot >= SceneAnim.OutroEnd) { Destroy(evStage.gameObject); evStage = null; outroStart = -1; }
+                if (dialog.gameObject.activeSelf) dialog.gameObject.SetActive(false);   // 원작: 끝 연출에서 대사 상자가 먼저 사라진다
+                if (ot >= SceneAnim.OutroEnd) { Destroy(evStage.gameObject); evStage = null; outroStart = -1; dialog.gameObject.SetActive(true); }
                 return;
             }
             float fr = (Time.time - stageStart) * 60f;
+            bool showDialog = fr >= SceneAnim.DialogStart;   // 원작: 대사 상자는 156프레임째 나타난다
+            if (dialog.gameObject.activeSelf != showDialog) dialog.gameObject.SetActive(showDialog);
             if (stageBack != null && backTable != null)
             {
                 string key = stageBackKey.StartsWith("ev_back_") ? stageBackKey.Substring(8) : stageBackKey;

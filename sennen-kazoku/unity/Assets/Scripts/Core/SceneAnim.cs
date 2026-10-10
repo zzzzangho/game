@@ -43,6 +43,8 @@ namespace SennenKazoku.Core
         /// <summary>장면 끝: 덮을 검정의 불투명도(0~1).</summary>
         public static float OutroBlack(float t) { return FadeStep(t) / 16f; }
         public const float OutroEnd = 102f;
+        /// <summary>대사 상자가 나타나는 때 (화면이 검게 된 때부터 156프레임 — 실기). 끝 연출에서는 큐피트와 함께 먼저 사라진다.</summary>
+        public const float DialogStart = 156f;
 
         /// <summary>
         /// 제목 띠 세로 위치(다 내려온 자리 기준, 화면 줄): 화면이 검게 된 때부터 68프레임째에 위에서 내려오기 시작해 두 번 출렁이고 98프레임째 멈춘다
