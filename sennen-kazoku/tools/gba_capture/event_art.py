@@ -72,11 +72,42 @@ def emotions(shot, with_, base, toks, save, out):
     print('말풍선 움직임', len(runs), '가지, 자르기', [box[0] + x0 - actor_x, box[1] + y0, x1 - x0 + 1, y1 - y0 + 1])
 
 
+# 뒤 무늬(BG2) 움직임: 색이 도는 무늬가 있다(기록 0x08923648 의 햇살 = 6장 × 16프레임 = 96프레임 주기, 실기). 다른 층은 움직이지 않는다.
+# 무늬마다 BG2 만 켜고 매 프레임 BACK_FRAMES 장 찍어, 바뀌는 순서대로 그림과 프레임 수를 모은다.
+# 결과: ev_back_<포인터>_<k> · ev_back_<포인터>(첫 그림) · ev_back_anim.json {"<포인터>": [[k, 프레임 수], ...]} (한 장뿐이면 [[0, 1]]).
+BACK_FRAMES = 200
+
+
+def backs(shot, with_, values, out):
+    import hashlib
+    table = {}
+    for v in values:
+        ims = shot(2, with_(0x24, v), extra=[1] * BACK_FRAMES)
+        keys = [hashlib.md5(im.tobytes()).hexdigest() for im in ims]
+        order, seq = [], []
+        for i, k in enumerate(keys):
+            if k not in order:
+                order.append(k)
+                ims[i].convert('RGBA').save(os.path.join(out, 'ev_back_%08X_%d.png.bytes' % (v, len(order) - 1)), 'PNG')
+            j = order.index(k)
+            if seq and seq[-1][0] == j: seq[-1][1] += 1
+            else: seq.append([j, 1])
+        if len(order) > 1:   # 처음과 끝은 잘린 조각 → 첫 그림이 다시 시작하는 곳부터 한 주기
+            starts = [i for i in range(1, len(seq)) if seq[i][0] == seq[1][0]]
+            cyc = seq[starts[0]:starts[1]] if len(starts) >= 2 else seq[1:-1]
+        else: cyc = [[0, 1]]
+        table['%08X' % v] = cyc
+        ims[0].convert('RGBA').save(os.path.join(out, 'ev_back_%08X.png.bytes' % v), 'PNG')
+    json.dump(table, open(os.path.join(out, 'ev_back_anim.json.bytes'), 'w'), separators=(',', ':'))
+    print('뒤 무늬 움직임', sum(1 for c in table.values() if len(c) > 1), '/', len(table))
+
+
 def main():
     if len(sys.argv) < 8:
         print(__doc__); return 2
     cap, rom_path, state, rec, frames, rules_path, out = sys.argv[1:8]
-    only_emo = len(sys.argv) > 8 and sys.argv[8] == 'emo'   # 말풍선만 다시 뽑기
+    only_emo = len(sys.argv) > 8 and sys.argv[8] in ('emo', 'back')   # 말풍선만(emo) · 뒤 무늬 움직임만(back) 다시 뽑기
+    only_back = len(sys.argv) > 8 and sys.argv[8] == 'back'
     rec, frames = int(rec, 16), int(frames)
     os.makedirs(out, exist_ok=True)
     work = os.path.join(out, '_work'); os.makedirs(work, exist_ok=True)
@@ -116,11 +147,13 @@ def main():
     if not only_emo:
         for v in sorted(filter(ok, vals[0x28])): save(shot(3, with_(0x28, v)).crop((56, 40, 184, 104)), 'ev_pic_%08X' % v, False)
         for v in sorted(filter(ok, vals[0x20])): save(shot(0, with_(0x20, v)).crop((0, 0, 240, 24)), 'ev_band_%08X' % v)
-        for v in sorted(filter(ok, vals[0x24])): save(shot(2, with_(0x24, v)), 'ev_back_%08X' % v)
+        backs(shot, with_, sorted(filter(ok, vals[0x24])), out)
         save(shot(4, with_(0x28, base[3][1])).crop((8, 64, 40, 104)), 'ev_cupid')   # 큐피트 (OBJ, 화면 14~32, 70~100)
     dlg = struct.unpack_from('<I', rom, R + 0x14)[0] - 0x08000000
     toks, i = [], rom.find(b'\x1a\x0e\x02', dlg, dlg + 64)
     while i >= 0 and i < dlg + 64: toks.append(i); i = rom.find(b'\x1a\x0e\x02', i + 1, dlg + 64)
+    if only_back:
+        backs(shot, with_, sorted(filter(ok, vals[0x24])), out); return 0
     emotions(shot, with_, base, toks, save, out)
     if only_emo: return 0
     # 가족이 아닌 사람(1A 0E 04 인자 5바이트): 원작 대사에 나오는 조합마다 R 의 첫 04 토큰 인자를 바꾸고, 동작을 말풍선 없는 0x15 로 두고

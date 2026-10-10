@@ -289,6 +289,15 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       6세 이하 그림(" + years + "세, 성별 " + gen + (back ? ", 뒷모습" : "") + "): 실기 그림과 색까지 같은 픽셀 " + bo / 10.0 + "%");
                     T.True(bo >= 980, "6세 이하 그림이 실기와 다름");
                 }
+                // 뒤 무늬 움직임 표(event_art.py, 로컬): 햇살 0x08887F94 = 6장 × 16프레임(실기 2프레임 간격 추적과 같음)
+                if (File.Exists(Path.Combine(dir, "ev_back_anim.json.bytes")))
+                {
+                    var btab = SennenKazoku.Core.SceneAnim.BackTable.Parse(File.ReadAllText(Path.Combine(dir, "ev_back_anim.json.bytes")));
+                    var seen = new List<int>(); int pv = -9;
+                    for (int fr = 0; fr < 96; fr++) { int b = btab.Frame("08887F94", fr); if (b != pv) { seen.Add(b); pv = b; } }
+                    Console.WriteLine("       뒤 무늬 움직임: 무늬 " + btab.Runs.Count + "가지, 햇살 순서 " + string.Join(",", seen));
+                    T.True(seen.Count == 6 && btab.Frame("08887F94", 0) == btab.Frame("08887F94", 96) && btab.Frame("08887F94", 15) != btab.Frame("08887F94", 16), "뒤 무늬 움직임 표");
+                }
                 // 말풍선 움직임 표(event_art.py, 로컬): ♪(02) 한 주기 = 실기 매 프레임 추적 작게4·빈4·C6·D8·C6·E8·C6·D8·C6·E8·C6·D8·C6·빈4·작게4·숨김30
                 if (File.Exists(Path.Combine(dir, "ev_emo_anim.json.bytes")))
                 {
@@ -629,6 +638,9 @@ namespace SennenKazoku.Tests
                 var want = new Dictionary<int, int[]> { { 1, new[] { 104 } }, { 2, new[] { 89, 119 } }, { 3, new[] { 76, 104, 132 } }, { 4, new[] { 74, 94, 114, 134 } },
                     { 5, new[] { 64, 84, 104, 124, 144 } }, { 8, new[] { 34, 54, 74, 94, 114, 134, 154, 174 } } };
                 foreach (var kv in want) for (int i = 0; i < kv.Value.Length; i++) T.Eq((int)(SceneAnim.ActorCenterX(i, kv.Key) - 16), kv.Value[i]);
+                // 장면 시작 밝기(실기, 액자 배경 한 점 R 값/16): 3040프레임 16 · 3052 80 · 3062 128 · 3086 255 — 화면이 검게 된 3020프레임 기준
+                T.Eq((int)Math.Round((1 - SceneAnim.IntroBlack(20)) * 16), 1); T.Eq((int)Math.Round((1 - SceneAnim.IntroBlack(32)) * 16), 5);
+                T.Eq((int)Math.Round((1 - SceneAnim.IntroBlack(42)) * 16), 8); T.Eq(SceneAnim.IntroBlack(66), 0f); T.Eq(SceneAnim.IntroBlack(10), 1f);
                 // 확대(1A 0F 00 02): 2프레임 간격 OAM — 역배율 244·196·148·128, 두 배 크기 OBJ 가운데 (133,67)·(127,64)·(121,60)·(120,60)
                 int[] pa = { 244, 196, 148, 128 }; int[,] ctr = { { 133, 67 }, { 127, 64 }, { 121, 60 }, { 120, 60 } };
                 for (int j = 0; j < 4; j++)

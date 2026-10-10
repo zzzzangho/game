@@ -1100,7 +1100,7 @@ namespace SennenKazoku.Game
                 UiKit.SetPx(ri.rectTransform, x * k, y * k, w * k, h * k); return ri;
             }
             var top = new Rect(0, (160f - LH) / 160f, 1, LH / 160f);   // 240×160 그림의 위 112줄 (텍스처 v 는 아래가 0)
-            if (v.Scene.Back.Length > 0) Raw("back", v.Scene.Back, 0, 0, LW, LH, top);
+            stageBack = v.Scene.Back.Length > 0 ? Raw("back", v.Scene.Back, 0, 0, LW, LH, top) : null; stageBackKey = v.Scene.Back;
             Raw("pic", v.Scene.Pic, 56, 40, 128, 64, new Rect(0, 0, 1, 1));
             Raw("frame", "ev_frame", 0, 0, LW, LH, top);
             if (v.Scene.Band.Length > 0)
@@ -1112,8 +1112,12 @@ namespace SennenKazoku.Game
             Raw("cupid", "ev_cupid", 8, 64, 32, 40, new Rect(0, 0, 1, 1));   // 원작 큐피트 자리 (OBJ 14~32, 70~100)
             // 인물·말풍선 (원작 자리·움직임 — Core.SceneAnim). 움직임은 UpdateStageAnim 이 매 프레임 바꾼다.
             stageK = k; stageBubbles.Clear(); zoomImg = null;
-            if (bubbleEvent != v.EventId) { bubbleEvent = v.EventId; bubbleStart.Clear(); zoomKey = ""; }
+            if (bubbleEvent != v.EventId) { bubbleEvent = v.EventId; bubbleStart.Clear(); zoomKey = ""; stageStart = Time.time; }
             if (emoTable == null) emoTable = SceneAnim.EmotionTable.Parse(art.Text("ev_emo_anim.json"));
+            if (backTable == null) backTable = SceneAnim.BackTable.Parse(art.Text("ev_back_anim.json"));
+            // 장면 시작 페이드 인(검정 → 원래 밝기): 맨 위에 덮는 검정
+            stageFade = UiKit.Box(evStage, "fade", Color.black); stageFade.raycastTarget = false;
+            UiKit.SetPx(stageFade.rectTransform, 0, 0, LW * k, LH * k);
             int n = v.Scene.Actors.Count;
             for (int i = 0; i < n; i++)
             {
@@ -1159,6 +1163,7 @@ namespace SennenKazoku.Game
                         Raw("emo" + i, "ev_emo_" + a.Anim.ToString("X2"), cx - 16, 40, 32, 19, new Rect(0, 0, 1, 1));
                 }
             }
+            if (stageFade != null) stageFade.transform.SetAsLastSibling();
             UpdateStageAnim();
         }
 
@@ -1167,7 +1172,8 @@ namespace SennenKazoku.Game
         readonly Dictionary<string, float> bubbleStart = new Dictionary<string, float>();   // 같은 사건·같은 동작이면 장이 바뀌어도 움직임을 이어 간다
         string bubbleEvent = "", zoomKey = "";
         SceneAnim.EmotionTable emoTable;
-        Image zoomImg; float zoomStart, zoomCx, zoomW, zoomH, stageK = 1;
+        Image zoomImg, stageFade; float zoomStart, zoomCx, zoomW, zoomH, stageK = 1, stageStart;
+        RawImage stageBack; string stageBackKey = ""; SceneAnim.BackTable backTable;
 
         /// <summary>사건 장면 움직임: 말풍선 그림 순서(원작 프레임 표)와 확대 진행(60프레임/초).</summary>
         void UpdateStageAnim()
@@ -1180,6 +1186,20 @@ namespace SennenKazoku.Game
                 var t = f >= 0 ? art.Texture("ev_emo_" + b.Emo.ToString("X2") + "_" + f) : null;
                 b.Img.enabled = t != null;
                 if (t != null) b.Img.texture = t;
+            }
+            float fr = (Time.time - stageStart) * 60f;
+            if (stageBack != null && backTable != null)
+            {
+                string key = stageBackKey.StartsWith("ev_back_") ? stageBackKey.Substring(8) : stageBackKey;
+                int bf = backTable.Frame(key, (int)fr);
+                var bt = bf >= 0 ? art.Texture(stageBackKey + "_" + bf) : null;
+                if (bt != null) stageBack.texture = bt;
+            }
+            if (stageFade != null)
+            {
+                float a = SceneAnim.IntroBlack(fr);
+                stageFade.color = new Color(0, 0, 0, a);
+                if (a <= 0f) stageFade.enabled = false;
             }
             if (zoomImg != null)
             {
