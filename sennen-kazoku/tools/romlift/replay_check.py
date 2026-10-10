@@ -19,6 +19,8 @@ import export_orig as E  # noqa: E402
 EW, IW, FR, IO = 0x40000, 0x8000, 0x40000, 0x400
 HEAP0 = 0x0F001000
 NOOP = set(E.UI_NOOP) | {0x08248EE0, 0x082494CC, 0x080955C8, 0x080959DC}
+# 앱에서 받은 둘째 인자를 그대로 돌려주는 화면 함수 (export_orig 의 "ret1": 거절 문구 꾸미기 0x08025240)
+RET1 = {a for a, n in E.NATIVE_NAMES.items() if n == 'ret1'}
 
 
 def load(path):
@@ -54,6 +56,7 @@ RomCpu._unmapped = _unmapped
 def main():
     rom = bytearray(open(sys.argv[1], 'rb').read())
     for f in NOOP: rom[f - 0x08000000:f - 0x08000000 + 4] = b'\x00\x20\x70\x47'   # movs r0,#0; bx lr
+    for f in RET1: rom[f - 0x08000000:f - 0x08000000 + 4] = b'\x08\x1c\x70\x47'   # adds r0,r1,#0; bx lr
     files = sorted(glob.glob(os.path.join(sys.argv[2], 'rec_*.bin')))
     if len(sys.argv) > 3: files = files[:int(sys.argv[3])]
     same = diff = 0

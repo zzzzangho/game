@@ -99,11 +99,17 @@ namespace SennenKazoku.Core
         void ReplaceCatalog(ContentCatalog c);
         /// <summary>저장 직전에 부른다 (원작 세션은 원작 메모리를 Family 에 적어 둔다).</summary>
         void PrepareSave();
+        /// <summary>화살·아이템 쓰기. 성공하면 null, 못 쓰면 이유.</summary>
+        string Use(Person target, string toolId);
+        /// <summary>이 세션에서 쓸 수 있게 옮겨진 도구인가 (화면의 "미구현" 표시).</summary>
+        bool CanUse(string toolId);
     }
 
     public sealed class GameSession : IGameSession
     {
         public Family Family { get; private set; }
+        public string Use(Person target, string toolId) { return Interventions.Use(Family, target, toolId); }
+        public bool CanUse(string toolId) { var t = Interventions.Find(toolId); return t != null && t.Implemented; }
         public ContentCatalog Catalog { get; private set; }
         public readonly Rng Rng;
         public readonly List<string> Log = new List<string>();

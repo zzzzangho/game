@@ -127,6 +127,7 @@ namespace SennenKazoku.Core.Orig
                         return 0;
                     }
                 case "noop": return 0;   // 소리·화면 함수 (규칙 상태를 바꾸지 않음)
+                case "ret1": return args.Length > 1 ? args[1] : 0;   // 문구 꾸미기 0x08025240: 글 대신 받은 문구 포인터를 돌려준다
                 case "malloc":   // 원작 힙 할당 0x08006A58 — 원작 힙 상태 대신 작업 영역에서 차례로 잡는다
                     {
                         uint size = (args[0] + 3) & ~3u;

@@ -108,7 +108,7 @@ namespace SennenKazoku.Core.Orig
         }
 
         /// <summary>시작 화살: 원작 큐피트 튜토리얼이 힘내라·진정해 화살을 각 5개 준다(원작 화면). 튜토리얼 화면은 옮기지 않아 보유 수(0x0202C640)만 넣는다.</summary>
-        static void GiveStartingArrows(OrigMem m) { m.W8(0x0202C640, 5); m.W8(0x0202C641, 5); }
+        static void GiveStartingArrows(OrigMem m) { m.W8(ArrowInv, 5); m.W8(ArrowInv + 1, 5); }
 
         static readonly byte[] DefaultLookM = { 0x00, 0x43, 0x22, 0x00, 0x00, 0x05, 0x43, 0x01, 0x00, 0x02, 0x03, 0, 0, 0, 0, 0 };
         static readonly byte[] DefaultLookF = { 0x0E, 0x12, 0x12, 0x00, 0x12, 0x22, 0x12, 0x0F, 0x00, 0x02, 0x03, 0, 0, 0, 0, 0 };
@@ -156,10 +156,8 @@ namespace SennenKazoku.Core.Orig
         }
 
         /// <summary>
-        /// 화면에서 바꾼 값(화살·아이템 — Interventions)을 원작 메모리에 옮긴다. 마지막 투영 값과 다른 것만 쓴다.
-        ///  - 화살 표시 → 레코드 +0x69 (원작 0x080244A0 과 같은 비트 규칙), 화살 보유 수 → 0x0202C640 [0 힘내라, 1 진정해] (실기에서 확인)
-        ///  - 고리(능력치) → +0x50~, 하트 열매·독 하트 열매 → +0x5B, 행복 상자 → 무드 0x0202C6AE
-        /// 아이템 효과 값은 참고 자료(item-effects.json)의 확인된 규칙이고, 원작 아이템 함수를 그대로 부른 것은 아니다(원작 아이템 번호·함수 미확인).
+        /// 화면 쪽 Family 를 직접 바꾼 값(시험·옛 경로)을 원작 메모리에 옮긴다. 마지막 투영 값과 다른 것만 쓴다.
+        /// 화살·아이템은 Use 가 원작 함수로 원작 메모리를 바로 바꾸므로 여기를 거치지 않는다(보유 수를 직접 바꾼 경우만 옮긴다).
         /// </summary>
         void SyncIn()
         {
@@ -175,15 +173,102 @@ namespace SennenKazoku.Core.Orig
                 if (q.Hearts != sn.Hearts) m.W8(p + 0x5B, (uint)Math.Max(0, Math.Min(255, q.Hearts * 255 / Person.HeartMax)));
             }
             if (Family.Mood != famSnap.Mood) m.W8(0x0202C6AE, (uint)Math.Max(0, Math.Min(255, Family.Mood)));
-            for (int k = 0; k < 2; k++)
-                if (Interventions.Count(Family, ArrowItems[k]) != famSnap.Arrows[k]) m.W8(0x0202C640 + (uint)k, (uint)Math.Max(0, Math.Min(255, Interventions.Count(Family, ArrowItems[k]))));
+            foreach (var t in Interventions.Tools)
+            {
+                if (t.OrigSlot < 0) continue;
+                int n = Interventions.Count(Family, t.Id), was;
+                if (!famSnap.Counts.TryGetValue(t.Id, out was) || n != was) m.W8(SlotAddr(t), (uint)Math.Max(0, Math.Min(255, n)));
+            }
         }
 
-        static readonly string[] ArrowItems = { "arrow.encourage", "arrow.calm" };
+        static uint SlotAddr(ToolDef t) { return (t.Kind == "arrow" ? ArrowInv : ItemInv) + (uint)t.OrigSlot; }
+        /// <summary>원작 보유 칸: 화살 16칸·아이템 16칸 (0x0202C010+0x630 / +0x640, 실기 메뉴로 칸 순서 확인).</summary>
+        public const uint ArrowInv = 0x0202C640, ItemInv = 0x0202C650;
         sealed class Snap { public int Arrow, Hearts; public int[] Stats = new int[4]; }
         readonly Dictionary<int, Snap> snaps = new Dictionary<int, Snap>();
-        sealed class FamSnap { public int Mood; public int[] Arrows = new int[2]; }
+        sealed class FamSnap { public int Mood; public readonly Dictionary<string, int> Counts = new Dictionary<string, int>(); }
         readonly FamSnap famSnap = new FamSnap();
+
+        // ---------- 화살·아이템 (원작 함수) ----------
+        // 원작 메뉴 객체·인물 객체 대신 쓰는 작업 자리 (기록 범위 0x0F000000~0x0F03FFFF 안, 비교 범위 0x0F000000~0x0F000FFF 밖)
+        const uint ToolObj = 0x0F038000, ToolChar = 0x0F038400;
+        /// <summary>옮기지 않은 도구: 통신 결혼(통신 기능), 시간의 책갈피(원작 0x080108BC 의 따로 저장), 선대 마음의 결정(스킬 고르기 화면 0x0801D8B0 의 100번대 경로).</summary>
+        static readonly HashSet<string> NotPorted = new HashSet<string> { "arrow.link", "item.bookmark", "item.heart_crystal" };
+
+        public bool CanUse(string toolId) { var t = Interventions.Find(toolId); return t != null && t.OrigSlot >= 0 && !NotPorted.Contains(toolId); }
+
+        /// <summary>
+        /// 원작 흐름 그대로 화살·아이템을 쓴다.
+        ///  - 화살: 쏠 수 있는지 0x0801CECC(메뉴, 종류) → 맞으면 0x08024440(메뉴, 종류, 인물 객체, -) → 보유 수 −1 (0x0801CDC2).
+        ///    못 쏘면 원작은 메뉴+0x200 에 거절 문구(0x0858683C~ 표)를 둔다 — 앱은 그 문구 번호로 이유를 고른다.
+        ///  - 아이템: 0x08024B80(칸, 인물 레코드, 스킬, 메뉴) 이 0 이면 성공 → 보유 수 −1 (0x0801D9AE). 1~3 은 못 쓰는 경우.
+        /// 원작 메뉴 객체에서 이 함수들이 읽는 자리는 "선택 인물 번호(+0x154) = 0, 인물 객체 표(+4)" 뿐이라 그 둘만 채운다.
+        /// </summary>
+        public string Use(Person target, string toolId)
+        {
+            var t = Interventions.Find(toolId);
+            if (t == null || t.OrigSlot < 0) return "알 수 없는 도구";
+            if (NotPorted.Contains(toolId)) return t.Name + "은(는) 아직 옮기지 않았습니다";
+            if (target == null) return "대상이 없습니다";
+            SyncIn();
+            var m = Game.Mem; uint rec = 0;
+            for (int k = 0; k < 8; k++) if (OrigGame.Present(m, k) && (int)m.R16(OrigMem.PersonAddr(k) + 0x3C) == target.Id) { rec = OrigMem.PersonAddr(k); break; }
+            if (rec == 0) return "대상이 없습니다";
+            uint inv = SlotAddr(t);
+            if (m.R8(inv) == 0) return t.Name + "이(가) 없습니다";
+            var ew = (byte[])m.Ewram.Clone(); var iw = (byte[])m.Iwram.Clone();
+            try
+            {
+                for (uint i = 0; i < 0x800; i += 4) m.W32(ToolObj + i, 0);
+                m.W32(ToolObj + 4, ToolChar); m.W32(ToolObj + 0x154, 0); m.W32(ToolChar + 4, rec);
+                if (t.Kind == "arrow")
+                {
+                    if (Game.Vm.Call("0801CECC", ToolObj, (uint)t.OrigSlot) == 0) return ArrowRefusal(RefusalEntry(m, m.R32(ToolObj + 0x200)), t);
+                    Game.Vm.Call("08024440", ToolObj, (uint)t.OrigSlot, ToolChar, m.R16(ToolObj + 0x18C));
+                }
+                else
+                {
+                    uint r = Game.Vm.Call("08024B80", (uint)t.OrigSlot, rec, 0, ToolObj);
+                    if (r != 0) return ItemRefusal(t, r);
+                }
+                m.W8(inv, m.R8(inv) - 1);
+                Project();
+                return null;
+            }
+            catch (OrigUnmodeled e)
+            {
+                Array.Copy(ew, m.Ewram, ew.Length); Array.Copy(iw, m.Iwram, iw.Length);
+                return t.Name + ": 원작 함수 실행 실패 (" + e.Message + ")";
+            }
+        }
+
+        /// <summary>메뉴+0x200 의 글 포인터가 원작 문구 표(0x0858683C 부터 4바이트씩)의 어느 자리 값인지 → 그 자리 주소 (모르면 0).</summary>
+        static uint RefusalEntry(OrigMem m, uint text)
+        {
+            for (uint a = 0x0858683C; a < 0x085868C0; a += 4) { try { if (m.R32(a) == text) return a; } catch (OrigUnmodeled) { } }
+            return 0;
+        }
+
+        /// <summary>화살 거절 이유 (원작 문구 표 0x0858683C~ 의 자리 → 0x0801CECC 의 조건을 읽어 앱이 쓴 설명. 원작 글을 옮긴 것이 아니다).</summary>
+        static string ArrowRefusal(uint msg, ToolDef t)
+        {
+            switch (msg)
+            {
+                case 0x0858683C: return "화살의 효과가 계속되고 있습니다. 힘내라의 화살·진정해의 화살은 쏠 수 없습니다";
+                case 0x08586840: return "열중 게이지가 바닥이라 힘내라의 화살을 쏠 수 없습니다";
+                case 0x08586844: return "열중 게이지가 가득이라 진정해의 화살을 쏠 수 없습니다";
+                default: return "지금 이 사람에게는 " + t.Name + "을(를) 쏠 수 없습니다 (원작 판정, 문구 " + msg.ToString("X8") + ")";
+            }
+        }
+
+        /// <summary>아이템 실패 (0x08024B80 의 돌려준 값 — 횃불: 악마 없음, 사랑의 고리: 연인 없음(+0x74), 왕관: 1 세대주의 자녀 아님 · 2·3 지금은 안 됨).</summary>
+        static string ItemRefusal(ToolDef t, uint r)
+        {
+            if (t.Id == "item.torch") return "악마가 와 있을 때만 쓸 수 있습니다";
+            if (t.Id == "item.ring.love") return "연인이 있을 때만 쓸 수 있습니다";
+            if (t.Id == "item.crown") return r == 1 ? "세대주의 자녀에게만 쓸 수 있습니다" : "지금은 후계자의 왕관을 쓸 수 없습니다";
+            return "지금은 " + t.Name + "을(를) 쓸 수 없습니다 (원작 판정 " + r + ")";
+        }
 
         void StartNext()
         {
@@ -320,7 +405,8 @@ namespace SennenKazoku.Core.Orig
             f.HeadId = (int)m.R16(0x0202C67C);
             // 가족 값 (가족 기준 0x0202C010: +0x69E 무드 · +0x69F 집 등급 · +0x6A8 자산 — 참고 자료 family-save-layout 과 0x08111D54)
             f.Mood = (int)m.R8(0x0202C6AE); f.HouseGrade = (int)m.R8(0x0202C6AF); f.Assets = m.R32(0x0202C6B8);
-            for (int k = 0; k < 2; k++) { f.Items[ArrowItems[k]] = (int)m.R8(0x0202C640 + (uint)k); famSnap.Arrows[k] = f.Items[ArrowItems[k]]; }
+            foreach (var t in Interventions.Tools)
+                if (t.OrigSlot >= 0) { f.Items[t.Id] = (int)m.R8(SlotAddr(t)); famSnap.Counts[t.Id] = f.Items[t.Id]; }
             famSnap.Mood = f.Mood;
             OrigDate.Get(m, OrigMem.Date, out int y, out int mo, out int d);
             f.Today = SafeDay(y, mo, d);

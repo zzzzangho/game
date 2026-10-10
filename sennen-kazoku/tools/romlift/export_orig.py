@@ -39,6 +39,9 @@ NATIVE_NAMES.update({a: "noop" for a in UI_NOOP})
 # 원작 힙(머리 0x0202BFB0): 할당 0x08006A58, 해제 0x0800695C. 앱은 원작 힙 상태를 두지 않고 따로 잡은 작업 영역에서 할당한다.
 NATIVES.update({0x08006A58: 1, 0x0800695C: 1})
 NATIVE_NAMES.update({0x08006A58: "malloc", 0x0800695C: "free"})
+# 거절 문구 꾸미기 0x08025240(장면, 문구) — 이름 자리를 채운 글을 만드는 화면 함수. 앱은 글을 따로 만들므로 문구 포인터만 돌려준다.
+NATIVES.update({0x08025240: 2})
+NATIVE_NAMES.update({0x08025240: "ret1"})
 STATE_TABLE, CAND_TABLE = 0x085BD4A0, 0x085BD4B4
 OPS = {'add': '+', 'sub': '-', 'mul': '*', 'and': '&', 'or': '|', 'xor': '^', 'shl': '<<', 'lsr': '>>', 'asr': '>>>',
        'udiv': '/', 'umod': '%', 'sdiv': '/s', 'smod': '%s'}

@@ -1097,25 +1097,27 @@ namespace SennenKazoku.Game
         {
             var p = Sel(); if (p == null || session.Paused) { Toast("지금은 쓸 수 없습니다"); return; }
             var body = Window((kind == "arrow" ? "화살 — " : "아이템 — ") + p.Name, 520); float w = BodyW(body), y = 0, bh = Px(58);
+            bool orig = session is Core.Orig.OrigSession;
             foreach (var t in Interventions.Tools)
             {
                 if (t.Kind != kind) continue;
-                int n = Interventions.Count(session.Family, t.Id);
-                if (kind == "item" && n == 0 && t.Implemented) continue;
+                int n = Interventions.Count(session.Family, t.Id); bool can = session.CanUse(t.Id);
+                // 원작처럼 가진 것만 보인다 (원작 세션). 옛 세션은 구현된 아이템 중 없는 것을 숨긴다.
+                if (orig ? n == 0 : (kind == "item" && n == 0 && can)) continue;
                 string id = t.Id;
-                var b = UiKit.Btn(body, t.Id, "", Px(14), n > 0 && t.Implemented ? Color.white : new Color(0.88f, 0.88f, 0.9f), UiKit.Ink, () =>
+                var b = UiKit.Btn(body, t.Id, "", Px(14), n > 0 && can ? Color.white : new Color(0.88f, 0.88f, 0.9f), UiKit.Ink, () =>
                 {
-                    var err = Interventions.Use(session.Family, Sel(), id);
+                    var err = session.Use(Sel(), id);
                     ClosePopup(); Toast(err ?? (Interventions.Find(id).Name + "을(를) " + Sel().Name + "에게 썼습니다"));
                     if (err == null) SaveSlot("auto", true);
                 });
                 var lbl = b.GetComponentInChildren<Text>(); lbl.alignment = TextAnchor.MiddleLeft; lbl.fontStyle = FontStyle.Normal; lbl.supportRichText = true;
-                lbl.text = "<b>" + t.Name + "</b>  ×" + n + (t.Implemented ? "" : "  (미구현)") + "\n<size=" + Px(12) + ">" + t.Desc + "</size>";
+                lbl.text = "<b>" + t.Name + "</b>  ×" + n + (can ? "" : "  (미구현)") + "\n<size=" + Px(12) + ">" + t.Desc + "</size>";
                 UiKit.SetPx(b.GetComponent<RectTransform>(), 0, y, w, bh); y += bh + Px(6);
             }
-            if (kind == "item" && y == 0)
+            if (y == 0)
             {
-                var l = UiKit.Label(body, "none", "가진 아이템이 없습니다.\n(원작의 아이템 입수 경로는 아직 구현 전)", Px(15), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(l.rectTransform, 0, 0, w, Px(80));
+                var l = UiKit.Label(body, "none", kind == "arrow" ? "가진 화살이 없습니다." : "가진 아이템이 없습니다.", Px(15), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(l.rectTransform, 0, 0, w, Px(80));
             }
         }
 

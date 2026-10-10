@@ -593,10 +593,11 @@ namespace SennenKazoku.Tests
                 T.True(Interventions.Use(f, p, "arrow.encourage") == null); T.Eq(Interventions.Count(f, "arrow.encourage"), 4);
                 T.True(Interventions.Use(f, p, "arrow.love") != null, "미구현 화살은 거부");
             });
-            T.Run("아이템: 고리 +800(상한 5000), 행복 상자 무드 한 단계", () => {
+            T.Run("아이템: 고리 +1000(상한 5000), 행복 상자 무드 +64 (원작 0x08024B80, 고리는 실기 확인)", () => {
                 var f = NewGame.Create(1); var p = f.Members[0]; f.Items["item.ring.int"] = 2; f.Items["item.happiness_box"] = 1;
+                p.Stats[0] = 2173; T.True(Interventions.Use(f, p, "item.ring.int") == null); T.Eq(p.Stats[0], 3173);
                 p.Stats[0] = 4500; T.True(Interventions.Use(f, p, "item.ring.int") == null); T.Eq(p.Stats[0], 5000);
-                f.Mood = 100; T.True(Interventions.Use(f, p, "item.happiness_box") == null); T.Eq(Family.MoodLevel(f.Mood), 4);
+                f.Mood = 100; T.True(Interventions.Use(f, p, "item.happiness_box") == null); T.Eq(f.Mood, 164);
                 T.True(Interventions.Use(f, p, "item.happiness_box") != null, "보유 0 이면 거부");
             });
             T.Run("저장 v1 → v2 실제 마이그레이션(시작일·세대주·화살 5개 보충)", () => {
@@ -771,15 +772,51 @@ namespace SennenKazoku.Tests
                         Console.WriteLine("       예고 " + p.Name + " 255: " + (hi == null ? "-" : hi.Title + " " + EffectChange.Format(s.Family, hi.Changes)) + " / 0: " + (lo == null ? "-" : lo.Title + " " + EffectChange.Format(s.Family, lo.Changes)));
                     }
                     T.True(mem0 == Convert.ToBase64String(s.Game.Mem.SaveBlock()) && seed0 == s.Game.Mem.R32(0x02000000), "결과 예고가 원작 메모리를 바꿨다");
-                    // 화면 개입(화살·고리)이 원작 메모리에 들어가 다음 날에도 남는지
-                    var who = s.Family.Members[0]; int s0 = who.Stats[0];
+                    // 화살·아이템: 원작 함수(0x0801CECC·0x08024440·0x08024B80)로 쓰고 다음 날에도 원작 메모리에 남는지
+                    // SK_REC_DIR 이 있으면 이 호출들의 앞뒤 메모리를 남긴다 (romlift/replay_check.py 로 원작 ROM 과 비교)
+                    var toolRec = Environment.GetEnvironmentVariable("SK_REC_DIR");
+                    if (!string.IsNullOrEmpty(toolRec))
+                    {
+                        Directory.CreateDirectory(toolRec); int tn = 0; byte[] pre = null; var tm = s.Game.Mem;
+                        byte[] TSnap() { var b = new byte[0x40000 + 0x8000 + 0x40000 + 0x400]; Array.Copy(tm.Ewram, 0, b, 0, 0x40000); Array.Copy(tm.Iwram, 0, b, 0x40000, 0x8000); Array.Copy(tm.Frames, 0, b, 0x48000, 0x40000); Array.Copy(tm.Io, 0, b, 0x88000, 0x400); return b; }
+                        s.Game.Vm.BeforeTop = (fn, a) => { pre = TSnap(); };
+                        s.Game.Vm.AfterTop = (fn, a, r) =>
+                        {
+                            using (var w = new BinaryWriter(File.Create(Path.Combine(toolRec, "tool_" + (tn++).ToString("D3") + ".bin"))))
+                            { w.Write(0x31434552u); w.Write(uint.Parse(fn, System.Globalization.NumberStyles.HexNumber)); w.Write(0u); w.Write((uint)a.Length); foreach (var x in a) w.Write(x); w.Write(r); w.Write(pre); w.Write(TSnap()); }
+                        };
+                    }
+                    var who = s.Family.Members[0]; int s0 = who.Stats[0]; var mm = s.Game.Mem;
+                    uint whoRec = 0; for (int k = 0; k < 8; k++) if (SennenKazoku.Core.Orig.OrigGame.Present(mm, k) && (int)mm.R16(SennenKazoku.Core.Orig.OrigMem.PersonAddr(k) + 0x3C) == who.Id) whoRec = SennenKazoku.Core.Orig.OrigMem.PersonAddr(k);
                     T.True(Interventions.Count(s.Family, "arrow.encourage") == 5, "시작 화살 5개");
-                    s.Family.Items["item.ring.int"] = 1; T.True(Interventions.Use(s.Family, who, "item.ring.int") == null, "고리 사용");
-                    who.ArrowFlags = 0; T.True(Interventions.Use(s.Family, who, "arrow.encourage") == null, "화살 사용");
+                    var enc = s.Use(who, "arrow.encourage"); T.True(enc == null, "힘내라 화살: " + enc); T.Eq((int)mm.R8(whoRec + 0x69) & 7, 3);
+                    var again = s.Use(who, "arrow.calm"); T.True(again != null && again.StartsWith("화살의 효과가"), "효과 중 거절: " + again);
+                    foreach (var t in Interventions.Tools) if (t.OrigSlot >= 0 && s.CanUse(t.Id) && t.Id != "arrow.encourage" && t.Id != "arrow.calm") s.Family.Items[t.Id] = 2;
+                    int h0 = (int)mm.R8(whoRec + 0x5B); s.Family.Items["item.poison_heart_fruit"] = 1;
+                    T.True(s.Use(who, "item.heart_fruit") == null, "하트 열매"); T.Eq((int)mm.R8(whoRec + 0x5B), Math.Min(255, h0 + 95));
+                    T.True(s.Use(who, "item.poison_heart_fruit") == null, "독 하트 열매"); T.Eq((int)mm.R8(whoRec + 0x5B), 0);
+                    T.Eq(Interventions.Count(s.Family, "item.poison_heart_fruit"), 0);
+                    T.True(s.Use(who, "item.poison_heart_fruit") != null, "보유 0 이면 거부");
+                    int mood0 = s.Family.Mood; T.True(s.Use(who, "item.happiness_box") == null, "행복 상자"); T.Eq(s.Family.Mood, Math.Min(255, mood0 + 64));
+                    T.True(s.Use(who, "item.ring.int") == null, "지력의 고리"); T.Eq(s.Family.Get(who.Id).Stats[0], Math.Min(5000, s0 + 1000));
+                    var torch = s.Use(who, "item.torch"); Console.WriteLine("       횃불(악마 없음): " + torch); T.True(torch != null, "악마 없으면 횃불 거부");
+                    Console.WriteLine("       사랑의 고리: " + (s.Use(who, "item.ring.love") ?? "씀") + " / 왕관: " + (s.Use(who, "item.crown") ?? "씀"));
+                    var kid = s.Family.Members.Find(p => p.FatherId == s.Family.HeadId || p.MotherId == s.Family.HeadId);
+                    if (kid != null) Console.WriteLine("       왕관(세대주 자녀 " + kid.Name + "): " + (s.Use(kid, "item.crown") ?? "씀") + ", 후계자 0x0202C67E=" + mm.R16(0x0202C67E));
+                    foreach (var t in Interventions.Tools)
+                        if (t.Kind == "arrow" && t.OrigSlot >= 2 && s.CanUse(t.Id))
+                        {
+                            var q = s.Family.Members[s.Family.Members.Count - 1]; uint qa = 0;
+                            for (int k = 0; k < 8; k++) if (SennenKazoku.Core.Orig.OrigGame.Present(mm, k) && (int)mm.R16(SennenKazoku.Core.Orig.OrigMem.PersonAddr(k) + 0x3C) == q.Id) qa = SennenKazoku.Core.Orig.OrigMem.PersonAddr(k);
+                            var before = (byte[])mm.Ewram.Clone();
+                            var r = s.Use(q, t.Id); int diff = 0; for (int i = 0; i < before.Length; i++) if (before[i] != mm.Ewram[i]) diff++;
+                            Console.WriteLine("       " + t.Name + " → " + q.Name + ": " + (r ?? "씀") + " (바뀐 바이트 " + diff + ")");
+                        }
+                    s.Game.Vm.BeforeTop = null; s.Game.Vm.AfterTop = null;
                     s.StepDay(); while (s.Paused) s.Advance();
                     var who2 = s.Family.Get(who.Id);
                     Console.WriteLine("       개입: 지력 " + s0 + " → 고리 → 다음 날 " + who2.Stats[0] + ", 힘내라 화살 남은 수 " + Interventions.Count(s.Family, "arrow.encourage") + ", 화살 표시 " + who2.ArrowFlags);
-                    T.True(who2.Stats[0] >= Math.Min(Stat.Max, s0 + 800) - 50 && Interventions.Count(s.Family, "arrow.encourage") == 4, "개입이 원작 메모리에 남지 않음");
+                    T.True(who2.Stats[0] >= Math.Min(Stat.Max, s0 + 1000) - 50 && Interventions.Count(s.Family, "arrow.encourage") == 4, "개입이 원작 메모리에 남지 않음");
                     int shown = 0, withText = 0, pagesTotal = 0; string sample = null;
                     void Drain(SennenKazoku.Core.Orig.OrigSession ss)
                     {
