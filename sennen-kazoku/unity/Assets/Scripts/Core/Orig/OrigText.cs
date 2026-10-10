@@ -37,6 +37,8 @@ namespace SennenKazoku.Core.Orig
         public readonly List<string> Ui = new List<string>();
         /// <summary>직업 이름 (직업 표 0x0889D3B8 → 기록 +0 글, 번호 = 직업 번호 — 시대별로 39칸씩: 26 전업주부 · 65 미래 전업주부 …). orig_text.json "jobs".</summary>
         public readonly List<string> Jobs = new List<string>();
+        /// <summary>천계 보고 대사 (orig_text.json "heaven", export_charset.py --heaven-only — OrigHeaven).</summary>
+        public OrigHeaven.Data Heaven = new OrigHeaven.Data();
         public string UiText(int k, string fallback) { return k >= 0 && k < Ui.Count && Ui[k].Length > 0 ? Ui[k] : fallback; }
         /// <summary>Decode 에서 만난, 글자표에 없는 코드 (점검용).</summary>
         public readonly HashSet<int> Missing = new HashSet<int>();
@@ -65,6 +67,7 @@ namespace SennenKazoku.Core.Orig
             if (ui != null) foreach (var x in ui) t.Ui.Add(x as string ?? "");
             var jobs = d.ContainsKey("jobs") ? d["jobs"] as List<object> : null;
             if (jobs != null) { foreach (var x in jobs) t.Jobs.Add(x as string ?? ""); OrigJobs.PackNames = t.Jobs; }
+            t.Heaven = OrigHeaven.Data.FromJson(J.Child(d, "heaven"));
             var ov = J.Child(d, "overrides");
             if (ov != null) foreach (var kv in ov) t.Overrides[Convert.ToUInt32(kv.Key.Substring(2), 16)] = kv.Value as string ?? "";
             var sk = d.ContainsKey("skills") ? d["skills"] as List<object> : null;
@@ -98,6 +101,16 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         public List<string> Decode(IList<byte> b, Func<int, string> name, Func<int, string> person)
         {
+            return Decode(b, name == null ? (Func<int, int, string>)null : (code, fmt) => name(code), person, null);
+        }
+
+        /// <summary>
+        /// 이름 자리의 둘째 바이트(형식)와 숫자 자리 1A 05 aa bb 까지 넘기는 해독 (천계 대사 — OrigHeaven).
+        /// 원작 글 엔진의 이름 분기 0x080A7A00: 코드 &lt; 0x1C 슬롯 인물(형식 0x1F = 그 사람이 남긴 꿈) · 0x26 플레이어 · 0x27 가문(형식 0x1B = 가족 칭호) ·
+        /// 0x2A 세대주(형식 0x1D) · 0x2B 스킬 … number(aa, bb) 가 null 을 주면 "?".
+        /// </summary>
+        public List<string> Decode(IList<byte> b, Func<int, int, string> name, Func<int, string> person, Func<int, int, string> number)
+        {
             var pages = new List<string>(); var sb = new StringBuilder();
             void Flush() { var s = FixJosa(sb.ToString()).Trim(); if (s.Length > 0) pages.Add(s); sb.Clear(); }
             int i = 0;
@@ -111,9 +124,9 @@ namespace SennenKazoku.Core.Orig
                     if (op == 0xFF) break;
                     if (op == 0x01) sb.Append('\n');
                     else if (op == 0x02 || op == 0x09) Flush();
-                    else if (op == 0x06 && i + 2 < b.Count) sb.Append((name != null ? name(b[i + 2]) : null) ?? "○○");
+                    else if (op == 0x06 && i + 2 < b.Count) sb.Append((name != null ? name(b[i + 2], i + 3 < b.Count ? b[i + 3] : 0) : null) ?? "○○");
                     else if (op == 0x86 && i + 3 < b.Count) sb.Append((person != null ? person(OrigResultScript.MarkId(b[i + 2], b[i + 3])) : null) ?? "○○");
-                    else if (op == 0x05) sb.Append('?');
+                    else if (op == 0x05) sb.Append((number != null && i + 3 < b.Count ? number(b[i + 2], b[i + 3]) : null) ?? "?");
                     else if (op == 0x87 && i + 5 < b.Count)
                     {
                         uint addr = (uint)(b[i + 2] | b[i + 3] << 8 | b[i + 4] << 16 | b[i + 5] << 24);

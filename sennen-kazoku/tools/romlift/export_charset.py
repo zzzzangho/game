@@ -12,6 +12,7 @@
 
   python3 export_charset.py ROM.gba orig_text.json [손으로_읽은_글자.txt]
   python3 export_charset.py ROM.gba orig_text.json --jobs-only   — 직업 이름만 더하기
+  python3 export_charset.py ROM.gba orig_text.json --heaven-only — 천계 보고 대사만 더하기
 결과: orig_text.json 에 "charset": {"889F": "가", ..., "8740": "은/는"} 를 더해 다시 쓴다.
 """
 import collections, json, re, struct, sys
@@ -110,6 +111,39 @@ def job_names(rom, table):
     return jobs
 
 
+HEAVEN_STATES = 0x085BC2E4   # 천계 보고(0x0809F938) 상태별 글 목록 포인터 (상태 0~0x4B)
+HEAVEN_MSGS = 0x085D5CB0     # 글 번호 → 글
+HEAVEN_TYPES = 0x085BBD10    # 가족 유형 → {화면 글 번호(칭호), 신님 평 글 번호}
+HEAVEN_LIVES = 0x085BBD58    # 인생 평가(가계 기록 +0x33) → {화면 글 번호, 평가 글 번호}
+SPECIALS, DREAMS = 0x088915C8, 0x08891D9C   # 관심사 → 특별 기록(+6 꿈 번호) → 꿈 기록(28바이트, +3 꿈 표시, +8 글)
+
+
+def heaven_pack(rom, table):
+    """천계 보고 대사 (원작 글 바이트 그대로 — 이름 자리 형식·숫자 자리까지 C# OrigText.Decode 가 푼다). 로컬 전용."""
+    u32 = lambda a: struct.unpack_from('<I', rom, a - 0x08000000)[0]
+    u16 = lambda a: struct.unpack_from('<H', rom, a - 0x08000000)[0]
+    ptrs = {st: u32(HEAVEN_STATES + 4 * st) for st in range(0x4C)}
+    ptrs = {st: p for st, p in ptrs.items() if 0x08000000 <= p < 0x0A000000}
+    base = min(ptrs.values())
+    lists = [struct.unpack_from('<i', rom, a - 0x08000000)[0] for a in range(base, HEAVEN_STATES, 4)]
+    types = [[u32(HEAVEN_TYPES + 8 * x), u32(HEAVEN_TYPES + 8 * x + 4)] for x in range(9)]
+    lives = [[u32(HEAVEN_LIVES + 8 * x), u32(HEAVEN_LIVES + 8 * x + 4)] for x in range(12)]
+    ids = {v for v in lists if v >= 0} | {t[1] for t in types} | {t[1] for t in lives}
+    msgs = {}
+    for v in sorted(ids):
+        p = u32(HEAVEN_MSGS + 4 * v) - 0x08000000
+        e = rom.find(b'\x1a\xff', p)
+        msgs[str(v)] = rom[p:e + 2].hex()
+    dreams = {}
+    for i in range(4096):
+        q = u32(SPECIALS + 4 * i)
+        if not 0x08000000 <= q < 0x0A000000: break
+        d = DREAMS + 28 * u16(q + 6)
+        if rom[d + 3 - 0x08000000] & 1: dreams[str(i)] = decode(rom, table, u32(d + 8), 60)
+    return {"base": '0x%08X' % base, "lists": lists, "states": {str(st): (p - base) // 4 for st, p in ptrs.items()},
+            "msgs": msgs, "types": types, "lives": lives, "dreams": dreams}
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__); return 2
@@ -119,6 +153,10 @@ def main():
         pack['jobs'] = job_names(rom, pack['charset'])
         json.dump(pack, open(sys.argv[2], 'w', encoding='utf8'), ensure_ascii=False, separators=(',', ':'))
         print('직업 이름 %d개' % len(pack['jobs'])); return 0
+    if '--heaven-only' in sys.argv:
+        pack['heaven'] = heaven_pack(rom, pack['charset'])
+        json.dump(pack, open(sys.argv[2], 'w', encoding='utf8'), ensure_ascii=False, separators=(',', ':'))
+        h = pack['heaven']; print('천계 글 목록 %d칸, 글 %d개, 꿈 %d개' % (len(h['lists']), len(h['msgs']), len(h['dreams']))); return 0
     votes = collections.defaultdict(collections.Counter)
     for k, v in pack['records'].items():
         p = struct.unpack_from('<I', rom, int(k, 16) - 0x08000000 + 0x14)[0]

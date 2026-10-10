@@ -1060,17 +1060,28 @@ namespace SennenKazoku.Tests
                     var s = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234);
                     T.True(s.Family.Members.Count >= 2, "가족 인원 " + s.Family.Members.Count);
                     Console.WriteLine("       시작 " + GameDate.Format(s.Family.Today) + " " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + "(" + (p.Gender == 0 ? "남" : "여") + p.Age(s.Family.Today) + "세 " + p.PlannedTitle + ")")));
-                    {   // 세기 확인: 시작일을 100년 전으로, 세대 기록 수(+0x6A3)를 2(비교 날짜 = 시작일)로 두고 세대교체 때처럼 부르면
-                        // 몸통 세트 0 → 1, 가족 직업이 새 시대 것으로, 시간의 책갈피 +1 (원작 0x080A113C + 새 시대 순서 상태 0x3B)
+                    {   // 천계 보고(결혼식 뒤 원작 0x0809F938 진입값 2 → 5 → 6): 시작일을 100년 전으로, 세대 기록 수(+0x6A3)를 2(첫 세대교체)로 두면
+                        // 가계도 설명 → 작명서 → 칭호·유형 평 → 통신 결혼의 화살 → 세기 확인(1세기 = 새 시대) → 시대 연출 → 새 시대 축하·시간의 책갈피·기록의 전당 → 마무리.
+                        // 몸통 세트 0 → 1, 가족 직업이 새 시대 것으로, 시간의 책갈피 +1, 통신 결혼의 화살(화살 칸 10) 1, 고인 목록 비움.
                         var cs = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234); var cmm = cs.Game.Mem;
                         SennenKazoku.Core.Orig.OrigDate.Get(cmm, SennenKazoku.Core.Orig.OrigMem.Date, out int ty, out int tmo, out int tdd);
                         SennenKazoku.Core.Orig.OrigDate.Set(cmm, 0x0202C688, ty - 100, tmo, tdd); cmm.W8(0x0202C6B3, 2);
                         var jobs0 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job)); uint bm0 = cmm.R8(0x0202C65A);
-                        cs.CenturyCheck(); cs.Project();
+                        cs.HeavenReport(); cs.Project();
+                        var hv = cs.LastHeaven;
                         int era1 = (int)cmm.R8(0x0202C692); var jobs1 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job)); uint bm1 = cmm.R8(0x0202C65A);
+                        Console.WriteLine("       천계 상태 차례: " + string.Join(" ", hv.Trace.ConvertAll(x => x.ToString("X"))));
+                        Console.WriteLine("       천계 글 번호: " + string.Join(" ", hv.Pages.ConvertAll(x => x.MsgId < 0 ? "[" + x.Screen + "]" : (x.Speaker == 2 ? "큐" : "신") + x.MsgId)));
+                        foreach (var pg in hv.Pages.Take(6)) Console.WriteLine("         " + (pg.Speaker == 1 ? "높으신 신" : pg.Speaker == 2 ? "큐피트" : "화면") + ": " + pg.Text.Replace("\n", " / "));
                         Console.WriteLine("       새 시대 직업 이름: " + string.Join(", ", cs.Family.Members.ConvertAll(p => SennenKazoku.Core.Orig.OrigJobs.Name(p.Job))));
-                        Console.WriteLine("       세기 확인(100년째 세대교체): 몸통 세트 " + era1 + ", 직업 " + jobs0 + " → " + jobs1 + ", 시간의 책갈피 " + bm0 + " → " + bm1 + ", 화면 세트 " + cs.Family.BodySet);
-                        T.True(era1 == 1 && cs.Family.BodySet == 1 && jobs0 != jobs1 && bm1 == bm0 + 1, "세기 확인(100년째)");
+                        Console.WriteLine("       천계 보고(100년째 첫 세대교체): 몸통 세트 " + era1 + ", 직업 " + jobs0 + " → " + jobs1 + ", 시간의 책갈피 " + bm0 + " → " + bm1 +
+                            ", 통신 결혼의 화살 " + cmm.R8(0x0202C64A) + ", 가족 +0x20 = 0x" + cmm.R32(0x0202C030).ToString("X") + ", 화면 세트 " + cs.Family.BodySet);
+                        T.True(era1 == 1 && cs.Family.BodySet == 1 && jobs0 != jobs1 && bm1 == bm0 + 1, "천계 보고: 새 시대·책갈피");
+                        T.True(cmm.R8(0x0202C64A) == 1 && cmm.R16(0x02038F80) == 0xFFFF && (cmm.R32(0x0202C030) & 0x810) == 0x810, "천계 보고: 통신 결혼의 화살·고인 목록·표지");
+                        // 진입값 2: 0~4 (2대째 처음 → 3 가계도 설명) · 진입값 5: 고인 없음 → 0x25, 2대째 → 통신 결혼의 화살, 1세기 = 새 시대(0x37) → 0x38 · 진입값 6: 0x39~0x44(첫 새 시대) → 0x45 → 0x47(진입값 2)
+                        string want = "0 1 2 3 4 5 6 7 8 9 A B 25 26 27 28 29 2A 2B 2C 2D 35 37 38 39 3A 3B 3C 3D 3E 3F 40 41 42 43 44 45 47 48";
+                        T.Eq(string.Join(" ", hv.Trace.ConvertAll(x => x.ToString("X"))), want, "천계 상태 차례");
+                        if (text.Heaven.Ok) T.True(hv.Pages.Exists(x => x.MsgId == 371) && hv.Pages.Exists(x => x.MsgId == 400) && hv.Pages.Exists(x => x.MsgId == 403) && hv.Pages.Exists(x => x.MsgId == 481) && hv.Pages.Exists(x => x.MsgId == 435), "천계 대사");
                     }
                     if (Environment.GetEnvironmentVariable("SK_LONG") != null)
                     {   // 장기(환경변수 SK_LONG): 300년 동안 세대 기록 수·몸통 세트·시간의 책갈피 변화
@@ -1078,7 +1089,11 @@ namespace SennenKazoku.Tests
                         uint g0 = lm.R8(0x0202C6B3), e0 = lm.R8(0x0202C692); var log = new List<string>();
                         for (int d = 0; d < 365 * 300 && !ls.LineageEnded; d++)
                         {
+                            var hv0 = ls.LastHeaven;
                             ls.StepDay(); while (ls.Paused) { ls.View(); ls.Advance(); }
+                            if (ls.LastHeaven != hv0 && ls.LastHeaven != null)
+                                log.Add(GameDate.Format(ls.Family.Today) + " 천계[" + string.Join(" ", ls.LastHeaven.Trace.ConvertAll(x => x.ToString("X"))) + "] 글 " +
+                                    string.Join(",", ls.LastHeaven.Pages.ConvertAll(x => x.MsgId).Distinct()));
                             uint g = lm.R8(0x0202C6B3), e = lm.R8(0x0202C692);
                             if (g != g0 || e != e0) { log.Add(GameDate.Format(ls.Family.Today) + " 세대기록 " + g + " 세트 " + e + " 책갈피 " + lm.R8(0x0202C65A)); g0 = g; e0 = e; }
                         }

@@ -28,7 +28,12 @@ namespace SennenKazoku.Core.Orig
         List<List<OrigText.StageActor>> stages = new List<List<OrigText.StageActor>>();   // 장마다 액자 안 인물 상태 (사건 장면 그림)
         List<OrigText.StageActor> endStage = new List<OrigText.StageActor>();                // 대사를 끝까지 읽은 뒤 상태 (결과 문구 장 — 1A 0F 00 01 로 확대가 풀린 뒤)
 
-        public bool Paused { get { return cur != null; } }
+        // 천계 보고 장 (결혼식 뒤 원작 0x0809F938 — OrigHeaven). 그날 사건 장을 다 본 뒤 이어서 보인다.
+        List<OrigHeaven.Page> heavenWait, heavenCur; int heavenPage;
+        /// <summary>마지막 천계 보고 (시험·점검용).</summary>
+        public OrigHeaven LastHeaven { get; private set; }
+
+        public bool Paused { get { return cur != null || heavenCur != null; } }
 
         /// <summary>표시 이름이 없는 새 인물에게 붙이는 이름 (앱 표시용, 원작 이름 아님).</summary>
         static readonly string[] MaleNames = { "민준", "서준", "도윤", "하준", "지호", "준우", "현우", "건우", "우진", "선우", "유준", "정우", "승현", "시우", "지훈", "태윤" };
@@ -170,21 +175,43 @@ namespace SennenKazoku.Core.Orig
         // ---------- 하루 진행 ----------
         public bool StepDay()
         {
-            if (cur != null) return false;
+            if (Paused) return false;
             if (pending.Count > 0) { StartNext(); return true; }
+            if (StartHeaven()) return true;
             SyncIn();
             Game.NextDate();
-            uint genBefore = Game.Mem.R8(0x0202C6B3);
-            foreach (var e in Game.TickDay()) { pending.Enqueue(e); if (e.Result[0] == 2) lineageEnded = true; }
-            uint genAfter = Game.Mem.R8(0x0202C6B3);
-            if (genAfter != 0xFF && genBefore != 0xFF && genAfter > genBefore) CenturyCheck();   // 세대 기록이 늘었다 = 세대교체
+            bool wedding = false;
+            foreach (var e in Game.TickDay()) { pending.Enqueue(e); if (e.Result[0] == 2) lineageEnded = true; if (e.Result[0] == 1) wedding = true; }
+            if (wedding) HeavenReport();
             Project();
             if (pending.Count > 0) { StartNext(); return true; }
-            return false;
+            return StartHeaven();
+        }
+
+        bool StartHeaven()
+        {
+            if (heavenWait == null || heavenWait.Count == 0) { heavenWait = null; return false; }
+            heavenCur = heavenWait; heavenWait = null; heavenPage = 0;
+            return true;
         }
 
         /// <summary>
-        /// 세기 확인 (원작 0x080A113C, 변환 트리 그대로 — unicorn 원작 실행과 저장 영역 바이트까지 같음).
+        /// 천계 보고 (원작 0x0809F938, OrigHeaven): 결과 첫 단어가 1 인 장면(후계자 결혼식 0x08941400 등) 뒤 원작은 장면 끝 처리(0x0804DB9C → 0x0804DF6C)에서
+        /// 진입값 2 로 천계에 가고, 가계도 화면 → 진입값 5 → (새 시대면) 시대 연출 → 진입값 6 으로 이어진다. 선물(작명서 표지·통신 결혼의 화살·시간의 책갈피·선대의 꿈·마음의 결정),
+        /// 세기 확인(새 시대: 몸통 세트·직업·관심사), 고인 목록 비우기가 이때 원작 함수로 일어난다. 대사는 그날 사건 장 뒤에 보인다.
+        /// 결혼 장면 뒤 메인 장면 복귀(0x080111B8)는 원작에서 천계 뒤에 오지만 앱은 장면 안에서 먼저 부른다(결혼으로 가족이 바뀌어 그날은 거기서 끝난다).
+        /// </summary>
+        public void HeavenReport()
+        {
+            var h = new OrigHeaven(Game.Vm, Text, Text.Heaven, MarkName, PlayerName);
+            try { h.RunAfterWedding(); }
+            catch (OrigUnmodeled) { }
+            LastHeaven = h;
+            if (h.Pages.Count > 0) { if (heavenWait == null) heavenWait = new List<OrigHeaven.Page>(); heavenWait.AddRange(h.Pages); }
+        }
+
+        /// <summary>
+        /// (시험용) 세기 확인만 (원작 0x080A113C, 변환 트리 그대로 — unicorn 원작 실행과 저장 영역 바이트까지 같음).
         /// 시작일(0x0202C688)부터 지난 햇수/100 을, 세대 기록(0x0800F57C 가 세대교체 때 0x0202E528 + 28·k 에 쓰고 가족 +0x6A3 = k 를 올림) 중
         /// 하나 앞 기록 날짜까지의 세기와 비교해 1·4·7세기가 되면 몸통 세트(가족 +0x682)를 올리고 가족 8명의 직업·관심사를 새 시대 것으로 바꾼다.
         /// 원작은 이것을 알림 순서(0x0809F938, 진입값 5 → 상태 0x35)에서 부르는데, 같은 순서가 "2대째(+0x6A3 == 2)" 첫 세대교체 안내를 하고
@@ -262,7 +289,7 @@ namespace SennenKazoku.Core.Orig
         {
             if (!HasBookmark) return false;
             uint r = Game.Vm.Call("08010AB4");
-            pending.Clear(); cur = null; lineageEnded = false;
+            pending.Clear(); cur = null; heavenCur = heavenWait = null; lineageEnded = false;
             Project();
             return r != 0;
         }
@@ -592,6 +619,16 @@ namespace SennenKazoku.Core.Orig
 
         public EventView View()
         {
+            if (heavenCur != null)
+            {
+                var hp = heavenCur[Math.Min(heavenPage, heavenCur.Count - 1)];
+                return new EventView
+                {
+                    EventId = "heaven", Title = hp.Speaker == 0 ? "천계 — " + hp.Screen : "천계",
+                    Speaker = hp.Speaker == 1 ? "높으신 신" : hp.Speaker == 2 ? "큐피트" : "", Text = hp.Text, Phase = "pages",
+                    Origin = "original", Certainty = "rom", TextSource = hp.Speaker == 0 ? "app-summary" : "original-translation", PersonId = -1
+                };
+            }
             if (cur == null) return null;
             OrigText.Rec rec; Text.Records.TryGetValue(cur.Data, out rec);
             return new EventView
@@ -643,6 +680,12 @@ namespace SennenKazoku.Core.Orig
 
         public bool Advance()
         {
+            if (heavenCur != null)
+            {
+                if (heavenPage < heavenCur.Count - 1) { heavenPage++; return false; }
+                heavenCur = null;
+                return true;
+            }
             if (cur == null) return false;
             if (page < pages.Count - 1) { page++; return false; }
             OrigText.Rec rec; Text.Records.TryGetValue(cur.Data, out rec);
