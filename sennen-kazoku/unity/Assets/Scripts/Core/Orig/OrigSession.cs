@@ -338,6 +338,26 @@ namespace SennenKazoku.Core.Orig
             return null;
         }
 
+        /// <summary>
+        /// 종합 진단 (원작 0x0806614C): [0] 후계자 0x08065874 · [1] 풍요로움 0x08065B9C · [2] 유대 0x0806605C · [3] 종합 0x080660D8(앞의 셋).
+        /// 값 1~5 → 화면 글 0x0858A600[값−1] = 344~348 (최악… ~ 정말 좋아！). 원작 진단 패널(0x08061770)은 종합을 첫 줄에 놓는다.
+        /// </summary>
+        public int[] Diagnosis() { return Diagnosis(Game.Vm); }
+
+        public static int[] Diagnosis(OrigVm vm)
+        {
+            const uint tmp = 0x0F03B100;
+            vm.Mem.W32(tmp, 0);
+            vm.Call("0806614C", tmp);
+            return new[] { (int)vm.Mem.R8(tmp), (int)vm.Mem.R8(tmp + 1), (int)vm.Mem.R8(tmp + 2), (int)vm.Mem.R8(tmp + 3) };
+        }
+
+        public string DiagnosisWord(int v)
+        {
+            string[] fb = { "최악…", "별로…", "아주 평범", "꽤 좋아♪", "정말 좋아！" };
+            return v >= 1 && v <= 5 ? Text.UiText(343 + v, fb[v - 1]) : "?";
+        }
+
         /// <summary>가족 유형 이름 (원작 화면 글 349 + 유형). 글자표가 없으면 앱 표기.</summary>
         public string FamilyTypeName(int type)
         {

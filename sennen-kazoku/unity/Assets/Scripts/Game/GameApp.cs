@@ -161,6 +161,20 @@ namespace SennenKazoku.Game
             });
         }
 
+        /// <summary>종합 진단 (원작 0x0806614C 값, 줄 순서·글은 원작 진단 패널 0x08061770 과 같게: 종합 진단 / 후계자 / 풍요로움 / 유대).</summary>
+        void OpenDiagnosis()
+        {
+            if (!(session is Core.Orig.OrigSession os)) return;
+            int[] d; try { d = os.Diagnosis(); } catch (Exception e) { Toast("진단 실패: " + e.Message); return; }
+            var body = Window(origText.UiText(338, "종합 진단"), 300); float w = BodyW(body), y = 0;
+            string[] label = { origText.UiText(338, "종합 진단"), origText.UiText(339, "후계자"), origText.UiText(614, "풍요로움"), origText.UiText(341, "유대") };
+            int[] val = { d[3], d[0], d[1], d[2] };
+            for (int i = 0; i < 4; i++)
+            {
+                Line(body, label[i], origText.UiText(342 + 1, "…") + "  " + os.DiagnosisWord(val[i]), 0, y, w); y += Px(40);
+            }
+        }
+
         /// <summary>제목 화면의 가문의 기록 (카트리지에 남은 상위 3).</summary>
         void OpenRecords()
         {
@@ -1294,7 +1308,7 @@ namespace SennenKazoku.Game
         // ---- 설정 (속도·따라가기·저장·콘텐츠·타이틀) ----
         void OpenSettings()
         {
-            var body = Window("설정", 660); float w = BodyW(body), bw = (w - Px(18)) / 4f, y = 0;
+            var body = Window("설정", 720); float w = BodyW(body), bw = (w - Px(18)) / 4f, y = 0;
             if (session.Family.GodRank >= 0)
             {
                 string gen = session is Core.Orig.OrigSession gos ? GenLabel(gos.Generation(session.Family.HeadId)) + "째 " + session.Family.Name + "가 · " : "";   // 원작 메뉴 머리 "N대째 ○○가" — 가장의 세대로 보여 준다(추정: 실기 "1대째" = 가장 세대 1 과 일치, 머리 글을 만드는 원작 코드는 확인하지 않음)
@@ -1312,6 +1326,7 @@ namespace SennenKazoku.Game
             y += Px(60);
             var items = new List<KeyValuePair<string, Action>> {
                 new KeyValuePair<string, Action>(follow ? "선택한 사람 따라가기: 켜짐" : "선택한 사람 따라가기: 꺼짐", () => { follow = !follow; OpenSettings(); }),
+                new KeyValuePair<string, Action>(session is Core.Orig.OrigSession ? "종합 진단" : null, OpenDiagnosis),
                 new KeyValuePair<string, Action>("저장 / 불러오기", () => OpenSaveSlots()),
                 new KeyValuePair<string, Action>(session is Core.Orig.OrigSession pos ? "플레이어 이름: " + pos.PlayerName : null, OpenPlayerName),
                 new KeyValuePair<string, Action>("콘텐츠 · 업데이트", OpenContent),

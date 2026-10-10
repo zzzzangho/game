@@ -125,6 +125,14 @@ namespace SennenKazoku.Tests
             Console.WriteLine("       MAX/MIN 사건(변형 고르기+효과) " + eN + "건 중 원작과 같음 " + eOk + " (옮기지 못함 " + eUnm + ")");
             T.Eq(eOk, eN, "사건 결과가 원작과 다름");
 
+            // 종합 진단(0x0806614C): 원작 ROM 을 같은 RAM 덤프에서 돌린 값 (unicorn) — main.ram 3·3·3·3, custom_create.ram 3·1·4·2
+            {
+                var d1 = SennenKazoku.Core.Orig.OrigSession.Diagnosis(rules.CreateVm(Fresh("main.ram")));
+                string d2s = "";
+                if (File.Exists(Path.Combine(dir, "custom_create.ram"))) d2s = string.Join("·", SennenKazoku.Core.Orig.OrigSession.Diagnosis(rules.CreateVm(Fresh("custom_create.ram"))));
+                Console.WriteLine("       종합 진단: main " + string.Join("·", d1) + ", custom_create " + d2s + "  (원작 ROM: 3·3·3·3, 3·1·4·2)");
+                T.True(string.Join("·", d1) == "3·3·3·3" && (d2s == "" || d2s == "3·1·4·2"), "종합 진단이 원작과 다름");
+            }
             // 세대(0x08025DFC): 실기 선대의 마음 목록 — 번호 0·1 "1대", 번호 2 "2대" (같은 main.state, 족보 아버지 칸을 지우면 2 → 1대)
             {
                 var gm = Fresh("main.ram"); var gvm = rules.CreateVm(gm);
