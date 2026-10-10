@@ -25,6 +25,7 @@ namespace SennenKazoku.Core.Orig
 
         readonly Queue<OrigGame.DayEvent> pending = new Queue<OrigGame.DayEvent>();
         OrigGame.DayEvent cur; List<string> pages; int page;
+        List<List<OrigText.StageActor>> stages = new List<List<OrigText.StageActor>>();   // 장마다 액자 안 인물 상태 (사건 장면 그림)
 
         public bool Paused { get { return cur != null; } }
 
@@ -485,10 +486,10 @@ namespace SennenKazoku.Core.Orig
 
         void StartNext()
         {
-            cur = pending.Dequeue(); page = 0;
+            cur = pending.Dequeue(); page = 0; stages = new List<List<OrigText.StageActor>>();
             OrigText.Rec rec;
             if (Text.Records.TryGetValue(cur.Data, out rec) && !string.IsNullOrEmpty(rec.Script))
-                pages = OrigText.Pages(rec.Script, SlotName);
+                pages = OrigText.ScenePages(rec.Script, SlotName, stages, null);
             else if (Text.HasCharset)   // 참고 대사가 없으면 ROM 대사(결과 기록 +0x14)를 글자표로 직접 푼다
                 pages = Text.Decode(OrigText.ReadRaw(Game.Mem, Game.Mem.R32(cur.Data + 0x14)), SlotName, MarkName);
             else pages = new List<string>();
@@ -575,8 +576,29 @@ namespace SennenKazoku.Core.Orig
                 Title = rec != null && rec.Title.Length > 0 ? rec.Title : "원작 사건",
                 Speaker = "", Text = pages[Math.Min(page, pages.Count - 1)], Phase = "pages",
                 Origin = "original", Certainty = "rom", TextSource = rec != null ? "reference-translation" : "none",
-                PersonId = (int)cur.PersonId
+                PersonId = (int)cur.PersonId,
+                Scene = SceneOf(Math.Min(page, pages.Count - 1))
             };
+        }
+
+        /// <summary>
+        /// 장면 그림: 결과 기록 +0x20/+0x24/+0x28 (그림 표 0x0888xxxx 안이 아니면 특수 기록 — 그림 없음) + 이 장의 인물 상태.
+        /// 결과 문구 장(대사 뒤)은 마지막 대사 장의 상태를 이어 쓴다. 인물 칸 → 장면 시작 때 슬롯표(cur.Slots)의 족보 번호.
+        /// </summary>
+        SceneView SceneOf(int k)
+        {
+            var m = Game.Mem; uint band = m.R32(cur.Data + 0x20), back = m.R32(cur.Data + 0x24), pic = m.R32(cur.Data + 0x28);
+            bool Ok(uint v) { return v >= 0x08880000 && v < 0x08890000; }
+            if (!Ok(pic)) return null;
+            var sv = new SceneView { Band = Ok(band) ? "ev_band_" + band.ToString("X8") : "", Back = Ok(back) ? "ev_back_" + back.ToString("X8") : "", Pic = "ev_pic_" + pic.ToString("X8") };
+            if (stages != null && stages.Count > 0)
+                foreach (var a in stages[Math.Min(k, stages.Count - 1)])
+                {
+                    int id = -1;
+                    if (a.Slot >= 0 && a.Slot < 28 && cur.Slots[a.Slot] != 0xFFFF) id = (int)cur.Slots[a.Slot];
+                    sv.Actors.Add(new SceneActor { PersonId = id, Anim = a.Anim });
+                }
+            return sv;
         }
 
         public bool Advance()

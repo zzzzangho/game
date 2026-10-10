@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""사건 장면 그림 뽑기 (로컬 전용 — 원작 그래픽이므로 결과물을 저장소에 넣지 않는다).
+
+원작 사건 장면은 층으로 나뉜다(실기 캡처로 확인): BG0 제목 띠·대사 상자 · BG1 액자 테두리 · BG2 뒤 무늬(햇살) ·
+BG3 액자 안 배경 그림(56,40 에서 128×64) · OBJ 인물·큐피트·감정 말풍선.
+결과 기록(0x30 바이트)의 +0x20 제목 띠 모양, +0x24 뒤 무늬, +0x28 액자 배경 묶음 포인터가 그림을 고른다
+(한 기록의 값을 다른 기록 값으로 바꾸면 그 부분만 바뀐다 — 분석용 ROM 복사본으로 확인).
+
+방법: 사건이 막 시작하는 세이브 상태(사건 기록 R 이 뜨는 상태)에서, ROM 복사본의 R 의 필드를 각 값으로 바꿔 가며
+헤드리스 캡처(capture.c)로 층 하나만 켜서 찍는다. 제목 글은 R 의 +0x0C 를 빈 글로 돌려 띠만 남긴다.
+
+  python3 event_art.py <capture 실행 파일> <ROM> <세이브상태(.state, 확장자 빼고)> <기록 R 주소> <사건 시작 뒤 프레임> <orig_rules.json> <출력 디렉터리>
+출력(앱 LocalArt 이름, .png.bytes): ev_pic_<포인터> (128×64, BG3) · ev_band_<포인터> (240×24, BG0 위쪽, 글 없음) ·
+      ev_back_<포인터> (240×160, BG2) · ev_frame (BG1) · ev_emo_<번호> (감정 말풍선 32×19, OBJ) — 회색 바탕(99,99,99)은 투명.
+감정 말풍선: 기록 R 대사 머리의 "1A 0E 02 (동작) (인물)" 의 동작 번호를 0~0x14 로 바꿔 OBJ 층을 찍고 첫 인물 머리 위
+(액자 안 33,0 ~ 65,19)를 자른다 — 이 자리는 기록 0x08923648(인물 둘) 기준이다. 0x15 부터는 말풍선 없이 자세만 바뀐다.
+"""
+import json, os, shutil, struct, subprocess, sys
+from PIL import Image
+
+
+def main():
+    if len(sys.argv) < 8:
+        print(__doc__); return 2
+    cap, rom_path, state, rec, frames, rules_path, out = sys.argv[1:8]
+    rec, frames = int(rec, 16), int(frames)
+    os.makedirs(out, exist_ok=True)
+    work = os.path.join(out, '_work'); os.makedirs(work, exist_ok=True)
+    wrom = os.path.join(work, 'work.gba'); shutil.copyfile(rom_path, wrom)
+    shutil.copyfile(state + '.state', os.path.join(work, 'st.state'))
+    rom = open(rom_path, 'rb').read()
+    R = rec - 0x08000000
+    rules = json.load(open(rules_path, encoding='utf8'))
+    recs = sorted(set(int(d, 16) for d in rules.get('variantData', {})))
+    vals = {0x20: set(), 0x24: set(), 0x28: set()}
+    for r in recs:
+        f = [struct.unpack_from('<I', rom, r - 0x08000000 + o)[0] for o in (0x20, 0x24, 0x28)]
+        for o, v in zip((0x20, 0x24, 0x28), f): vals[o].add(v)
+    empty = rom.find(b'\x1a\xff', 0x00800000) + 0x08000000   # 빈 글 (제목 지우기)
+
+    def shot(layer, patch, raw=(), extra=3):
+        with open(wrom, 'r+b') as f:
+            for o, v in patch: f.seek(R + o); f.write(struct.pack('<I', v))
+            for a, b in raw: f.seek(a); f.write(b)
+        steps = extra if isinstance(extra, list) else [extra]
+        lines = ['loadstate st', 'run %d 0' % frames] + ['layer %d %d' % (j, 1 if j == layer else 0) for j in range(5)]
+        for k, n in enumerate(steps): lines += ['run %d 0' % n, 'shot cur%d' % k]
+        open(os.path.join(work, 's.txt'), 'w').write('\n'.join(lines) + '\n')
+        subprocess.run([cap, wrom, work, os.path.join(work, 's.txt')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300, cwd=work)
+        ims = [Image.open(os.path.join(work, 'cur%d.ppm' % k)).convert('RGB') for k in range(len(steps))]
+        return ims if isinstance(extra, list) else ims[0]
+
+    def save(im, name, clear=True):
+        im = im.convert('RGBA')
+        if clear: im.putdata([(0, 0, 0, 0) if p[:3] == (99, 99, 99) else p for p in list(im.getdata())])
+        im.save(os.path.join(out, name + '.png.bytes'), 'PNG')
+
+    def ok(v): return 0x08880000 <= v < 0x08890000   # 그림 표(0x0888xxxx)를 가리키지 않는 값(특수 기록 몇 개)은 건너뛴다
+    base = [(o, struct.unpack_from('<I', rom, R + o)[0]) for o in (0x0C, 0x20, 0x24, 0x28)]
+    def with_(o, v): return [(a, (v if a == o else (empty if a == 0x0C else b))) for a, b in base]
+    save(shot(1, with_(0x28, base[3][1])), 'ev_frame')
+    for v in sorted(filter(ok, vals[0x28])): save(shot(3, with_(0x28, v)).crop((56, 40, 184, 104)), 'ev_pic_%08X' % v, False)
+    for v in sorted(filter(ok, vals[0x20])): save(shot(0, with_(0x20, v)).crop((0, 0, 240, 24)), 'ev_band_%08X' % v)
+    for v in sorted(filter(ok, vals[0x24])): save(shot(2, with_(0x24, v)), 'ev_back_%08X' % v)
+    dlg = struct.unpack_from('<I', rom, R + 0x14)[0] - 0x08000000
+    toks, i = [], rom.find(b'\x1a\x0e\x02', dlg, dlg + 64)
+    while i >= 0 and i < dlg + 64: toks.append(i); i = rom.find(b'\x1a\x0e\x02', i + 1, dlg + 64)
+    for e in range(0x15):   # 말풍선은 움직이므로 4프레임 간격으로 여러 번 찍어 가장 꽉 찬 순간을 쓴다
+        ims = shot(4, with_(0x28, base[3][1]), [(t + 3, bytes([e])) for t in toks], extra=[4] * 16)
+        crops = [im.crop((56 + 33, 40, 56 + 65, 40 + 19)) for im in ims]
+        save(max(crops, key=lambda c: sum(1 for q in c.getdata() if q != (99, 99, 99))), 'ev_emo_%02X' % e)
+    print('배경 %d · 띠 %d · 무늬 %d (포인터가 아닌 값 포함 수) · 말풍선 21' % (len(vals[0x28]), len(vals[0x20]), len(vals[0x24])))
+
+
+if __name__ == '__main__':
+    sys.exit(main())

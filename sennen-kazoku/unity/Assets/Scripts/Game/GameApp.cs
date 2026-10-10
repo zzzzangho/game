@@ -1075,10 +1075,68 @@ namespace SennenKazoku.Game
             return "지금은 특별한 생각이 없어…";
         }
 
+        // ---- 원작 사건 장면 그림 (로컬 추출본 ev_* 가 있을 때) ----
+        RectTransform evStage;
+
+        /// <summary>
+        /// 원작 사건 화면을 장면 칸 위에 그린다: 뒤 무늬(BG2)·제목 띠(BG0, 글은 기기 글꼴)·액자 배경(BG3, 56,40 128×64)·액자 테두리(BG1)·
+        /// 인물(앱 캐릭터 그림 — 가족이 아닌 사람은 그림이 없어 빈자리)·감정 말풍선(OBJ, 동작 0~0x14).
+        /// 원작 240×160 화면의 위 112줄을 장면 칸에 맞춰 키운다. 인물 자리는 액자 안 고르게 나눈 앱 배치다(원작 자리 값은 아직 해석 안 함).
+        /// </summary>
+        void UpdateStage(EventView v)
+        {
+            if (evStage != null) { Destroy(evStage.gameObject); evStage = null; }
+            if (v == null || v.Scene == null || art.Texture(v.Scene.Pic) == null) return;
+            const float LW = 240f, LH = 112f;
+            float sw = lay.Scene.W, sh = lay.Scene.H, k = Mathf.Min(sw / LW, sh / LH);
+            evStage = UiKit.Node(scene, "evStage");
+            UiKit.SetPx(evStage, (sw - LW * k) / 2f, (sh - LH * k) / 2f, LW * k, LH * k);
+            RawImage Raw(string name, string tex, float x, float y, float w, float h, Rect uv)
+            {
+                var t = art.Texture(tex); if (t == null) return null;
+                var go = new GameObject(name, typeof(RectTransform), typeof(RawImage)); go.transform.SetParent(evStage, false);
+                var ri = go.GetComponent<RawImage>(); ri.texture = t; ri.uvRect = uv; ri.raycastTarget = false;
+                UiKit.SetPx(ri.rectTransform, x * k, y * k, w * k, h * k); return ri;
+            }
+            var top = new Rect(0, (160f - LH) / 160f, 1, LH / 160f);   // 240×160 그림의 위 112줄 (텍스처 v 는 아래가 0)
+            if (v.Scene.Back.Length > 0) Raw("back", v.Scene.Back, 0, 0, LW, LH, top);
+            Raw("pic", v.Scene.Pic, 56, 40, 128, 64, new Rect(0, 0, 1, 1));
+            Raw("frame", "ev_frame", 0, 0, LW, LH, top);
+            if (v.Scene.Band.Length > 0)
+            {
+                Raw("band", v.Scene.Band, 0, 0, LW, 24, new Rect(0, 0, 1, 1));
+                var bt = UiKit.Label(evStage, "bandText", v.Title, Mathf.RoundToInt(10 * k), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
+                UiKit.SetPx(bt.rectTransform, 24 * k, 3 * k, (LW - 48) * k, 18 * k);
+            }
+            int n = v.Scene.Actors.Count;
+            for (int i = 0; i < n; i++)
+            {
+                // 실기 캡처(기록 0x08923648): 액자 안 발 y≈58, 말풍선 아래 끝 y≈19 → 발에서 39~40 위
+                var a = v.Scene.Actors[i]; float cx = 56 + 128f * (i + 1) / (n + 1), foot = 40 + 58, headY = foot - 39;
+                var p = a.PersonId >= 0 ? session.Family.Get(a.PersonId) : null;
+                if (p != null)
+                {
+                    var sp = Figure(p, false, 0);
+                    if (sp != null)
+                    {
+                        float fw = sp.rect.width, fh = sp.rect.height;
+                        var im = UiKit.Box(evStage, "actor" + i, Color.white, sp); im.preserveAspect = true; im.raycastTarget = false;
+                        UiKit.SetPx(im.rectTransform, (cx - fw / 2f) * k, (foot - fh) * k, fw * k, fh * k);
+                    }
+                }
+                if (a.Anim >= 0 && a.Anim <= 0x14)
+                {
+                    var t = art.Texture("ev_emo_" + a.Anim.ToString("X2"));
+                    if (t != null) Raw("emo" + i, "ev_emo_" + a.Anim.ToString("X2"), cx - 16, headY - 19, 32, 19, new Rect(0, 0, 1, 1));
+                }
+            }
+        }
+
         void RefreshDialog()
         {
             Clear(choiceHost);
             var v = session.View();
+            UpdateStage(v);
             if (v == null)
             {
                 var p = Sel(); dlgTitle.text = ""; dlgSpeaker.text = "";

@@ -37,11 +37,7 @@ namespace SennenKazoku.Core.Orig
                 case 0x03: case 0x0A: return 3;
                 case 0x05: case 0x06: case 0x08: case 0x0B: case 0x0F: case 0x86: return 4;   // 1A 86 = 앱의 이름 표지(NameMarks). 1A 05 = 숫자 글 (0x080AB774, ROM 글에서 길이 확인)
                 case 0x10: return 5;
-                case 0x0E:
-                    {
-                        uint sub = m.R8(p + 2);
-                        return sub == 0 ? 4 : sub == 1 ? 7 : sub == 2 ? 5 : 2;
-                    }
+                case 0x0E: return OrigText.SceneLen((int)m.R8(p + 2));
                 default: return -1;
             }
         }

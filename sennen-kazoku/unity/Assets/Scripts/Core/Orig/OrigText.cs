@@ -160,7 +160,7 @@ namespace SennenKazoku.Core.Orig
                 case 0x03: case 0x0A: return 3;
                 case 0x05: case 0x06: case 0x08: case 0x0B: case 0x0F: return 4;
                 case 0x10: return 5;
-                case 0x0E: { int sub = i + 2 < b.Count ? b[i + 2] : -1; return sub == 0 ? 4 : sub == 1 ? 7 : sub == 2 ? 5 : 2; }
+                case 0x0E: return SceneLen(b, i);
                 default: return -1;
             }
         }
@@ -168,29 +168,76 @@ namespace SennenKazoku.Core.Orig
         public string InterestTitle(int table, int index) { return Interests.TryGetValue(OrigRules.Key(table, index), out var s) ? s : ""; }
 
         /// <summary>대사를 장(글상자 단위)으로 나눠 이름 자리를 채운다. name(aa) 가 null 이면 "○○".</summary>
-        public static List<string> Pages(string script, Func<int, string> name)
+        public static List<string> Pages(string script, Func<int, string> name) { return ScenePages(script, name, null, null); }
+
+        /// <summary>장면 인물: Slot = 슬롯표 칸(1A 0E 01 의 첫 인자, 가족), −1 = 가족이 아닌 사람(1A 0E 04). Anim = 동작 번호.</summary>
+        public sealed class StageActor { public int Slot = -1; public int Anim = -1; }
+
+        /// <summary>
+        /// 대사를 장으로 나누면서 장마다 액자 안 인물 상태를 같이 낸다(stages[k] = k 번째 장을 보일 때의 상태).
+        /// 장면 토큰(원작 글 엔진이 장면 우편함 [T+0x398] 에 넘기는 명령 0x0E, 0x080AAC44): 1A 0E 00 a(1) · 1A 0E 01 (칸, ?, ?, ?) 가족 인물 등장 ·
+        /// 1A 0E 02 (동작, 인물 순번) · 1A 0E 03 a · 1A 0E 04 (5바이트) 가족이 아닌 사람 등장. 인물 순번은 등장한 순서
+        /// (실기 캡처: 기록 0x08923648 은 04 → 01 순서로 왼쪽 친구, 오른쪽 사건 인물). 동작 번호 뜻은 실기 캡처로 확인(0~0x14 감정 말풍선).
+        /// 참고 번역문은 토큰을 바이트 단위로 쪼개 적기도 해서({{HEX:1A 0E}}{{HEX:04}}…) 이어진 HEX 묶음을 하나의 바이트열로 읽는다.
+        /// </summary>
+        public static List<string> ScenePages(string script, Func<int, string> name, List<List<StageActor>> stages, List<StageActor> actorsOut)
         {
             var pages = new List<string>(); var sb = new StringBuilder();
-            void Flush() { var s = FixJosa(sb.ToString()).Trim(); if (s.Length > 0) pages.Add(s); sb.Clear(); }
+            var actors = new List<StageActor>(); var pageStart = new List<StageActor>();
+            List<StageActor> Snap() { var l = new List<StageActor>(); foreach (var a in actors) l.Add(new StageActor { Slot = a.Slot, Anim = a.Anim }); return l; }
+            void Flush() { var s = FixJosa(sb.ToString()).Trim(); if (s.Length > 0) { pages.Add(s); if (stages != null) stages.Add(pageStart); } sb.Clear(); pageStart = Snap(); }
+            var bytes = new List<byte>();
+            void Bytes()
+            {
+                int k = 0;
+                while (k < bytes.Count)
+                {
+                    if (bytes[k] != 0x1A || k + 1 >= bytes.Count) { k++; continue; }
+                    int op = bytes[k + 1];
+                    if (op == 0x12 || op == 0xFF) { k = bytes.Count; break; }
+                    int len = op == 0x0E ? SceneLen(bytes, k) : TokenLen(bytes, k);
+                    if (len < 0) len = 2;
+                    int Arg(int j) { return k + j < bytes.Count ? bytes[k + j] : 0; }
+                    if (op == 0x01) sb.Append('\n');
+                    else if (op == 0x02 || op == 0x09) Flush();
+                    else if (op == 0x06) sb.Append(name(Arg(2)) ?? "○○");
+                    else if (op == 0x0E)
+                    {
+                        int sub = Arg(2);
+                        bool fresh = sb.ToString().Trim().Length == 0;   // 장 글이 시작하기 전이면 이 장의 처음 상태에 넣는다
+                        if (sub == 1) actors.Add(new StageActor { Slot = Arg(3) });
+                        else if (sub == 4) actors.Add(new StageActor { Slot = -1 });
+                        else if (sub == 2 && Arg(4) < actors.Count) actors[Arg(4)].Anim = Arg(3);
+                        if (fresh) pageStart = Snap();
+                    }
+                    k += len;
+                }
+                bytes.Clear();
+            }
             int i = 0;
             while (i < script.Length)
             {
                 int a = script.IndexOf("{{HEX:", i, StringComparison.Ordinal);
-                if (a < 0) { sb.Append(script, i, script.Length - i); break; }
-                sb.Append(script, i, a - i);
+                string text = a < 0 ? script.Substring(i) : script.Substring(i, a - i);
+                if (text.Length > 0) { Bytes(); sb.Append(text); }
+                if (a < 0) break;
                 int b = script.IndexOf("}}", a, StringComparison.Ordinal);
                 if (b < 0) break;
-                var hex = script.Substring(a + 6, b - a - 6).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var h in script.Substring(a + 6, b - a - 6).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)) bytes.Add(Convert.ToByte(h, 16));
                 i = b + 2;
-                if (hex.Length < 2 || hex[0] != "1A") continue;
-                int op = Convert.ToInt32(hex[1], 16);
-                if (op == 0x01) sb.Append('\n');
-                else if (op == 0x02 || op == 0x09) Flush();
-                else if (op == 0x06 && hex.Length >= 3) sb.Append(name(Convert.ToInt32(hex[2], 16)) ?? "○○");
             }
+            Bytes();
             Flush();
+            if (actorsOut != null) actorsOut.AddRange(Snap());
             return pages;
         }
+
+        /// <summary>장면 토큰 1A 0E 의 길이 (하위 명령별 인자 수: 0·3 → 1, 1 → 4, 2 → 2, 4 → 5, 5 → 0 — 0x080AAC44 의 하위 함수와 ROM 대사로 확인).</summary>
+        public static int SceneLen(int sub)
+        {
+            switch (sub) { case 0: case 3: return 4; case 1: return 7; case 2: return 5; case 4: return 8; default: return 3; }
+        }
+        static int SceneLen(IList<byte> b, int i) { return SceneLen(i + 2 < b.Count ? b[i + 2] : -1); }
 
         /// <summary>번역문이 "은/는"처럼 둘 다 적은 조사를 앞 글자 받침에 맞게 하나로 고른다.</summary>
         public static string FixJosa(string s)

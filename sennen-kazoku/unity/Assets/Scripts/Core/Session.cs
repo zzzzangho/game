@@ -13,7 +13,22 @@ namespace SennenKazoku.Core
         public int PersonId = -1;
         public List<ChoiceView> Choices = new List<ChoiceView>();
         public bool NeedsChoice { get { return Phase == "choices"; } }
+        /// <summary>원작 사건 장면 그림 (원작 세션만, 없으면 null) — 화면이 원작 그림(로컬 추출본)으로 그린다.</summary>
+        public SceneView Scene;
     }
+
+    /// <summary>
+    /// 원작 사건 장면: 결과 기록 +0x20 제목 띠 · +0x24 뒤 무늬 · +0x28 액자 배경 (그림 이름 ev_band_/ev_back_/ev_pic_ + 포인터),
+    /// 그리고 이 장(글상자)에서 액자 안에 선 인물과 동작(감정 말풍선) — 대사의 장면 토큰 1A 0E 로 정해진다(OrigText.ScenePages).
+    /// </summary>
+    public sealed class SceneView
+    {
+        public string Band = "", Back = "", Pic = "";
+        public List<SceneActor> Actors = new List<SceneActor>();
+    }
+
+    /// <summary>액자 안 인물: PersonId = 족보 번호(−1 = 가족이 아닌 사람 — 그림 없음), Anim = 동작 번호(0~0x14 감정 말풍선, 그 뒤는 자세).</summary>
+    public sealed class SceneActor { public int PersonId = -1; public int Anim = -1; }
 
     /// <summary>한국어 조사 처리: {self:은는} 형태.</summary>
     public static class Template

@@ -915,13 +915,14 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       개입: 지력 " + s0 + " → 고리 → 다음 날 " + who2.Stats[0] + ", 힘내라 화살 남은 수 " + Interventions.Count(s.Family, "arrow.encourage") + ", 화살 표시 " + who2.ArrowFlags);
                     T.True(who2.Stats[0] >= Math.Min(Stat.Max, s0 + 1000) - 50 && Interventions.Count(s.Family, "arrow.encourage") == 4, "개입이 원작 메모리에 남지 않음");
                     int shown = 0, withText = 0, pagesTotal = 0; string sample = null;
-                    string grat = null, unkSample = null, rankPage = null; int unknownGlyph = 0, appSummary = 0;
+                    string grat = null, unkSample = null, rankPage = null, sceneSample = null; int unknownGlyph = 0, appSummary = 0, sceneN = 0;
                     void Drain(SennenKazoku.Core.Orig.OrigSession ss)
                     {
                         while (ss.Paused)
                         {
                             var v = ss.View(); pagesTotal++;
                             if (ss == s && sample == null && v.TextSource != "none" && v.Text.Length > 20) sample = v.Title + " / " + v.Text.Replace("\n", " ");
+                            if (ss == s && v.Scene != null) { sceneN++; if (sceneSample == null && v.Scene.Actors.Count >= 2) sceneSample = v.Title + ": " + v.Scene.Pic + " " + v.Scene.Band + " " + v.Scene.Back + " 인물 " + string.Join(",", v.Scene.Actors.ConvertAll(a => a.PersonId + "/" + a.Anim)); }
                             if (ss == s && v.Text.Contains("□")) { unknownGlyph++; if (unkSample == null || unkSample.Length < 1500) unkSample += " ‖ " + v.Text.Replace("\n", " "); }
                             if (ss == s && grat == null && v.Text.Contains("감사의 마음")) grat = v.Text.Replace("\n", " ");
                             if (ss == s && v.Text.Contains("천계에서 도착") && rankPage == null) rankPage = v.Text.Replace("\n", " ");
@@ -935,6 +936,19 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       원작 결과 문구 예: " + (grat ?? "없음") + " / 글자표에 없는 글자가 든 장 " + unknownGlyph);
                     if (unknownGlyph > 0) Console.WriteLine("       글자표에 없는 코드: " + string.Join(" ", s.Text.Missing.Select(c => c.ToString("X4"))) + " / 예: " + unkSample);
                     if (s.Text.HasCharset) T.Eq(unknownGlyph, 0, "글자표에 없는 글자");
+                    {   // 실기 캡처한 사건(0x08923648 "마음의 친구여"): 친구(가족 아님)·사건 인물 둘, 첫 장은 둘 다 동작 2(♪)
+                        SennenKazoku.Core.Orig.OrigText.Rec r0;
+                        if (s.Text.Records.TryGetValue(0x08923648, out r0))
+                        {
+                            var st = new List<List<SennenKazoku.Core.Orig.OrigText.StageActor>>();
+                            var pg = SennenKazoku.Core.Orig.OrigText.ScenePages(r0.Script, a => "○", st, null);
+                            string first = string.Join(",", st[0].ConvertAll(a => a.Slot + "/" + a.Anim));
+                            Console.WriteLine("       장면 토큰(0x08923648): 장 " + pg.Count + ", 첫 장 인물 " + first + ", 마지막 장 " + string.Join(",", st[st.Count - 1].ConvertAll(a => a.Slot + "/" + a.Anim)));
+                            T.True(st.Count == pg.Count && first == "-1/2,0/2", "장면 토큰 해석 (실기: 왼쪽 친구·오른쪽 사건 인물, ♪)");
+                        }
+                    }
+                    Console.WriteLine("       장면 그림이 있는 장 " + sceneN + " / " + pagesTotal + ", 예: " + (sceneSample ?? "없음"));
+                    T.True(sceneN > pagesTotal / 2, "장면 그림 정보");
                     Console.WriteLine("       랭크 보상 설명(대체 글 " + s.Text.Overrides.Count + "개): " + (rankPage ?? "없음") + " / 앱 요약 장 " + appSummary);
                     if (s.Text.Overrides.Count > 0) T.True(rankPage != null && appSummary == 0, "랭크 보상 설명을 대체 글로 보여 줘야 함");
                     Console.WriteLine("       2년 뒤 보유: " + string.Join(", ", Interventions.Tools.FindAll(t => Interventions.Count(s.Family, t.Id) > 0).ConvertAll(t => t.Name + "×" + Interventions.Count(s.Family, t.Id)))
