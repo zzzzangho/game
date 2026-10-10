@@ -332,6 +332,25 @@ namespace SennenKazoku.Tests
                 Console.WriteLine("       종합 진단: main " + string.Join("·", d1) + ", custom_create " + d2s + "  (원작 ROM: 3·3·3·3, 3·1·4·2)");
                 T.True(string.Join("·", d1) == "3·3·3·3" && (d2s == "" || d2s == "3·1·4·2"), "종합 진단이 원작과 다름");
             }
+            // 세기 확인(0x080A113C, 자동 변환 — 점프 표 뒤 반복문 머리를 찾도록 lift.py 를 고친 뒤 변환됨): 시작일을 1·2·4·7세기 전으로 바꾼 RAM 에서
+            // 원작 ROM 을 unicorn 으로 돌린 결과(century/c<세기>.out.ram)와 저장 영역 0x0202C010~0x0203C440·결과 8바이트가 같아야 한다.
+            if (Directory.Exists(Path.Combine(dir, "century")))
+            {
+                int okc = 0, nc = 0; var log = new List<string>();
+                foreach (var f in Directory.GetFiles(Path.Combine(dir, "century"), "c*.in.ram"))
+                {
+                    string name = Path.GetFileName(f).Replace(".in.ram", "");
+                    var cm2 = Fresh(Path.Combine("century", name + ".in.ram")); var cvm = rules.CreateVm(cm2);
+                    cvm.Call("080A113C", 0x0203FF00);
+                    var want = File.ReadAllBytes(Path.Combine(dir, "century", name + ".out.ram"));
+                    int bad = 0; for (int i = 0x2C010; i < 0x3C440; i++) if (cm2.Ewram[i] != want[i]) bad++;
+                    for (int i = 0x3FF00; i < 0x3FF08; i++) if (cm2.Ewram[i] != want[i]) bad++;
+                    nc++; if (bad == 0) okc++;
+                    log.Add(name + ":" + (bad == 0 ? "같음" : bad + "바이트 다름") + "(+0x682 " + cm2.Ewram[0x2C692] + ")");
+                }
+                Console.WriteLine("       세기 확인 0x080A113C = 원작 ROM: " + string.Join(", ", log));
+                T.Eq(okc, nc, "세기 확인이 원작 ROM 실행과 다름");
+            }
             // 세대(0x08025DFC): 실기 선대의 마음 목록 — 번호 0·1 "1대", 번호 2 "2대" (같은 main.state, 족보 아버지 칸을 지우면 2 → 1대)
             {
                 var gm = Fresh("main.ram"); var gvm = rules.CreateVm(gm);
@@ -1022,6 +1041,19 @@ namespace SennenKazoku.Tests
                     var s = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234);
                     T.True(s.Family.Members.Count >= 2, "가족 인원 " + s.Family.Members.Count);
                     Console.WriteLine("       시작 " + GameDate.Format(s.Family.Today) + " " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + "(" + (p.Gender == 0 ? "남" : "여") + p.Age(s.Family.Today) + "세 " + p.PlannedTitle + ")")));
+                    {   // 세기 확인: 시작일을 "내일이 꼭 100년째" 가 되게 옮기면 다음 날 몸통 세트 0 → 1, 가족 직업이 새 시대 것으로 (원작 0x080A113C)
+                        var cs = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234); var cmm = cs.Game.Mem;
+                        SennenKazoku.Core.Orig.OrigDate.Get(cmm, SennenKazoku.Core.Orig.OrigMem.Date, out int ty, out int tmo, out int tdd);
+                        var tomorrow = GameDate.Make(ty, tmo, tdd) + 1;
+                        SennenKazoku.Core.Orig.OrigDate.Set(cmm, 0x0202C688, GameDate.Year(tomorrow) - 100, GameDate.Month(tomorrow), GameDate.Day(tomorrow));
+                        var jobs0 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job));
+                        cs.StepDay(); while (cs.Paused) { cs.View(); cs.Advance(); }
+                        int era1 = (int)cmm.R8(0x0202C692); var jobs1 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job));
+                        cs.StepDay(); while (cs.Paused) { cs.View(); cs.Advance(); }
+                        int era2 = (int)cmm.R8(0x0202C692);
+                        Console.WriteLine("       세기 확인(100년째 날): 몸통 세트 " + era1 + " → 다음 날 " + era2 + ", 직업 " + jobs0 + " → " + jobs1 + ", 화면 세트 " + cs.Family.BodySet);
+                        T.True(era1 == 1 && era2 == 1 && cs.Family.BodySet == 1 && jobs0 != jobs1, "세기 확인(100년째)");
+                    }
                     // 결과 예고: 원작 메모리를 바꾸지 않아야 한다
                     var mem0 = Convert.ToBase64String(s.Game.Mem.SaveBlock()); var seed0 = s.Game.Mem.R32(0x02000000);
                     foreach (var p in s.Family.Members)

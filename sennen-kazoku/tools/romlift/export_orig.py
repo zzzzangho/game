@@ -108,7 +108,7 @@ def trees_raw_consts(trees):
     out = set()
     def we(e, inaddr):
         if isinstance(e, int):
-            if inaddr and 0x08400000 <= e < 0x0A000000: out.add(e)
+            if inaddr and 0x08000000 <= e < 0x0A000000: out.add(e)   # 코드 영역 안 표(점프 표 등)도 — 예: 0x080A113C 의 0x080A1238
         elif isinstance(e, list) and e:
             if e[0] == 'm': we(e[2], True)
             elif isinstance(e[0], str):
@@ -152,7 +152,7 @@ def rom_spans(rom, consts=(), extra=(), more=()):
     # 새 가족: 성(姓) 256개 표, 추천 가족 틀 8개(20바이트씩)
     walk(0x088A3F84, 4 * 256, 1)
     walk(0x08587DBC, 8 * 20, 0)
-    for c in consts: walk(c, 0x200, 2)
+    for c in consts: walk(c, 0x200, 2 if c >= 0x08400000 else 0)   # 코드 영역 표는 표만 (가리키는 코드는 따라가지 않음)
     for a in extra: walk(a, 0x30, 2)
     for t in range(5):
         tb = rom.u32(STATE_TABLE + 4 * t)

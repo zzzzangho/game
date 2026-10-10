@@ -175,9 +175,32 @@ namespace SennenKazoku.Core.Orig
             SyncIn();
             Game.NextDate();
             foreach (var e in Game.TickDay()) { pending.Enqueue(e); if (e.Result[0] == 2) lineageEnded = true; }
+            CenturyCheck();
             Project();
             if (pending.Count > 0) { StartNext(); return true; }
             return false;
+        }
+
+        /// <summary>
+        /// 세기 확인 (원작 0x080A113C, 변환 트리 그대로 — unicorn 원작 실행과 저장 영역 바이트까지 같음):
+        /// 시작일(0x0202C688)부터 지난 햇수/100 = 세기 c 가 1·4·7 이 되면 몸통 세트(가족 +0x682)를 하나 올리고, 가족 8명의 직업(+0x58)·
+        /// 관심사(+0x3E) 등을 새 시대 것으로 바꾸고, 가족 +0x20 의 세기 비트를 켠다.
+        /// 원작은 전원을 켤 때 도는 알림 순서(모드 3, 0x0809F938 상태 0x35)에서 부르고 비교 기준 날짜를 다른 단계에서 갱신하는 것으로
+        /// 보인다(미해독). 임시 규칙(앱): 세기에 맞는 몸통 세트(1·4·7세기 → 1·2·3)보다 원작 메모리 값이 작으면 그날 한 번 부른다
+        /// — 원작은 세기가 바뀐 뒤 처음 켤 때 바뀌므로, 계속 켜 두는 앱에서는 바뀐 날이 가장 가깝다. 큐피트 알림 글은 아직 없다.
+        /// </summary>
+        void CenturyCheck()
+        {
+            var m = Game.Mem;
+            OrigDate.Get(m, 0x0202C688, out int sy, out int sm, out int sd);
+            OrigDate.Get(m, OrigMem.Date, out int ty, out int tm, out int td);
+            if (sy <= 0 || sy > 9999 || ty <= 0 || ty > 9999) return;
+            int years = ty - sy - ((tm * 100 + td) < (sm * 100 + sd) ? 1 : 0), c = years / 100;
+            int want = c >= 7 ? 3 : c >= 4 ? 2 : c >= 1 ? 1 : 0;
+            if (c != 1 && c != 4 && c != 7) return;
+            if ((int)m.R8(0x0202C692) >= want) return;
+            try { Game.Vm.Call("080A113C", 0x0F03B480); }
+            catch (OrigUnmodeled) { }
         }
 
         /// <summary>

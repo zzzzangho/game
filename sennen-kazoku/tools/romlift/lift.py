@@ -255,11 +255,29 @@ class Lifter:
         self.nvar += 1; return ('v', self.nvar, bits)
 
     # ---- 분기 합류점: 함수 안 명령 단위 흐름도의 직접 후지배자 (if/else 가 다시 만나는 곳)
+    def jump_targets(self, a):
+        """정적 흐름 그래프용 점프 표 대상: "cmp rX, #N … ldr rY, =표 … mov pc, rZ" 꼴이면 표의 N+1 칸.
+        (실행은 switch 가 식으로 처리한다. 그래프가 점프 표 너머를 모르면 그 뒤의 반복문 머리를 못 찾아 반복을 통째로 펼친다
+        — 예: 0x080A113C 세기 확인의 8명 반복이 경로 폭발했다.)"""
+        table = n = None
+        for b in range(a - 2, a - 40, -2):
+            try: mn, ops, size, raw = self.ins(b)
+            except Unsupported: break
+            if table is None and mn == 'ldr' and len(ops) == 2 and ops[1].startswith('[pc'):
+                m = re.search(r'#(0x[0-9a-f]+|\d+)', ops[1]); off = int(m.group(1), 0) if m else 0
+                table = self.u(((b + 4) & ~3) + off, 4)
+            elif table is not None and mn == 'cmp' and len(ops) == 2 and ops[1].startswith('#'):
+                n = int(ops[1][1:], 0); break
+        if table is None or n is None or not (B <= table < B + len(self.rom)) or n > 256: return []
+        ts = [self.u(table + 4 * i, 4) & ~1 for i in range(n + 1)]
+        return ts if all(abs(t - a) < 0x4000 for t in ts) else []
+
     def succs(self, a):
         mn, ops, size, raw = self.ins(a)
         if mn == 'b': return [int(ops[0][1:], 16)]
         if mn in CC: return [int(ops[0][1:], 16), a + size]
-        if mn == 'bx' or (mn == 'pop' and 'pc' in raw) or (mn in ('mov', 'movs') and ops and ops[0] == 'pc'): return []
+        if mn in ('mov', 'movs') and ops and ops[0] == 'pc': return self.jump_targets(a)
+        if mn == 'bx' or (mn == 'pop' and 'pc' in raw): return []
         return [a + size]
 
     def joins(self, fn):
