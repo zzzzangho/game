@@ -134,6 +134,8 @@ namespace SennenKazoku.Core
         public bool EyesFlip, NoseFlip, MouthFlip;
         public int HairColor = -1, SkinColor = -1, Outfit, OutfitColor = -1;   // -1 = 프리셋(또는 기본) 색 유지
         public string Preset = "";            // 원작 갤러리 프리셋 id (예: father_07)
+        /// <summary>사건 옷 몸통 번호(원작 몸통 자원 24~83, CharacterComposer.EventOutfitBody). −1 = 자기 몸통. 저장하지 않는다(장면마다 정함).</summary>
+        public int OutfitBody = -1;
         public int[] PresetPalette;           // 갤러리 캡처에서 읽은 프리셋 고유 색(BGR555, -1 = 없음)
 
         public CharacterLook Clone()
@@ -216,6 +218,18 @@ namespace SennenKazoku.Core
         public static int OutfitEntry(CharacterLook l) { return 1 + 48 * (l.OutfitColor & 3) + 4 * OutfitOf(l); }
 
         // 정면 몸통 24개 = 성별 2 × 12. 12개 = 체형 3 × 의상 4 로 추정(갤러리는 첫 4개만 씀 — 체형 순서 미확인).
+        /// <summary>
+        /// 사건 옷차림 (장면 토큰 1A 0E 01 의 옷 인자 d) → 원작 몸통 자원 번호. 실기 스윕(몸통 바이트 0~4·8·12·13·16·20 × 옷 0~9, 픽셀 100%):
+        /// 체형 g = (몸통 % 12) / 4 일 때 옷 0 → 24 + g, 옷 1~9 → 30 + 9g + (d − 1). 성별과 상관없이 같은 그림이다. FF·FE 등 그 밖 = 자기 몸통(−1).
+        /// </summary>
+        public static int EventOutfitBody(int body, int d)
+        {
+            int g = (((body % 12) + 12) % 12) / 4;
+            if (d == 0) return 24 + g;
+            if (d >= 1 && d <= 9) return 30 + 9 * g + d - 1;
+            return -1;
+        }
+
         public static int GenderOf(CharacterLook l) { return l.Body >= 12 ? 1 : 0; }
         public static int BuildOf(CharacterLook l) { return (l.Body % 12) / 4; }
         public static int OutfitOf(CharacterLook l) { return l.Body % 4; }
@@ -261,7 +275,10 @@ namespace SennenKazoku.Core
             bool back = pose == Pose.BackA || pose == Pose.BackB;
             int ox = Width / 2 - (back ? 1 : 0), oy = Height;          // 뒷모습은 원점이 1 왼쪽 (캡처와 일치)
             int block = ((outfitSet & 3) * 4 + (int)pose) * 24;
-            var b = Pick(lib.Group("body", block + (look.Body % 24 + 24) % 24), a, a.Body);
+            // 사건 옷 몸통(자원 24~83)은 parts.json 의 "outfit" 분류 (블록마다 60개) — 없으면(옛 팩) 자기 몸통
+            var bg = look.OutfitBody >= 24 && look.OutfitBody < 84 && lib.Count("outfit") >= (block / 24 + 1) * 60
+                ? lib.Group("outfit", block / 24 * 60 + look.OutfitBody - 24) : lib.Group("body", block + (look.Body % 24 + 24) % 24);
+            var b = Pick(bg, a, a.Body);
             var f = Pick(lib.Group("face", look.Face), a, a.Face);
             if (b == null || f == null || f.Ext.Length < 7 || b.Ext.Length < 2) return c;
             // 얼굴 메타 m[0..8] = 헤더 4바이트째부터 = (Ax, Ay, Ext[0..])
@@ -269,10 +286,11 @@ namespace SennenKazoku.Core
             int nx = ox + b.Ext[0] - 16, ny = oy + b.Ext[1] - 32, refY = ny - m[0];
             if (back)
             {
-                // 뒷모습: 몸통 → 뒷통수(faceB, 얼굴과 같은 번호) → 뒷머리(머리 번호 + 104)
-                Put(lib, c, b, ox, oy - 16, false);
+                // 뒷모습: 뒷통수(faceB, 얼굴과 같은 번호) → 몸통 → 뒷머리(머리 번호 + 104).
+                // 순서는 실기 사건 장면 뒷모습(장면 토큰 1A 0E 01 셋째 인자 1)에서 목·옷깃이 겹치는 인물로 확인(다른 순서는 19~242 픽셀 다름).
                 var fb = Part(lib, "faceB", look.Face, a, a.Face);
                 if (fb != null && fb.Ext.Length >= 1) Put(lib, c, fb, nx - fb.Ext[0] + fb.Ax, refY + m[1] - 2 + fb.Ay, false);
+                Put(lib, c, b, ox, oy - 16, false);
                 var bh = Part(lib, "hairback", 104 + look.Hair, a, a.Hair);
                 if (bh != null && !bh.Empty && bh.Ext.Length >= 2) Put(lib, c, bh, nx, refY + m[2] + 16 - bh.Ext[1], false);
                 return c;
@@ -287,6 +305,14 @@ namespace SennenKazoku.Core
             Put(lib, c, Part(lib, "mouth", look.Mouth, a, a.Feat), nx, refY + m[5], look.MouthFlip);
             Put(lib, c, Part(lib, "hairfront", look.Hair, a, a.Hair), nx, refY + m[1], false);
             return c;
+        }
+
+        /// <summary>좌우 반전 (장면 토큰 1A 0E 01 의 둘째 인자 비트0 — 실기 캡처 대조).</summary>
+        public static byte[] Mirror(byte[] c)
+        {
+            var o = new byte[c.Length];
+            for (int y = 0; y < Height; y++) for (int x = 0; x < Width; x++) o[y * Width + x] = c[y * Width + Width - 1 - x];
+            return o;
         }
 
         static PartImage Part(PartsLibrary lib, string cat, int i, int age) { var g = lib.Group(cat, i); return g == null ? null : g.At(age); }

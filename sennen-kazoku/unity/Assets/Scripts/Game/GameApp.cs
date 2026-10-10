@@ -1080,7 +1080,7 @@ namespace SennenKazoku.Game
 
         /// <summary>
         /// 원작 사건 화면을 장면 칸 위에 그린다: 뒤 무늬(BG2)·제목 띠(BG0, 글은 기기 글꼴)·액자 배경(BG3, 56,40 128×64)·액자 테두리(BG1)·
-        /// 인물(앱 캐릭터 그림 — 가족이 아닌 사람은 그림이 없어 빈자리)·감정 말풍선(OBJ, 동작 0~0x14).
+        /// 인물(원작 외형 조합·사건 옷차림·뒷모습·좌우 반전, 가족이 아닌 사람은 원작 그림)·감정 말풍선(OBJ, 동작 0~0x14).
         /// 원작 240×160 화면의 위 112줄을 장면 칸에 맞춰 키운다. 인물 자리는 액자 안 고르게 나눈 앱 배치다(원작 자리 값은 아직 해석 안 함).
         /// </summary>
         void UpdateStage(EventView v)
@@ -1119,7 +1119,11 @@ namespace SennenKazoku.Game
                 var npcTex = p == null && a.NpcKey.Length > 0 ? art.Texture("ev_npc_" + a.NpcKey) : null;
                 if (npcTex != null)   // 원작 그림 (32×48, 발이 아래에서 6줄 위 — event_art.py 의 npc 단계)
                     Raw("npc" + i, "ev_npc_" + a.NpcKey, cx - 16, foot - 42, 32, 48, new Rect(0, 0, 1, 1));
-                Sprite sp = p != null ? Figure(p, false, 0) : npcTex != null ? null : NpcFigure(a, v.EventId, i);
+                // 가족 인물: 장면 외형(사건 옷차림 반영)·뒷모습·좌우 반전 — 장면 토큰 1A 0E 01 (칸, 반전, 뒷모습, 옷)
+                Sprite sp = p != null ? (a.Look != null && art.Parts.Available
+                        ? art.LookSprite(a.Look, AgeSlots.ForAge(p.Age(session.Family.Today)), a.Back ? CharacterComposer.Pose.BackA : CharacterComposer.Pose.FrontA, 0, a.Mirror)
+                        : Figure(p, a.Back, 0))
+                    : npcTex != null ? null : NpcFigure(a, v.EventId, i);
                 {
                     if (sp != null)
                     {

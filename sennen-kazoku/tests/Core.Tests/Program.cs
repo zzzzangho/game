@@ -45,6 +45,32 @@ namespace SennenKazoku.Tests
         }
 
         /// <summary>시험용 PNG 읽기 (8비트 RGB/RGBA, 필터 0~4) — 0xRRGGBB, 투명은 −1.</summary>
+        /// <summary>조합 그림(색 번호)과 실기 캡처(회색 99,99,99 = 빈칸)를 ±4·±8 밀어 맞춰 색까지 같은 픽셀 비율(천분율)의 최댓값.</summary>
+        static int PixMatch(byte[] io, int[] po, string f)
+        {
+            var co = ReadPng(f, out int ow, out int oh); int bo = -1;
+            for (int dy = -8; dy <= 8; dy++)
+                for (int dx = -4; dx <= 4; dx++)
+                {
+                    int ok = 0, tot = 0;
+                    for (int y = 0; y < 64; y++) for (int x = 0; x < 32; x++)
+                    {
+                        int v = io[y * 32 + x]; int X = x + dx, Y = y + dy;
+                        int c = X >= 0 && X < ow && Y >= 0 && Y < oh ? co[Y * ow + X] : -1;
+                        bool capOn = c >= 0 && c != 0x636363;
+                        if (v == 0 && !capOn) continue;
+                        tot++;
+                        if (v != 0 && capOn)
+                        {
+                            int q = po[v]; int r = (q & 31) * 255 / 31, g = ((q >> 5) & 31) * 255 / 31, b = ((q >> 10) & 31) * 255 / 31;
+                            if (Math.Abs(r - (c >> 16 & 255)) <= 10 && Math.Abs(g - (c >> 8 & 255)) <= 10 && Math.Abs(b - (c & 255)) <= 10) ok++;
+                        }
+                    }
+                    if (tot > 0) bo = Math.Max(bo, ok * 1000 / tot);
+                }
+            return bo;
+        }
+
         static int[] ReadPng(string path, out int w, out int h)
         {
             var d = File.ReadAllBytes(path); int p = 8; w = h = 0; int ct = 2; var idat = new MemoryStream();
@@ -225,6 +251,28 @@ namespace SennenKazoku.Tests
                     }
                     Console.WriteLine("       원작 외형 조합(인물 " + pn + ", " + age + "세): 집 화면 캡처와 색까지 같은 픽셀 " + bestP / 10.0 + "%");
                     T.True(bestP >= 980, "원작 외형 조합이 집 화면 캡처와 다름");
+                }
+                // 사건 옷차림: 실기 사건 장면(인물 3)에서 레코드 몸통 바이트와 장면 토큰 1A 0E 01 의 옷 인자를 바꿔 찍은 그림(cap_outfit_<몸통>_<옷>.png)
+                foreach (var f in Directory.GetFiles(dir, "cap_outfit_*.png"))
+                {
+                    var nm = Path.GetFileNameWithoutExtension(f).Split('_'); int bodyB = int.Parse(nm[2]), od = int.Parse(nm[3]);
+                    uint ra = SennenKazoku.Core.Orig.OrigMem.PersonAddr(3); var om = os3.Game.Mem; uint keep = om.R8(ra + 7); om.W8(ra + 7, (uint)bodyB);
+                    var lo = os3.OrigLook(3, od, 0); om.W8(ra + 7, keep);
+                    var io = SennenKazoku.Core.CharacterComposer.Compose(lib, lo, SennenKazoku.Core.AgeSlots.ForAge(18), SennenKazoku.Core.CharacterComposer.Pose.FrontA, 0);
+                    int bo = PixMatch(io, lib.Palette(lo), f);
+                    Console.WriteLine("       사건 옷차림(몸통 바이트 " + bodyB + ", 옷 " + od + " → 몸통 자원 " + lo.OutfitBody + "): 실기 그림과 색까지 같은 픽셀 " + bo / 10.0 + "%");
+                    T.True(bo >= 980, "사건 옷차림이 실기 그림과 다름");
+                }
+                // 장면 토큰 1A 0E 01 (칸, b, c, 옷): c = 1 뒷모습(뒷모습 걷기 첫 자세), b 비트0 = 좌우 반전 — 실기 캡처 cap_pose_*.png
+                foreach (var (pf, od, back, flip) in new[] { ("back", 0xFF, true, false), ("backout", 3, true, false), ("mirror", 0xFF, false, true) })
+                {
+                    string f = Path.Combine(dir, "cap_pose_" + pf + ".png"); if (!File.Exists(f)) continue;
+                    var lo = os3.OrigLook(3, od, 0);
+                    var io = SennenKazoku.Core.CharacterComposer.Compose(lib, lo, SennenKazoku.Core.AgeSlots.ForAge(18), back ? SennenKazoku.Core.CharacterComposer.Pose.BackA : SennenKazoku.Core.CharacterComposer.Pose.FrontA, 0);
+                    if (flip) io = SennenKazoku.Core.CharacterComposer.Mirror(io);
+                    int bo = PixMatch(io, lib.Palette(lo), f);
+                    Console.WriteLine("       사건 인물 자세(" + pf + "): 실기 그림과 색까지 같은 픽셀 " + bo / 10.0 + "%");
+                    T.True(bo >= 980, "사건 인물 자세가 실기 그림과 다름: " + pf);
                 }
                 Console.WriteLine("       원작 외형 조합(인물 3, 얼굴 " + look.Face + " 머리 " + look.Hair + " 눈 " + look.Eyes + " 코 " + look.Nose + " 입 " + look.Mouth + " 몸통 " + look.Body + "): 실기 그림과 색까지 같은 픽셀 " + best / 10.0 + "%");
                 T.True(best >= 980, "원작 외형 조합이 실기 그림과 다름");

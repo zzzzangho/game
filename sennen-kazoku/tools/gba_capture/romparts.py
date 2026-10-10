@@ -29,6 +29,20 @@ def group_at(rom, p):
     return {"addr": p, "n": n, "flag": rom[p + 2], "dy": struct.unpack_from("<b", rom, p + 3)[0],
             "a": struct.unpack_from("<i", rom, p + 4)[0], "b": struct.unpack_from("<i", rom, p + 8)[0], "parts": parts}
 
+def resource(rom, i):
+    """원작 자원 표 0x08003AB0(번호) = 0x08A00000 + (0x08A00004 + 16·번호 의 u32) — ROM 파일 위치로 돌려준다."""
+    return 0xA00000 + struct.unpack_from("<I", rom, 0xA00004 + 16 * i)[0]
+
+def group_res(rom, p):
+    """자원 표가 가리키는 묶음(머리 첫 바이트 0 인 한 장짜리 묶음 — 사건 옷 몸통 — 도 읽는다)."""
+    n = (rom[p + 1] >> 4) + 1
+    offs = [struct.unpack_from("<I", rom, p + 16 + 4 * i)[0] for i in range(n)]
+    parts = []
+    for o in offs:
+        q = p + o; w, h = rom[q + 2], rom[q + 3]; hl = header_len(rom, q)
+        parts.append({"addr": q, "w": w, "h": h, "meta": rom[q:q + hl], "data": rom[q + hl:q + hl + w * h // 2]})
+    return {"addr": p, "n": n, "parts": parts}
+
 def all_groups(rom, lo=0x800000, hi=None):
     hi = hi or len(rom) - 32; out = []
     p = lo

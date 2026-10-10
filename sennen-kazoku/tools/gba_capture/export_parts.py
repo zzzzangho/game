@@ -31,12 +31,18 @@ def palettes(rom):
     return {"base": base, "hair": hair, "skin": skin, "outfitTable": outfit,
             "outfitEntry": "1 + 48*color + 4*outfit (추정)", "slots": {"outline": 1, "hair": [3, 5], "skin": [6, 10], "outfit": [11, 14]}}
 
+# 몸통 자원: 원작 0x080973F4(7, 번호, 세트) — 세트 s 의 서기 몸통 = 자원 0x085BBC04[s·8] 부터 84개, 걷기 둘째 = +84.
+# 앱 몸통 블록 k(24개씩) = 자원 627 + 84k 의 0~23 번(정면 서기 블록 2 = 세트 0). 24~83 번은 머리 첫 바이트가 0 인
+# 한 장짜리 묶음이라 주소 훑기로는 안 잡힌다 — 사건 옷 몸통(장면 토큰 1A 0E 01 의 옷 인자, CharacterComposer.EventOutfitBody).
+BODY_RES, BODY_BLOCKS = 627, 16
+
 def main(rom_path, out_dir, presets=None):
     rom = R.load(rom_path)
-    groups = [g for g in R.all_groups(rom, 0xA14000, 0xA90000) if category(g["addr"])]
+    groups = [(category(g["addr"]), g) for g in R.all_groups(rom, 0xA14000, 0xA90000) if category(g["addr"])]
+    groups += [("outfit", R.group_res(rom, R.resource(rom, BODY_RES + 84 * k + i))) for k in range(BODY_BLOCKS) for i in range(24, 84)]
     blob = bytearray(); cats = {}
-    for g in groups:
-        c = category(g["addr"]); parts = []
+    for c, g in groups:
+        parts = []
         for p in g["parts"]:
             m = p["meta"]
             s8 = lambda b: b - 256 if b > 127 else b

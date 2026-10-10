@@ -99,14 +99,16 @@ namespace SennenKazoku.Game
         /// <summary>원작 파트 조합 그림 (발 아래 중앙 기준 32x64). 파트 자료가 없으면 null.</summary>
         public Sprite LookSprite(CharacterLook look) { return LookSprite(look, AgeSlots.Adult, CharacterComposer.Pose.FrontA, 0); }
 
-        public Sprite LookSprite(CharacterLook look, AgeSlots ages, CharacterComposer.Pose pose, int outfitSet)
+        /// <param name="mirror">좌우 반전 (사건 장면 토큰 1A 0E 01 둘째 인자 비트0).</param>
+        public Sprite LookSprite(CharacterLook look, AgeSlots ages, CharacterComposer.Pose pose, int outfitSet, bool mirror = false)
         {
             if (look == null || !Parts.Available) return null;
             var key = MiniJson.Serialize(look.ToJson()) + "|" + ages.Body + ages.Face + ages.Hair + ages.Feat + "c" + ages.Class + "|" + (int)pose + "|" + outfitSet
-                + "|" + (look.PresetPalette != null ? string.Join(",", look.PresetPalette) : "");
+                + "|" + (look.PresetPalette != null ? string.Join(",", look.PresetPalette) : "") + "|o" + look.OutfitBody + (mirror ? "|m" : "");
             Sprite s;
             if (lookCache.TryGetValue(key, out s)) return s;
             var idx = CharacterComposer.Compose(Parts, look, ages, pose, outfitSet); var pal = Parts.Palette(look);
+            if (mirror) idx = CharacterComposer.Mirror(idx);
             int W = CharacterComposer.Width, H = CharacterComposer.Height;
             var t = new Texture2D(W, H, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
             var px = new Color32[W * H];

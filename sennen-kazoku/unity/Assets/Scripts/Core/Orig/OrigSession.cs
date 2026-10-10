@@ -596,9 +596,25 @@ namespace SennenKazoku.Core.Orig
                 {
                     int id = -1;
                     if (a.Slot >= 0 && a.Slot < 28 && cur.Slots[a.Slot] != 0xFFFF) id = (int)cur.Slots[a.Slot];
-                    sv.Actors.Add(new SceneActor { PersonId = id, Anim = a.Anim, NpcKind = a.NpcKind, NpcAge = a.NpcAge, Outfit = a.Outfit, NpcKey = a.NpcKey });
+                    sv.Actors.Add(new SceneActor { PersonId = id, Anim = a.Anim, NpcKind = a.NpcKind, NpcAge = a.NpcAge, Outfit = a.Outfit, NpcKey = a.NpcKey,
+                        Mirror = a.Mirror, Back = a.Back, Look = SceneLook(id, a.Outfit) });
                 }
             return sv;
+        }
+
+        /// <summary>
+        /// 장면 인물 외형: 원작 레코드 외형이면 사건 옷(00~09)까지 원작 함수로 다시 고르고(OrigLook — 실기 사건 그림과 색까지 100%),
+        /// 앱에서 고른 외형(내가 아는 가족)이면 몸통만 사건 옷 몸통으로 바꾼다(색은 앱 외형 색 그대로 — 원작과 다를 수 있음).
+        /// </summary>
+        CharacterLook SceneLook(int id, int outfit)
+        {
+            var p = id >= 0 ? Family.Get(id) : null;
+            if (p == null || p.Look == null) return null;
+            if (p.Look.Preset == "orig")
+                for (int n = 0; n < 8; n++)
+                    if (OrigGame.Present(Game.Mem, n) && (int)Game.Mem.R16(OrigMem.PersonAddr(n) + 0x3C) == id) return OrigLook(n, outfit, 0);
+            var l = p.Look.Clone(); l.OutfitBody = CharacterComposer.EventOutfitBody(l.Body, outfit);
+            return l;
         }
 
         public bool Advance()
@@ -658,7 +674,15 @@ namespace SennenKazoku.Core.Orig
         /// (팔레트, 레코드+8, 레코드, 나이 구분 0x08097398, 0xFF, 0)로 만든 16색을 그대로 쓴다(실기 사건 그림 팔레트와 14/14 일치).
         /// +3·+8 은 바꿔도 그림 변화가 거의 없어 아직 모름(좌우 반전 등은 쓰지 않는다).
         /// </summary>
-        public CharacterLook OrigLook(int n)
+        public CharacterLook OrigLook(int n) { return OrigLook(n, 0xFF, 0); }
+
+        /// <summary>
+        /// 원작 레코드 외형. outfit = 사건 장면 토큰 1A 0E 01 의 옷 인자(FF·FE 기본, 00~09 사건 옷) — 사건 옷이면 몸통을 옷 몸통
+        /// 자원(CharacterComposer.EventOutfitBody)으로 바꾸고, 색도 그 몸통 묶음의 색 표로 고른다(원작 0x08099670 은 몸통 번호로 묶음을 찾아
+        /// 그 보조표에서 옷 색 항목을 읽는다 — 레코드 사본의 +7 을 옷 몸통 번호로 바꿔 같은 함수를 부른다. 실기 캡처와 색까지 대조).
+        /// </summary>
+        /// <param name="set">몸통 자원 세트(원작 0x080973F4 의 셋째 인자 = 0x08099448 의 마지막 인자): 0~3 앞모습, 4~7 뒷모습 — 색 표도 그 세트 몸통 묶음 것을 쓴다.</param>
+        public CharacterLook OrigLook(int n, int outfit, int set)
         {
             var m = Game.Mem; uint a = OrigMem.PersonAddr(n);
             var l = new CharacterLook
@@ -667,13 +691,16 @@ namespace SennenKazoku.Core.Orig
                 Eyes = (int)m.R8(a + 5), Body = (int)m.R8(a + 7) % 24, Preset = "orig"
             };
             l.Outfit = CharacterComposer.OutfitOf(l);
+            l.OutfitBody = CharacterComposer.EventOutfitBody(l.Body, outfit);
             OrigDate.Get(m, a + 0x2E, out int by, out int bm, out int bd);
             int years = Family.Today >= 0 ? Math.Max(0, GameDate.Year(Family.Today) - by - ((GameDate.Month(Family.Today) * 100 + GameDate.Day(Family.Today)) < (bm * 100 + bd) ? 1 : 0)) : 20;
-            const uint buf = 0x0F03B400;
+            const uint buf = 0x0F03B400, rec = 0x0F03B440;
             try
             {
                 for (uint i = 0; i < 32; i++) m.W8(buf + i, 0);
-                Game.Vm.Call("08099448", buf, a + 8, a, (uint)AgeSlots.OrigClass(years), 0xFF, 0);
+                for (uint i = 0; i < 16; i++) m.W8(rec + i, m.R8(a + i));
+                if (l.OutfitBody >= 0) m.W8(rec + 7, (uint)l.OutfitBody);
+                Game.Vm.Call("08099448", buf, rec + 8, rec, (uint)AgeSlots.OrigClass(years), 0xFF, (uint)set);
                 var pal = new int[16]; pal[0] = -1;
                 for (uint i = 1; i < 16; i++) pal[i] = (int)m.R16(buf + 2 * i);
                 l.PresetPalette = pal;

@@ -49,15 +49,15 @@ def ages(age):
     return {k: age for k in AGE_KEYS}
 
 def compose_back(lib, look, age=1, W=32, H=64, O=(15, 64), block=0):
-    """뒷모습: 몸통(뒷모습 묶음) → 뒷통수(faceB, 얼굴과 같은 번호) → 뒷머리(머리 번호 + 104).
+    """뒷모습: 뒷통수(faceB, 얼굴과 같은 번호) → 몸통(뒷모습 묶음) → 뒷머리(머리 번호 + 104).
     본게임 걷기 캡처 6장과 일치(원점 x 가 앞모습보다 1 왼쪽)."""
     c = [0] * (W * H); Ox, Oy = O; A = ages(look.get("ages", age))
     b = at(lib.cat["body"][block * 24 + look["body"] % 24], A["body"]); bm = b["meta"]
     f = at(lib.cat["face"][look["face"]], A["face"]); m = list(f["meta"][4:])
     fb = at(lib.cat["faceB"][look["face"]], A["face"])
     nx, ny = Ox + bm[6] - 16, Oy + bm[7] - 32; ref = ny - m[0]
-    _put(c, W, H, b, Ox, Oy - 16)
     _put(c, W, H, fb, nx - fb["meta"][6] + s8(fb["meta"][4]), ref + m[1] - 2 + s8(fb["meta"][5]))
+    _put(c, W, H, b, Ox, Oy - 16)   # 뒷통수 → 몸통 순서 (실기 사건 장면 뒷모습에서 목·옷깃이 겹치는 인물로 확인)
     hb = at(lib.cat["hairback"][104 + look["hair"]], A["hair"])
     if hb["w"]: _put(c, W, H, hb, nx, ref + m[2] + 16 - hb["meta"][7])
     return c
