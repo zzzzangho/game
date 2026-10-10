@@ -641,6 +641,10 @@ namespace SennenKazoku.Tests
                 // 장면 시작 밝기(실기, 액자 배경 한 점 R 값/16): 3040프레임 16 · 3052 80 · 3062 128 · 3086 255 — 화면이 검게 된 3020프레임 기준
                 T.Eq((int)Math.Round((1 - SceneAnim.IntroBlack(20)) * 16), 1); T.Eq((int)Math.Round((1 - SceneAnim.IntroBlack(32)) * 16), 5);
                 T.Eq((int)Math.Round((1 - SceneAnim.IntroBlack(42)) * 16), 8); T.Eq(SceneAnim.IntroBlack(66), 0f); T.Eq(SceneAnim.IntroBlack(10), 1f);
+                // 끝(마지막 장을 넘긴 뒤 t): 밝기 R 240(t20)·224(24)·208(26)·192(30)·…·16(62)·0(66) — 단계 = (255 − R)/16
+                int[] ot = { 20, 24, 26, 30, 32, 36, 38, 42, 44, 48, 50, 54, 56, 60, 62, 66 };
+                for (int j = 0; j < ot.Length; j++) T.Eq(SceneAnim.FadeStep(ot[j]), j + 1);
+                T.Eq(SceneAnim.FadeStep(18), 0);
                 // 확대(1A 0F 00 02): 2프레임 간격 OAM — 역배율 244·196·148·128, 두 배 크기 OBJ 가운데 (133,67)·(127,64)·(121,60)·(120,60)
                 int[] pa = { 244, 196, 148, 128 }; int[,] ctr = { { 133, 67 }, { 127, 64 }, { 121, 60 }, { 120, 60 } };
                 for (int j = 0; j < 4; j++)

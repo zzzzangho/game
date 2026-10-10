@@ -33,15 +33,16 @@ namespace SennenKazoku.Core
         }
 
         /// <summary>
-        /// 장면 시작(실기): 앞 화면이 검게 된 뒤 20프레임 검은 채로 있다가 46프레임 동안 16단계로 밝아진다(3040~3086프레임 측정).
-        /// 반환 = 장면 위에 덮을 검정의 불투명도(0~1).
+        /// 장면 시작·끝 밝기 단계(실기 2프레임 간격 측정 — 시작은 화면이 검게 된 때, 끝은 마지막 장을 넘긴 때가 0):
+        /// 단계 = ⌊(t − 17) / 2.875⌋ (0~16, 46프레임 동안 16단계). 시작은 단계만큼 밝아지고(3040·3044·3046·…·3086프레임에 한 단계씩),
+        /// 끝은 대사 상자·큐피트가 사라진 뒤 단계만큼 어두워져 검정 36프레임 뒤(t = 102) 집 화면으로 돌아간다.
         /// </summary>
-        public static float IntroBlack(float frames)
-        {
-            if (frames < 20) return 1f;
-            int step = (int)((frames - 20) / (46f / 16f)) + 1;
-            return Math.Max(0f, 1f - step / 16f);
-        }
+        public static int FadeStep(float t) { return Math.Max(0, Math.Min(16, (int)Math.Floor((t - 17f) / 2.875f))); }
+        /// <summary>장면 시작: 덮을 검정의 불투명도(0~1).</summary>
+        public static float IntroBlack(float t) { return 1f - FadeStep(t) / 16f; }
+        /// <summary>장면 끝: 덮을 검정의 불투명도(0~1).</summary>
+        public static float OutroBlack(float t) { return FadeStep(t) / 16f; }
+        public const float OutroEnd = 102f;
 
         /// <summary>
         /// 뒤 무늬(BG2) 색 돌기 표 (event_art.py 의 ev_back_anim.json, 로컬): 무늬 포인터(16진 8자리) → [그림 번호, 프레임 수] 반복.

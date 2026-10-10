@@ -1086,8 +1086,21 @@ namespace SennenKazoku.Game
         /// </summary>
         void UpdateStage(EventView v)
         {
+            bool hasScene = v != null && v.Scene != null && art.Texture(v.Scene.Pic) != null;
+            // 장면이 끝나면(다음 화면에 장면 그림이 없음) 원작처럼 어두워진 뒤 닫는다(SceneAnim.OutroBlack) — 그동안 인물 움직임은 멈춘다
+            if (!hasScene && evStage != null && v == null)
+            {
+                if (outroStart >= 0) return;   // 이미 끝 연출 중
+                outroStart = Time.time; stageBubbles.Clear(); zoomImg = null;
+                stageFade = UiKit.Box(evStage, "fadeOut", Color.black); stageFade.raycastTarget = false;
+                UiKit.SetPx(stageFade.rectTransform, 0, 0, evStage.sizeDelta.x, evStage.sizeDelta.y);
+                stageFade.color = new Color(0, 0, 0, 0); stageFade.transform.SetAsLastSibling();
+                bubbleEvent = "";
+                return;
+            }
             if (evStage != null) { Destroy(evStage.gameObject); evStage = null; }
-            if (v == null || v.Scene == null || art.Texture(v.Scene.Pic) == null) return;
+            outroStart = -1;
+            if (!hasScene) return;
             const float LW = 240f, LH = 112f;
             float sw = lay.Scene.W, sh = lay.Scene.H, k = Mathf.Min(sw / LW, sh / LH);
             evStage = UiKit.Node(scene, "evStage");
@@ -1173,7 +1186,7 @@ namespace SennenKazoku.Game
         string bubbleEvent = "", zoomKey = "";
         SceneAnim.EmotionTable emoTable;
         Image zoomImg, stageFade; float zoomStart, zoomCx, zoomW, zoomH, stageK = 1, stageStart;
-        RawImage stageBack; string stageBackKey = ""; SceneAnim.BackTable backTable;
+        RawImage stageBack; string stageBackKey = ""; SceneAnim.BackTable backTable; float outroStart = -1;
 
         /// <summary>사건 장면 움직임: 말풍선 그림 순서(원작 프레임 표)와 확대 진행(60프레임/초).</summary>
         void UpdateStageAnim()
@@ -1186,6 +1199,13 @@ namespace SennenKazoku.Game
                 var t = f >= 0 ? art.Texture("ev_emo_" + b.Emo.ToString("X2") + "_" + f) : null;
                 b.Img.enabled = t != null;
                 if (t != null) b.Img.texture = t;
+            }
+            if (outroStart >= 0)
+            {
+                float ot = (Time.time - outroStart) * 60f;
+                if (stageFade != null) { stageFade.enabled = true; stageFade.color = new Color(0, 0, 0, SceneAnim.OutroBlack(ot)); }
+                if (ot >= SceneAnim.OutroEnd) { Destroy(evStage.gameObject); evStage = null; outroStart = -1; }
+                return;
             }
             float fr = (Time.time - stageStart) * 60f;
             if (stageBack != null && backTable != null)
