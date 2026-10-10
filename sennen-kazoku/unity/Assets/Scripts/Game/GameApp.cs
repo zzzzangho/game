@@ -318,6 +318,21 @@ namespace SennenKazoku.Game
         }
 
         // =============================================================== 타이틀
+        /// <summary>
+        /// "맞은 화살": 원작 세션은 레코드 +0x60 의 화살 종류(실기 상세 화면과 같음 — 힘내라·진정해는 여기 보이지 않는다).
+        /// 옛 경로는 힘내라·진정해 효과 중일 때 그 이름.
+        /// </summary>
+        static string HitArrowName(Person p)
+        {
+            if (p.HitArrow >= 0)
+            {
+                var t = Interventions.Tools.Find(x => x.Kind == "arrow" && x.OrigSlot == p.HitArrow);
+                return t != null ? t.Name : "화살 #" + p.HitArrow;
+            }
+            if (p.HitArrow == -1) return null;
+            return (p.ArrowFlags & 1) != 0 && !string.IsNullOrEmpty(p.ArrowId) ? Interventions.Find(p.ArrowId).Name + " (지금 관심사가 끝날 때까지)" : null;
+        }
+
         float titleAt;
         /// <summary>원작 난수 시작값 (OrigSession.BootSeed): 부팅 주사선 대신 시각, 타이틀에서 돈 횟수 대신 타이틀에 머문 프레임 수(60/초).</summary>
         uint OrigSeed() { return Core.Orig.OrigSession.BootSeed((uint)(DateTime.UtcNow.Ticks % 228), (uint)Mathf.Max(0f, (Time.realtimeSinceStartup - titleAt) * 60f)); }
@@ -915,7 +930,8 @@ namespace SennenKazoku.Game
                 var s = art.Ui(key); barHearts[i].sprite = s ?? UiKit.Circle;
                 barHearts[i].color = s != null ? Color.white : (key == "heart_full" ? Color.red : key == "heart_half" ? new Color(1, 0.5f, 0.6f) : new Color(0.4f, 0.5f, 1f));
             }
-            barPlanned.text = p.Age(session.Family.Today) + "세" + ((p.ArrowFlags & 1) != 0 && !string.IsNullOrEmpty(p.ArrowId) ? " · " + Interventions.Find(p.ArrowId).Name + " 효과 중" : "");
+            string hit = HitArrowName(p);
+            barPlanned.text = p.Age(session.Family.Today) + "세" + (hit != null ? " · " + hit : "");
             if (shownImm < 0) shownImm = p.Gauge;
             var g = art.Ui(p.Gauge >= 170 ? "gauge_full" : p.Gauge >= 85 ? "gauge_mid" : "gauge_empty");     // 원작 게이지 그림 3단계(경계는 그림 고르기용)
             barGauge.sprite = g; barGauge.enabled = g != null;     // 원작 게이지 그림(작게) — 큰 막대는 immFill
@@ -1041,7 +1057,7 @@ namespace SennenKazoku.Game
             var job = UiKit.Label(body, "job", Core.Orig.OrigJobs.Name(p.Job), Px(12), UiKit.Ink, TextAnchor.MiddleCenter); UiKit.SetPx(job.rectTransform, 0, Px(174), Px(96), Px(22));
             float x = Px(106), cw = w - x;
             Line(body, "꿈", string.IsNullOrEmpty(p.Dream) ? "지금은 없어…" : p.Dream, x, 0, cw);
-            Line(body, "화살", (p.ArrowFlags & 1) == 0 || string.IsNullOrEmpty(p.ArrowId) ? "맞은 화살 없음" : Interventions.Find(p.ArrowId).Name + " (지금 관심사가 끝날 때까지)", x, Px(34), cw);
+            Line(body, "화살", HitArrowName(p) ?? "맞은 화살 없음", x, Px(34), cw);
             string[] nm = { "지력", "체력", "매력", "운" };
             float sw = cw / 4f;
             for (int i = 0; i < 4; i++)

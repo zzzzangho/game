@@ -86,6 +86,8 @@ namespace SennenKazoku.Core
         public int Immersion;              // 0..255 (확인됨: 범위)
         /// <summary>신님에게 감사 (원작은 인물마다: 레코드 +0x65 | +0x66&lt;&lt;8, 실기 상세 화면으로 확인). 원작 세션이 매일 투영하며 저장하지 않는다(-1 = 가족 값 사용).</summary>
         public int Gratitude = -1;
+        /// <summary>원작 상세 화면의 "맞은 화살" = 레코드 +0x60 의 화살 종류(붐 계열 등, 0xFF 없음 → -1). 실기 확인. 원작 세션 투영 전용(-2 = 옛 경로).</summary>
+        public int HitArrow = -2;
         public int Job;                    // 직업 코드 (이름표 미확보)
         public int JobMastery;
         public List<int> Skills = new List<int>();

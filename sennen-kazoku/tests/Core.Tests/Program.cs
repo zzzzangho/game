@@ -816,7 +816,9 @@ namespace SennenKazoku.Tests
                             for (int k = 0; k < 8; k++) if (SennenKazoku.Core.Orig.OrigGame.Present(mm, k) && (int)mm.R16(SennenKazoku.Core.Orig.OrigMem.PersonAddr(k) + 0x3C) == q.Id) qa = SennenKazoku.Core.Orig.OrigMem.PersonAddr(k);
                             var before = (byte[])mm.Ewram.Clone();
                             var r = s.Use(q, t.Id); int diff = 0; for (int i = 0; i < before.Length; i++) if (before[i] != mm.Ewram[i]) diff++;
-                            Console.WriteLine("       " + t.Name + " → " + q.Name + ": " + (r ?? "씀") + " (바뀐 바이트 " + diff + ")");
+                            int hitNow = s.Family.Get(q.Id).HitArrow;
+                            Console.WriteLine("       " + t.Name + " → " + q.Name + ": " + (r ?? "씀") + " (바뀐 바이트 " + diff + ", 맞은 화살 칸 " + hitNow + ")");
+                            if (r == null && t.OrigSlot <= 5) T.Eq(hitNow, t.OrigSlot);
                         }
                     s.Game.Vm.BeforeTop = null; s.Game.Vm.AfterTop = null;
                     s.StepDay(); while (s.Paused) s.Advance();
