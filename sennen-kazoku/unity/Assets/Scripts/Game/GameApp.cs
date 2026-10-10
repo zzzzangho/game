@@ -1108,15 +1108,16 @@ namespace SennenKazoku.Game
                 var bt = UiKit.Label(evStage, "bandText", v.Title, Mathf.RoundToInt(10 * k), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
                 UiKit.SetPx(bt.rectTransform, 24 * k, 3 * k, (LW - 48) * k, 18 * k);
             }
+            Raw("cupid", "ev_cupid", 8, 64, 32, 40, new Rect(0, 0, 1, 1));   // 원작 큐피트 자리 (OBJ 14~32, 70~100)
             int n = v.Scene.Actors.Count;
             for (int i = 0; i < n; i++)
             {
-                // 실기 캡처(기록 0x08923648): 액자 안 발 y≈58, 말풍선 아래 끝 y≈19 → 발에서 39~40 위
-                var a = v.Scene.Actors[i]; float cx = 56 + 128f * (i + 1) / (n + 1), foot = 40 + 58, headY = foot - 39;
+                // 실기 캡처(기록 0x08923648): 두 사람은 액자 가운데(64) ±16, 발 y≈58, 말풍선 아래 끝 y≈19 → 발에서 39 위.
+                // 자리는 인원수로만 정해진다(옷·나이 인자를 바꿔도 자리는 그대로) — 셋 이상은 같은 간격 32 로 둔 앱 배치.
+                var a = v.Scene.Actors[i]; float cx = 56 + 64 + 32f * (i - (n - 1) / 2f), foot = 40 + 58, headY = foot - 39;
                 var p = a.PersonId >= 0 ? session.Family.Get(a.PersonId) : null;
-                if (p != null)
+                Sprite sp = p != null ? Figure(p, false, 0) : NpcFigure(a, v.EventId, i);
                 {
-                    var sp = Figure(p, false, 0);
                     if (sp != null)
                     {
                         float fw = sp.rect.width, fh = sp.rect.height;
@@ -1130,6 +1131,18 @@ namespace SennenKazoku.Game
                     if (t != null) Raw("emo" + i, "ev_emo_" + a.Anim.ToString("X2"), cx - 16, headY - 19, 32, 19, new Rect(0, 0, 1, 1));
                 }
             }
+        }
+
+        /// <summary>
+        /// 가족이 아닌 사람: 원작 그림(NPC 스프라이트)은 아직 뽑지 않아 앱 캐릭터 조합으로 대신한다(앱 대체 그림 — 성별·나이대만 원작 인자를 따른다).
+        /// 나이대 인자(1A 0E 04 둘째): 01 아기 · 02 어린이 · 03 어린이 · 06 노인 · 그 밖 청년~어른.
+        /// </summary>
+        Sprite NpcFigure(SceneActor a, string seedKey, int i)
+        {
+            if (!art.Parts.Available || a.NpcKind < 0) return null;
+            int gender = a.NpcKind % 2, age = a.NpcAge == 1 ? 2 : a.NpcAge <= 3 ? 8 : a.NpcAge == 6 ? 75 : 25;
+            var look = CharacterComposer.Random(art.Parts, new Rng((uint)((seedKey ?? "").GetHashCode() ^ (i * 7919))), gender);
+            return art.LookSprite(look, AgeSlots.ForAge(age), CharacterComposer.Pose.FrontA, 0);
         }
 
         void RefreshDialog()

@@ -596,7 +596,7 @@ namespace SennenKazoku.Core.Orig
                 {
                     int id = -1;
                     if (a.Slot >= 0 && a.Slot < 28 && cur.Slots[a.Slot] != 0xFFFF) id = (int)cur.Slots[a.Slot];
-                    sv.Actors.Add(new SceneActor { PersonId = id, Anim = a.Anim });
+                    sv.Actors.Add(new SceneActor { PersonId = id, Anim = a.Anim, NpcKind = a.NpcKind, NpcAge = a.NpcAge, Outfit = a.Outfit });
                 }
             return sv;
         }

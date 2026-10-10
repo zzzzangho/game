@@ -11,7 +11,7 @@ BG3 액자 안 배경 그림(56,40 에서 128×64) · OBJ 인물·큐피트·감
 
   python3 event_art.py <capture 실행 파일> <ROM> <세이브상태(.state, 확장자 빼고)> <기록 R 주소> <사건 시작 뒤 프레임> <orig_rules.json> <출력 디렉터리>
 출력(앱 LocalArt 이름, .png.bytes): ev_pic_<포인터> (128×64, BG3) · ev_band_<포인터> (240×24, BG0 위쪽, 글 없음) ·
-      ev_back_<포인터> (240×160, BG2) · ev_frame (BG1) · ev_emo_<번호> (감정 말풍선 32×19, OBJ) — 회색 바탕(99,99,99)은 투명.
+      ev_back_<포인터> (240×160, BG2) · ev_frame (BG1) · ev_cupid (32×40, OBJ) · ev_emo_<번호> (감정 말풍선 32×19, OBJ) — 회색 바탕(99,99,99)은 투명.
 감정 말풍선: 기록 R 대사 머리의 "1A 0E 02 (동작) (인물)" 의 동작 번호를 0~0x14 로 바꿔 OBJ 층을 찍고 첫 인물 머리 위
 (액자 안 33,0 ~ 65,19)를 자른다 — 이 자리는 기록 0x08923648(인물 둘) 기준이다. 0x15 부터는 말풍선 없이 자세만 바뀐다.
 """
@@ -62,6 +62,7 @@ def main():
     for v in sorted(filter(ok, vals[0x28])): save(shot(3, with_(0x28, v)).crop((56, 40, 184, 104)), 'ev_pic_%08X' % v, False)
     for v in sorted(filter(ok, vals[0x20])): save(shot(0, with_(0x20, v)).crop((0, 0, 240, 24)), 'ev_band_%08X' % v)
     for v in sorted(filter(ok, vals[0x24])): save(shot(2, with_(0x24, v)), 'ev_back_%08X' % v)
+    save(shot(4, with_(0x28, base[3][1])).crop((8, 64, 40, 104)), 'ev_cupid')   # 큐피트 (OBJ, 화면 14~32, 70~100)
     dlg = struct.unpack_from('<I', rom, R + 0x14)[0] - 0x08000000
     toks, i = [], rom.find(b'\x1a\x0e\x02', dlg, dlg + 64)
     while i >= 0 and i < dlg + 64: toks.append(i); i = rom.find(b'\x1a\x0e\x02', i + 1, dlg + 64)

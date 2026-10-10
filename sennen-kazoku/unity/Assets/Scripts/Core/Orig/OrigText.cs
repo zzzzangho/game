@@ -171,12 +171,12 @@ namespace SennenKazoku.Core.Orig
         public static List<string> Pages(string script, Func<int, string> name) { return ScenePages(script, name, null, null); }
 
         /// <summary>장면 인물: Slot = 슬롯표 칸(1A 0E 01 의 첫 인자, 가족), −1 = 가족이 아닌 사람(1A 0E 04). Anim = 동작 번호.</summary>
-        public sealed class StageActor { public int Slot = -1; public int Anim = -1; }
+        public sealed class StageActor { public int Slot = -1; public int Anim = -1; public int NpcKind = -1, NpcAge = -1, Outfit = 0xFF; }
 
         /// <summary>
         /// 대사를 장으로 나누면서 장마다 액자 안 인물 상태를 같이 낸다(stages[k] = k 번째 장을 보일 때의 상태).
-        /// 장면 토큰(원작 글 엔진이 장면 우편함 [T+0x398] 에 넘기는 명령 0x0E, 0x080AAC44): 1A 0E 00 a(1) · 1A 0E 01 (칸, ?, ?, ?) 가족 인물 등장 ·
-        /// 1A 0E 02 (동작, 인물 순번) · 1A 0E 03 a · 1A 0E 04 (5바이트) 가족이 아닌 사람 등장. 인물 순번은 등장한 순서
+        /// 장면 토큰(원작 글 엔진이 장면 우편함 [T+0x398] 에 넘기는 명령 0x0E, 0x080AAC44): 1A 0E 00 a(1) · 1A 0E 01 (칸, ?, ?, 옷) 가족 인물 등장 ·
+        /// 1A 0E 02 (동작, 인물 순번) · 1A 0E 03 a · 1A 0E 04 (계열, 나이대, ?, ?, 옷) 가족이 아닌 사람 등장. 인물 순번은 등장한 순서
         /// (실기 캡처: 기록 0x08923648 은 04 → 01 순서로 왼쪽 친구, 오른쪽 사건 인물). 동작 번호 뜻은 실기 캡처로 확인(0~0x14 감정 말풍선).
         /// 참고 번역문은 토큰을 바이트 단위로 쪼개 적기도 해서({{HEX:1A 0E}}{{HEX:04}}…) 이어진 HEX 묶음을 하나의 바이트열로 읽는다.
         /// </summary>
@@ -184,7 +184,7 @@ namespace SennenKazoku.Core.Orig
         {
             var pages = new List<string>(); var sb = new StringBuilder();
             var actors = new List<StageActor>(); var pageStart = new List<StageActor>();
-            List<StageActor> Snap() { var l = new List<StageActor>(); foreach (var a in actors) l.Add(new StageActor { Slot = a.Slot, Anim = a.Anim }); return l; }
+            List<StageActor> Snap() { var l = new List<StageActor>(); foreach (var a in actors) l.Add(new StageActor { Slot = a.Slot, Anim = a.Anim, NpcKind = a.NpcKind, NpcAge = a.NpcAge, Outfit = a.Outfit }); return l; }
             void Flush() { var s = FixJosa(sb.ToString()).Trim(); if (s.Length > 0) { pages.Add(s); if (stages != null) stages.Add(pageStart); } sb.Clear(); pageStart = Snap(); }
             var bytes = new List<byte>();
             void Bytes()
@@ -205,8 +205,8 @@ namespace SennenKazoku.Core.Orig
                     {
                         int sub = Arg(2);
                         bool fresh = sb.ToString().Trim().Length == 0;   // 장 글이 시작하기 전이면 이 장의 처음 상태에 넣는다
-                        if (sub == 1) actors.Add(new StageActor { Slot = Arg(3) });
-                        else if (sub == 4) actors.Add(new StageActor { Slot = -1 });
+                        if (sub == 1) actors.Add(new StageActor { Slot = Arg(3), Outfit = Arg(6) });
+                        else if (sub == 4) actors.Add(new StageActor { Slot = -1, NpcKind = Arg(3), NpcAge = Arg(4), Outfit = Arg(7) });
                         else if (sub == 2 && Arg(4) < actors.Count) actors[Arg(4)].Anim = Arg(3);
                         if (fresh) pageStart = Snap();
                     }
