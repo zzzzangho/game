@@ -1054,13 +1054,35 @@ namespace SennenKazoku.Game
                 var hi = UiKit.Box(body, "h" + i, s != null ? Color.white : Color.red, s ?? UiKit.Circle); hi.preserveAspect = true;
                 UiKit.SetPx(hi.rectTransform, x + Px(50) + i * Px(34), Px(134), Px(30), Px(30));
             }
-            var gr = UiKit.Label(body, "grat", "신님에게 감사  " + f.Gratitude + "개", Px(14), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(gr.rectTransform, x, Px(166), cw, Px(24));
+            var gr = UiKit.Label(body, "grat", "신님에게 감사  " + f.Gratitude + "개", Px(14), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(gr.rectTransform, x, Px(166), cw - Px(100), Px(24));
+            var ren = UiKit.Btn(body, "rename", "이름 바꾸기", Px(12), new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => OpenRename(p));
+            UiKit.SetPx(ren.GetComponent<RectTransform>(), x + cw - Px(96), Px(164), Px(96), Px(28));
             PlannedStateDef st; catalog.States.TryGetValue(p.PlannedStateId ?? "", out st);
             var now = UiKit.Label(body, "now", "현재  " + PlannedTitle(p), Px(16), new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.UpperLeft, FontStyle.Bold);
             UiKit.SetPx(now.rectTransform, 0, Px(200), w, Px(48));
             string desc = st != null && !string.IsNullOrEmpty(st.Desc) ? st.Desc : "(예정 상태 설명은 원작 문구 팩에서 제공)";
             var dd = UiKit.Label(body, "desc", desc + "\n\n직업 코드 " + p.Job + " · 숙련 " + p.JobMastery + " · 몰입도 " + p.Immersion + "\n※ 직업 이름·하트 단위는 원작 확인 전 임시 표기", Px(14), UiKit.Ink, TextAnchor.UpperLeft);
             UiKit.SetPx(dd.rectTransform, 0, Px(250), w, BodyH(body) - Px(250));
+        }
+
+        /// <summary>
+        /// 이름 바꾸기: 기기 키보드(안드로이드 한글 입력)로 입력한다 — 원작의 자모 입력 화면은 옮기지 않았다.
+        /// 원작 진행 가족은 표시 이름표(Family.OrigNames)에 넣어 다음 날·저장 뒤에도 남는다.
+        /// </summary>
+        void OpenRename(Person p)
+        {
+            string name = p.Name;
+            var body = Window("이름 바꾸기", 220); float w = BodyW(body);
+            var f = UiKit.Input(body, "name", name, Px(18), 8, v => name = v.Trim());
+            UiKit.SetPx(f.GetComponent<RectTransform>(), 0, 0, w, Px(52));
+            f.ActivateInputField();
+            NextBtn(body, Px(70), "결정", () =>
+            {
+                if (name.Length == 0) { Toast("이름을 입력해 줘"); return; }
+                p.Name = name;
+                if (session.Family.IsOriginal) session.Family.OrigNames[p.Id] = name;
+                SaveSlot("auto", true); RefreshAll(); OpenDetail(p);
+            });
         }
 
         void Line(RectTransform body, string tag, string text, float x, float y, float w)

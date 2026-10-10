@@ -101,6 +101,7 @@ namespace SennenKazoku.Game
             Stretch(ph.rectTransform, 10, 2, 10, 2);
             var f = im.gameObject.AddComponent<InputField>();
             f.textComponent = tl; f.placeholder = ph; f.characterLimit = maxChars; f.targetGraphic = im;
+            f.lineType = InputField.LineType.SingleLine;   // 모바일: 기기 키보드(한글 IME)로 입력, 줄바꿈 없이 완료 버튼으로 끝
             f.text = text ?? "";
             f.onValueChanged.AddListener(v => onChange(v));
             return f;
