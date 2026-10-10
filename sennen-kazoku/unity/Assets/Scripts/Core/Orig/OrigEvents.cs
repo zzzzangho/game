@@ -60,14 +60,22 @@ namespace SennenKazoku.Core.Orig
             // 장면 시작 0x0804C66C 의 규칙 부분 (원작 실행 중단점으로 확인: 시작 함수 전에 0x0804C76C 에서 슬롯표를 다시 만든다):
             // 0x0800E57C — 인물 레코드 앞 0x38 바이트를 가계 표(0x0202EB9C + 60×번호)에 옮겨 적기,
             // 0x08110B90(사건 인물, 0) — 사건 인물 중심 슬롯표. 큐에 넣은 뒤 다른 인물 처리로 슬롯표가 바뀌었어도 여기서 바로잡힌다.
+            bool tr = System.Environment.GetEnvironmentVariable("SK_RS_TRACE") == data.ToString("X8");
+            uint pr0 = tr ? vm.Call("08110B2C", personId & 0xFFFF) : 0;
+            if (tr) System.Console.WriteLine("    [SC] 장면 시작 +0x69=" + vm.Mem.R8(pr0 + 0x69) + " 게이지 " + vm.Mem.R8(pr0 + 0x5A));
             vm.Call("0800E57C");
             vm.Call("slots", personId, 0);
             if (slotsOut != null) for (int k = 0; k < slotsOut.Length && k < 28; k++) slotsOut[k] = vm.Mem.R16(OrigMem.Slots + 2 * (uint)k);
             uint v = 0;
             var fns = Fns(vm, rules, data);
             if (fns[0] != null) v = vm.Call(fns[0], 0, data, 0, 0) & 0xFFFF;
+            if (tr) System.Console.WriteLine("    [SC] 시작 함수 뒤 +0x69=" + vm.Mem.R8(pr0 + 0x69));
             vm.Call("08110F5C", v & 0xFF);
+            // 대사 끝의 1A 12 00 → 결과 스크립트(감사·신님 랭크·랭크 보상). 원작은 장면에서 대사를 보여 주며 실행하고,
+            // 효과 함수는 그 뒤 장면 끝에서 돈다 — 실기 감시: 대사 끝(명령 0) 7811 → 감사 8051 → 랭크·보상 8241 → 화살 표시 해제(효과 쪽 0x0802886A) 9560 프레임.
+            OrigResultScript.Run(vm, personId, data);
             RunEffect(vm, rules, data, v);
+            if (tr) System.Console.WriteLine("    [SC] 효과 뒤 +0x69=" + vm.Mem.R8(pr0 + 0x69));
             vm.Call("080111B8", 0xFFFFFFFD, personId, 1, 0, v, 0, data);
             return v;
         }

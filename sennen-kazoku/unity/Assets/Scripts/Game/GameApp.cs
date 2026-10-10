@@ -1170,6 +1170,11 @@ namespace SennenKazoku.Game
         void OpenSettings()
         {
             var body = Window("설정", 600); float w = BodyW(body), bw = (w - Px(18)) / 4f, y = 0;
+            if (session.Family.GodRank >= 0)
+            {
+                var gl = UiKit.Label(body, "god", "신님의 정보 — 신님 랭크 " + session.Family.GodRank + "성 · 감사의 마음 " + session.Family.Gratitude + "개", Px(14), UiKit.Ink, TextAnchor.MiddleLeft, FontStyle.Bold);
+                UiKit.SetPx(gl.rectTransform, 0, y, w, Px(24)); y += Px(28);
+            }
             var sl = UiKit.Label(body, "sl", "진행 (원작: 하루 약 88초, 배속 코너를 누르고 있으면 약 ×6.5)", Px(13), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(sl.rectTransform, 0, y, w, Px(22)); y += Px(24);
             string[] l = { "멈춤", "진행" }; int[] sp = { 0, 1 }; bw = (w - Px(6)) / 2f;
             for (int i = 0; i < 2; i++)

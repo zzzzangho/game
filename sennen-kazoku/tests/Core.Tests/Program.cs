@@ -130,17 +130,24 @@ namespace SennenKazoku.Tests
                 var mem = Fresh("main.ram");
                 var game = new SennenKazoku.Core.Orig.OrigGame(mem, rules);
                 var sw = System.Diagnostics.Stopwatch.StartNew(); int nev = 0, days = 60;
-                var titles = new List<string>();
+                var titles = new List<string>(); string gratLog = null;
                 for (int dday = 0; dday < days; dday++)
                 {
+                    uint pts0 = mem.R32(0x0202C670);
                     foreach (var ev in game.TickDay())
                     {
                         nev++;
                         uint p = SennenKazoku.Core.Orig.OrigMem.PersonAddr(ev.Person);
                         titles.Add("일" + dday + " 인물" + ev.Person + " 큐종류" + ev.Type + " 코드" + ev.Code + " 결과 " + ev.Data.ToString("X8") + " → 관심사 " + mem.R16(p + 0x80) + "," + mem.R16(p + 0x82) + " 게이지 " + mem.R8(p + 0x5A));
                     }
+                    if (gratLog == null && mem.R32(0x0202C670) != pts0)
+                        gratLog = "일" + dday + ": 감사의 마음 " + pts0 + "→" + mem.R32(0x0202C670) + ", 랭크 " + mem.R16(0x0202C66E) + ", 화살 " + mem.R8(0x0202C640) + "·" + mem.R8(0x0202C641)
+                            + ", 인물0 감사 " + (mem.R8(SennenKazoku.Core.Orig.OrigMem.PersonAddr(0) + 0x65) | mem.R8(SennenKazoku.Core.Orig.OrigMem.PersonAddr(0) + 0x66) << 8);
                     game.NextDate();
                 }
+                // 실기(같은 시작 main.state, 자동 진행): 인물0(힘내라 화살 효과 중)의 관심사가 이루어지며 감사의 마음 0→5·인물0 감사 5, 이어서 랭크 0→1, 화살 4·5 → 10·10
+                Console.WriteLine("       첫 감사: " + (gratLog ?? "없음") + "  (실기: 감사의 마음 0→5, 랭크 1, 화살 10·10, 인물0 감사 5)");
+                T.True(gratLog != null && gratLog.Contains("0→5, 랭크 1, 화살 10·10, 인물0 감사 5"), "감사·랭크 진행이 실기와 다름: " + gratLog);
                 SennenKazoku.Core.Orig.OrigDate.Get(mem, SennenKazoku.Core.Orig.OrigMem.Date, out int yy, out int mm, out int dd);
                 Console.WriteLine("       원작 코드로 " + days + "일 진행: 사건 " + nev + "번, " + sw.ElapsedMilliseconds + "ms, 날짜 " + yy + "-" + mm + "-" + dd);
                 foreach (var tl in titles.Take(10)) Console.WriteLine("         " + tl);
@@ -851,7 +858,8 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       2년: 보여 준 사건 " + shown + "개 (대사 있음 " + withText + "), 장 " + pagesTotal + ", " + GameDate.Format(s.Family.Today));
                     Console.WriteLine("       예: " + sample);
                     Console.WriteLine("       2년 뒤 보유: " + string.Join(", ", Interventions.Tools.FindAll(t => Interventions.Count(s.Family, t.Id) > 0).ConvertAll(t => t.Name + "×" + Interventions.Count(s.Family, t.Id)))
-                        + " / 신님에게 감사 " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + " " + p.Gratitude)));
+                        + " / 신님에게 감사 " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + " " + p.Gratitude))
+                        + " / 감사의 마음 " + s.Game.Mem.R32(0x0202C670) + ", 신님 랭크 " + s.Game.Mem.R16(0x0202C66E));
                     T.True(shown > 100 && withText * 10 >= shown * 9, "사건 수·대사 비율");
                     // 저장 → 불러오기 → 두 세션을 60일 같이 진행: 같은 사건이 나야 한다
                     s.PrepareSave();

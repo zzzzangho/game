@@ -278,7 +278,7 @@ def _work1(args):
     main = threading.current_thread() is threading.main_thread()
     if main: signal.signal(signal.SIGALRM, al)
     rb = open(path, 'rb').read(); rom = Rom(rb)
-    L = Lifter(rb, NATIVES, max_steps=200000 if big else 50000, max_nodes=500000 if big else 50000); L.auto_subs = True
+    L = Lifter(rb, NATIVES, max_steps=int(os.environ.get("LIFT_STEPS", 200000 if big else 50000)), max_nodes=int(os.environ.get("LIFT_NODES", 500000 if big else 50000))); L.auto_subs = True
     trees, fails, tabs = {}, [], set()
     for f in fns:
         if main: signal.alarm(int(os.environ.get('LIFT_ALARM', '60')))   # 함수 하나 변환 시간 한도(초)

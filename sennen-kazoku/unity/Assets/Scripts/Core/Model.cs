@@ -200,7 +200,8 @@ namespace SennenKazoku.Core
         public int HouseGrade;
         public int NextPersonId = 1;
         public int StartDay;                                   // 가족 시작일 → 상단 "N년가족"
-        public int Gratitude;                                  // 신님에게 감사 (개수)
+        public int Gratitude;                                  // 신님에게 감사 (개수) — 원작 세션: 감사의 마음 0x0202C670
+        public int GodRank = -1;                               // 원작 세션: 신님 랭크 0x0202C66E (투영 전용, 저장하지 않음)
         public int HeadId = -1;                                // 세대주
         public Dictionary<string, int> Items = new Dictionary<string, int>();   // 화살·아이템 보유 수
         public int YearsAsFamily { get { return GameDate.AgeYears(StartDay, Today); } }

@@ -202,8 +202,24 @@ namespace SennenKazoku.Core.Orig
         // ---------- 화살·아이템 (원작 함수) ----------
         // 원작 메뉴 객체·인물 객체 대신 쓰는 작업 자리 (기록 범위 0x0F000000~0x0F03FFFF 안, 비교 범위 0x0F000000~0x0F000FFF 밖)
         const uint ToolObj = 0x0F038000, ToolChar = 0x0F038400;
-        /// <summary>옮기지 않은 도구: 통신 결혼(통신 기능), 시간의 책갈피(원작 0x080108BC 의 따로 저장).</summary>
-        static readonly HashSet<string> NotPorted = new HashSet<string> { "arrow.link", "item.bookmark" };
+        /// <summary>옮기지 않은 도구: 통신 결혼(통신 기능).</summary>
+        static readonly HashSet<string> NotPorted = new HashSet<string> { "arrow.link" };
+
+        /// <summary>
+        /// 시간의 책갈피: 아이템 함수 칸 10 이 0x080108BC 로 가족 저장 내용을 세이브 영역 안 책갈피 자리(0x0202C010+0xD2CC~)에 복사한다.
+        /// 되돌리기 0x08010AB4 는 0x0202C678 의 0x80 이 서 있을 때 책갈피 자리를 되살리고 1 을 돌려준다(원작은 가문이 끊긴 뒤 장면 0x0809EE4E 에서 부른다).
+        /// </summary>
+        public bool HasBookmark { get { return (Game.Mem.R32(0x0202C678) & 0x80) != 0; } }
+
+        /// <summary>책갈피를 쓴 날로 돌아간다 (원작 0x08010AB4). 성공하면 true.</summary>
+        public bool RestoreBookmark()
+        {
+            if (!HasBookmark) return false;
+            uint r = Game.Vm.Call("08010AB4");
+            pending.Clear(); cur = null;
+            Project();
+            return r != 0;
+        }
 
         /// <summary>선대의 마음 목록 (0x0202C328, 4바이트씩 최대 99개: u16 인물 번호, u8 스킬, 끝 0xFFFF). "선대 마음의 결정"을 고르면 원작이 이 목록을 보여 준다(실기).</summary>
         public const uint LegacyList = 0x0202C328;
@@ -343,6 +359,26 @@ namespace SennenKazoku.Core.Orig
                 pages = OrigText.Pages(rec.Script, SlotName);
             else pages = new List<string>();
             if (pages.Count == 0) pages.Add("(원작 사건 " + cur.Data.ToString("X8") + " — 대사 자료 없음)");
+            var god = GodPage(cur); if (god != null) pages.Add(god);
+        }
+
+        /// <summary>
+        /// 결과 스크립트가 바꾼 신님 쪽 값(감사·랭크·보상)을 알리는 장 — 원작은 번역 글로 보여 주는 부분이라 앱이 쓴 요약 문장이다.
+        /// </summary>
+        string GodPage(OrigGame.DayEvent e)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (e.Points1 > e.Points0) sb.Append(NameOf((int)e.PersonId, -1)).Append("이(가) 신님에게 감사! 감사의 마음 +").Append(e.Points1 - e.Points0).Append(" (모두 ").Append(e.Points1).Append("개)");
+            if (e.Rank1 > e.Rank0) { if (sb.Length > 0) sb.Append('\n'); sb.Append("신님 랭크가 ").Append(e.Rank1).Append("성이 됐다!"); }
+            var gifts = new List<string>();
+            foreach (var t in Interventions.Tools)
+            {
+                if (t.OrigSlot < 0) continue;
+                int k = (t.Kind == "arrow" ? 0 : 16) + t.OrigSlot, d = e.Inv1[k] - e.Inv0[k];
+                if (d > 0) gifts.Add(t.Name + " ×" + d);
+            }
+            if (gifts.Count > 0) { if (sb.Length > 0) sb.Append('\n'); sb.Append("받은 것: ").Append(string.Join(", ", gifts)); }
+            return sb.Length > 0 ? sb.ToString() : null;
         }
 
         string SlotName(int code)
@@ -472,6 +508,8 @@ namespace SennenKazoku.Core.Orig
             f.HeadId = (int)m.R16(0x0202C67C);
             // 가족 값 (가족 기준 0x0202C010: +0x69E 무드 · +0x69F 집 등급 · +0x6A8 자산 — 참고 자료 family-save-layout 과 0x08111D54)
             f.Mood = (int)m.R8(0x0202C6AE); f.HouseGrade = (int)m.R8(0x0202C6AF); f.Assets = m.R32(0x0202C6B8);
+            // 신님의 정보 화면(실기 확인): 감사의 마음 0x0202C670, 신님 랭크 0x0202C66E
+            f.Gratitude = (int)m.R32(0x0202C670); f.GodRank = (int)m.R16(0x0202C66E);
             foreach (var t in Interventions.Tools)
                 if (t.OrigSlot >= 0) { f.Items[t.Id] = (int)m.R8(SlotAddr(t)); famSnap.Counts[t.Id] = f.Items[t.Id]; }
             famSnap.Mood = f.Mood;

@@ -50,6 +50,9 @@ namespace SennenKazoku.Core.Orig
             public uint PersonId;                         // 사건 인물 번호(레코드 +0x3C)
             public uint[] Slots = new uint[28];           // 장면 시작 때 슬롯표 (대사 이름 자리)
             public uint Date;                             // 사건 날 (0x0202C684 3바이트)
+            // 장면 앞뒤의 신님 쪽 값 (결과 스크립트가 바꾼다): 감사의 마음 0x0202C670, 신님 랭크 0x0202C66E, 화살·아이템 보유 0x0202C640~0x0202C65F
+            public uint Points0, Points1, Rank0, Rank1;
+            public byte[] Inv0 = new byte[32], Inv1 = new byte[32];
         }
 
         public OrigGame(OrigMem mem, OrigRules rules) { Mem = mem; Rules = rules; Vm = rules.CreateVm(mem); }
@@ -228,7 +231,11 @@ namespace SennenKazoku.Core.Orig
                 uint date0 = Mem.R32(OrigMem.Date) & 0xFFFFFF;
                 var de = new DayEvent { Person = n, Data = data, Type = type, Code = n >= 0 && n < 8 ? codes[n] : 0, Max = n >= 0 && n < 8 && codes[n] == 1,
                     PersonId = id, Date = date0 };
+                de.Points0 = Mem.R32(0x0202C670); de.Rank0 = Mem.R16(0x0202C66E);
+                for (uint i = 0; i < 32; i++) de.Inv0[i] = (byte)Mem.R8(0x0202C640 + i);
                 OrigEvents.RunScene(Vm, Rules, data, id, de.Slots);
+                de.Points1 = Mem.R32(0x0202C670); de.Rank1 = Mem.R16(0x0202C66E);
+                for (uint i = 0; i < 32; i++) de.Inv1[i] = (byte)Mem.R8(0x0202C640 + i);
                 evs.Add(de);
                 AnnouncePending();
                 if ((Mem.R32(OrigMem.Date) & 0xFFFFFF) != date0) { SceneEndedDay = true; break; }
