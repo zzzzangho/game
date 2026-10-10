@@ -1128,6 +1128,7 @@ namespace SennenKazoku.Game
                 string id = t.Id;
                 var b = UiKit.Btn(body, t.Id, "", Px(14), n > 0 && can ? Color.white : new Color(0.88f, 0.88f, 0.9f), UiKit.Ink, () =>
                 {
+                    if (id == "item.heart_crystal" && session is Core.Orig.OrigSession os) { ClosePopup(); OpenLegacyHearts(os); return; }
                     var err = session.Use(Sel(), id);
                     ClosePopup(); Toast(err ?? (Interventions.Find(id).Name + "을(를) " + Sel().Name + "에게 썼습니다"));
                     if (err == null) SaveSlot("auto", true);
@@ -1139,6 +1140,29 @@ namespace SennenKazoku.Game
             if (y == 0)
             {
                 var l = UiKit.Label(body, "none", kind == "arrow" ? "가진 화살이 없습니다." : "가진 아이템이 없습니다.", Px(15), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(l.rectTransform, 0, 0, w, Px(80));
+            }
+        }
+
+        /// <summary>선대 마음의 결정: 원작처럼 선대의 마음 목록(0x0202C328)을 보여 주고 고른 마음을 이어받게 한다.</summary>
+        void OpenLegacyHearts(Core.Orig.OrigSession os)
+        {
+            var p = Sel(); if (p == null) return;
+            var body = Window("선대 마음의 결정 — " + p.Name, 520); float w = BodyW(body), y = 0, bh = Px(52);
+            var list = os.LegacyHearts();
+            for (int k = 0; k < list.Count; k++)
+            {
+                int idx = k;
+                var b = UiKit.Btn(body, "lg" + k, os.LegacyName(list[k][0]) + "의 마음  (스킬 " + list[k][1] + "번)", Px(15), Color.white, UiKit.Ink, () =>
+                {
+                    var err = os.UseLegacyHeart(Sel(), idx);
+                    ClosePopup(); Toast(err ?? (Sel().Name + "이(가) 선대의 마음을 이어받았습니다"));
+                    if (err == null) SaveSlot("auto", true);
+                });
+                UiKit.SetPx(b.GetComponent<RectTransform>(), 0, y, w, bh); y += bh + Px(6);
+            }
+            if (list.Count == 0)
+            {
+                var l = UiKit.Label(body, "none", "이어받을 선대의 마음이 없습니다.", Px(15), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(l.rectTransform, 0, 0, w, Px(60));
             }
         }
 

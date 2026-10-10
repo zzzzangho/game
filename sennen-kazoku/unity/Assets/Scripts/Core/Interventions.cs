@@ -44,7 +44,7 @@ namespace SennenKazoku.Core
             new ToolDef { Id = "item.ring.love", Name = "사랑의 고리", Kind = "item", Desc = "연인에 대한 사랑을 깊게 합니다 (연인이 있을 때만).", Certainty = "rom", OrigSlot = 8 },
             new ToolDef { Id = "item.crown", Name = "후계자의 왕관", Kind = "item", Desc = "세대주의 자녀에게 쓰면 다음 세대주 후보가 됩니다.", Certainty = "rom", OrigSlot = 9 },
             new ToolDef { Id = "item.bookmark", Name = "시간의 책갈피", Kind = "item", Desc = "가문이 끊겼을 때 쓴 날로 돌아가는 책갈피 (아직 옮기지 않음).", Certainty = "rom", OrigSlot = 10 },
-            new ToolDef { Id = "item.heart_crystal", Name = "선대 마음의 결정", Kind = "item", Desc = "앞 세대가 익힌 스킬을 이어받게 합니다 (아직 옮기지 않음).", Certainty = "rom", OrigSlot = 11 },
+            new ToolDef { Id = "item.heart_crystal", Name = "선대 마음의 결정", Kind = "item", Desc = "앞 세대가 익힌 스킬을 이어받게 합니다.", Certainty = "rom", OrigSlot = 11 },
         };
 
         public static ToolDef Find(string id) { return Tools.Find(t => t.Id == id); }

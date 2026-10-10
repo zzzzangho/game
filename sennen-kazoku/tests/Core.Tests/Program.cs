@@ -809,6 +809,18 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       사랑의 고리: " + (s.Use(who, "item.ring.love") ?? "씀") + " / 왕관: " + (s.Use(who, "item.crown") ?? "씀"));
                     var kid = s.Family.Members.Find(p => p.FatherId == s.Family.HeadId || p.MotherId == s.Family.HeadId);
                     if (kid != null) Console.WriteLine("       왕관(세대주 자녀 " + kid.Name + "): " + (s.Use(kid, "item.crown") ?? "씀") + ", 후계자 0x0202C67E=" + mm.R16(0x0202C67E));
+                    // 선대 마음의 결정 — 실기와 같은 상황: 목록 (0, 스킬 5)·(1, 스킬 9), 결정 1개 → 고른 사람이 스킬 5, 목록 한 칸 당겨짐, 결정 0
+                    {
+                        const uint LL = SennenKazoku.Core.Orig.OrigSession.LegacyList;
+                        mm.W16(LL, 0); mm.W8(LL + 2, 5); mm.W8(LL + 3, 0xFF); mm.W16(LL + 4, 1); mm.W8(LL + 6, 9); mm.W8(LL + 7, 0xFF); mm.W16(LL + 8, 0xFFFF);
+                        for (uint k = 0; k < 3; k++) mm.W8(whoRec + 0x62 + k, 0xFF);
+                        s.Family.Items["item.heart_crystal"] = 1;
+                        var lr = s.UseLegacyHeart(s.Family.Get(who.Id), 0);
+                        T.True(lr == null, "선대 마음의 결정: " + lr);
+                        T.Eq((int)mm.R8(whoRec + 0x62), 5); T.Eq(s.LegacyHearts().Count, 1); T.Eq(s.LegacyHearts()[0][1], 9);
+                        T.Eq(Interventions.Count(s.Family, "item.heart_crystal"), 0);
+                        Console.WriteLine("       선대 마음의 결정: 스킬 " + string.Join(",", s.Family.Get(who.Id).Skills) + ", 남은 마음 " + s.LegacyHearts().Count);
+                    }
                     foreach (var t in Interventions.Tools)
                         if (t.Kind == "arrow" && t.OrigSlot >= 2 && s.CanUse(t.Id))
                         {

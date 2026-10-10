@@ -202,8 +202,62 @@ namespace SennenKazoku.Core.Orig
         // ---------- 화살·아이템 (원작 함수) ----------
         // 원작 메뉴 객체·인물 객체 대신 쓰는 작업 자리 (기록 범위 0x0F000000~0x0F03FFFF 안, 비교 범위 0x0F000000~0x0F000FFF 밖)
         const uint ToolObj = 0x0F038000, ToolChar = 0x0F038400;
-        /// <summary>옮기지 않은 도구: 통신 결혼(통신 기능), 시간의 책갈피(원작 0x080108BC 의 따로 저장), 선대 마음의 결정(스킬 고르기 화면 0x0801D8B0 의 100번대 경로).</summary>
-        static readonly HashSet<string> NotPorted = new HashSet<string> { "arrow.link", "item.bookmark", "item.heart_crystal" };
+        /// <summary>옮기지 않은 도구: 통신 결혼(통신 기능), 시간의 책갈피(원작 0x080108BC 의 따로 저장).</summary>
+        static readonly HashSet<string> NotPorted = new HashSet<string> { "arrow.link", "item.bookmark" };
+
+        /// <summary>선대의 마음 목록 (0x0202C328, 4바이트씩 최대 99개: u16 인물 번호, u8 스킬, 끝 0xFFFF). "선대 마음의 결정"을 고르면 원작이 이 목록을 보여 준다(실기).</summary>
+        public const uint LegacyList = 0x0202C328;
+
+        /// <summary>선대의 마음 목록: [인물 번호, 스킬 번호] 차례대로.</summary>
+        public List<int[]> LegacyHearts()
+        {
+            var r = new List<int[]>(); var m = Game.Mem;
+            for (uint k = 0; k < 99; k++)
+            {
+                uint id = m.R16(LegacyList + 4 * k); if (id == 0xFFFF) break;
+                r.Add(new[] { (int)id, (int)m.R8(LegacyList + 4 * k + 2) });
+            }
+            return r;
+        }
+
+        /// <summary>선대의 마음 목록에 보이는 이름 (앱이 붙인 이름 — 세상을 떠난 사람도 저장된 이름을 쓴다).</summary>
+        public string LegacyName(int personId) { return NameOf(personId, -1); }
+
+        /// <summary>
+        /// 선대 마음의 결정: 목록 k 번째 마음을 target 에게 (원작 0x0801D8B0 의 100번대 경로 그대로).
+        /// 메뉴+0x18E = 인물 번호, +0x190 = 스킬, +0x192 = 0xFFFF → 0x08024B80(100+k, 레코드, 스킬, 메뉴) 가 0 이면
+        /// 목록에서 빼기 0x0800F9AC(1, k). 이미 가진 스킬이면 1(못 씀), 스킬 칸이 차 있으면 원작이 하나를 골라 바꾼다.
+        /// 결정 보유 수(칸 11) −1 도 원작 코드 안에서 일어난다(실기에서도 1 → 0).
+        /// </summary>
+        public string UseLegacyHeart(Person target, int k)
+        {
+            var t = Interventions.Find("item.heart_crystal");
+            if (target == null) return "대상이 없습니다";
+            SyncIn();
+            var m = Game.Mem; uint inv = SlotAddr(t);
+            if (m.R8(inv) == 0) return t.Name + "이(가) 없습니다";
+            var list = LegacyHearts(); if (k < 0 || k >= list.Count) return "선대의 마음이 없습니다";
+            uint rec = 0;
+            for (int n = 0; n < 8; n++) if (OrigGame.Present(m, n) && (int)m.R16(OrigMem.PersonAddr(n) + 0x3C) == target.Id) { rec = OrigMem.PersonAddr(n); break; }
+            if (rec == 0) return "대상이 없습니다";
+            var ew = (byte[])m.Ewram.Clone(); var iw = (byte[])m.Iwram.Clone();
+            try
+            {
+                for (uint i = 0; i < 0x800; i += 4) m.W32(ToolObj + i, 0);
+                m.W32(ToolObj + 4, ToolChar); m.W32(ToolObj + 0x154, 0); m.W32(ToolChar + 4, rec);
+                m.W16(ToolObj + 0x18E, (uint)list[k][0]); m.W16(ToolObj + 0x190, (uint)list[k][1]); m.W16(ToolObj + 0x192, 0xFFFF);
+                uint r = Game.Vm.Call("08024B80", 100 + (uint)k, rec, (uint)list[k][1], ToolObj);
+                if (r != 0) return "이미 익힌 스킬이라 이어받을 수 없습니다";
+                Game.Vm.Call("0800F9AC", 1, (uint)k);   // 목록에서 빼기 — 결정 보유 수(칸 11) −1 도 원작 코드가 한다
+                Project();
+                return null;
+            }
+            catch (OrigUnmodeled e)
+            {
+                Array.Copy(ew, m.Ewram, ew.Length); Array.Copy(iw, m.Iwram, iw.Length);
+                return t.Name + ": 원작 함수 실행 실패 (" + e.Message + ")";
+            }
+        }
 
         public bool CanUse(string toolId) { var t = Interventions.Find(toolId); return t != null && t.OrigSlot >= 0 && !NotPorted.Contains(toolId); }
 
@@ -219,6 +273,7 @@ namespace SennenKazoku.Core.Orig
             var t = Interventions.Find(toolId);
             if (t == null || t.OrigSlot < 0) return "알 수 없는 도구";
             if (NotPorted.Contains(toolId)) return t.Name + "은(는) 아직 옮기지 않았습니다";
+            if (toolId == "item.heart_crystal") return "이어받을 선대의 마음을 고르세요 (UseLegacyHeart)";
             if (target == null) return "대상이 없습니다";
             SyncIn();
             var m = Game.Mem; uint rec = 0;
