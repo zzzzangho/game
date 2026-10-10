@@ -880,6 +880,25 @@ namespace SennenKazoku.Tests
                         mm.W32(0x0203C440, 0); s.Game.Vm.Call("slots", (uint)head, 0); s.Game.Vm.Call("08114658", 0, 0x0203C440); s.Project();
                         Console.WriteLine("       가장 " + head + " 죽음 → 결과 " + mm.R32(0x0203C440) + ", 가문이 끊김 " + s.LineageEnded + ", 가족 " + s.Family.Members.Count + "명");
                         T.True(mm.R32(0x0203C440) == 2 && s.LineageEnded, "가장이 죽으면 가문이 끊겨야 함");
+                        var recs = s.FamilyRecords();
+                        Console.WriteLine("       가문의 기록: " + string.Join(" / ", recs.ConvertAll(r => r.Rank + "위 " + r.Years + "년 가족 " + r.StartY + "." + r.StartM + "." + r.StartD + "~" + r.EndY + "." + r.EndM + "." + r.EndD + " 역대 " + r.Members + "명 " + s.FamilyTypeName(r.Type))));
+                        T.True(recs.Count == 1 && recs[0].Members > 0, "가문의 기록 한 칸");
+                        var curRec = s.CurrentRecord();
+                        T.True(curRec != null && curRec.Rank == 1, "지금 가족의 기록 찾기");
+                        Console.WriteLine("       기록의 원작 가문 이름 칸: " + SennenKazoku.Core.Orig.OrigSession.RecordOrigName(s.Text, curRec) + ", 열쇠 " + SennenKazoku.Core.Orig.OrigSession.RecordKey(curRec));
+                        {   // 제목 화면 새로 시작(0x0800D778 방식 1·2)이 가문의 기록을 남기는가
+                            var m2 = new SennenKazoku.Core.Orig.OrigMem(); Array.Copy(mm.Ewram, m2.Ewram, mm.Ewram.Length); Array.Copy(mm.Iwram, m2.Iwram, mm.Iwram.Length);
+                            var vm2 = rules.CreateVm(m2);
+                            uint mode = SennenKazoku.Core.Orig.OrigNewGame.TitleResetMode(m2);
+                            SennenKazoku.Core.Orig.OrigNewGame.TitleNewGame(vm2);
+                            var after = SennenKazoku.Core.Orig.OrigSession.ReadRecords(vm2);
+                            Console.WriteLine("       제목 화면 새로 시작(방식 " + mode + ") 뒤 가문의 기록 " + after.Count + "칸 (정상 세이브는 전원을 켤 때 초기화하지 않음)");
+                            T.True(after.Count == 1, "새로 시작해도 가문의 기록이 남아야 함");
+                            s.PrepareSave();
+                            var ns = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, s.Text, "", 12345, cartridge: SennenKazoku.Core.Orig.OrigSession.CartridgeOf(s.Family));
+                            T.True(ns.FamilyRecords().Count == 1 && ns.Family.Members.Count > 0 && !ns.LineageEnded, "이전 카트리지에서 새 가족");
+                            Console.WriteLine("       이전 카트리지에서 새 가족: " + ns.Family.Members.Count + "명, 가문의 기록 " + ns.FamilyRecords().Count + "칸, 감사의 마음 " + ns.Game.Mem.R32(0x0202C670) + ", 랭크 " + ns.Game.Mem.R16(0x0202C66E));
+                        }
                         T.True(s.RestoreBookmark() && !s.LineageEnded && s.Family.Get(head) != null, "책갈피로 되돌아가 가문이 이어져야 함");
                     }
                     s.Game.Vm.BeforeTop = null; s.Game.Vm.AfterTop = null;

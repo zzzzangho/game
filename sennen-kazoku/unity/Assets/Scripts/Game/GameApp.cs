@@ -100,14 +100,86 @@ namespace SennenKazoku.Game
             catch (Exception e) { contentWarnings.Add("원작 팩 불러오기 실패: " + e.Message); return false; }
         }
 
+        /// <summary>
+        /// 이전 원작 카트리지(세이브 영역): 원작은 정상 세이브가 있는 카트리지에서 새로 시작해도 가문의 기록 등을 남긴다.
+        /// 지금 세션 또는 자동 저장이 원작 저장이면 그 세이브 영역, 아니면 null(빈 카트리지).
+        /// </summary>
+        byte[] LastCartridge()
+        {
+            if (session is Core.Orig.OrigSession os) { os.PrepareSave(); return Core.Orig.OrigSession.CartridgeOf(os.Family); }
+            try { if (saves.Exists("auto")) return Core.Orig.OrigSession.CartridgeOf(saves.Load("auto").Family); } catch (Exception) { }
+            return null;
+        }
+
+        // 가문의 기록에 보일 앱 가문 이름 (원작 기록에는 원작 이름 칸이 남으므로, 앱이 붙인 성을 따로 둔다 — 로컬 파일)
+        string RecordNamesPath { get { return Path.Combine(Application.persistentDataPath, "record_names.json"); } }
+        Dictionary<string, object> LoadRecordNames()
+        {
+            try { if (File.Exists(RecordNamesPath)) return J.Obj(MiniJson.Parse(File.ReadAllText(RecordNamesPath))) ?? new Dictionary<string, object>(); } catch (Exception) { }
+            return new Dictionary<string, object>();
+        }
+        string RecordName(Dictionary<string, object> names, Core.Orig.OrigSession.FamilyRecord r)
+        {
+            object v; if (names.TryGetValue(Core.Orig.OrigSession.RecordKey(r), out v) && v is string sv && sv.Length > 0) return sv;
+            var o = Core.Orig.OrigSession.RecordOrigName(origText, r); return o.Length > 0 ? o : "?";
+        }
+        string RecordLine(Dictionary<string, object> names, Core.Orig.OrigSession.FamilyRecord r, Core.Orig.OrigSession os)
+        {
+            string rank = origText != null ? origText.UiText(380 + r.Rank, r.Rank + "위") : r.Rank + "위";
+            string type = os != null ? os.FamilyTypeName(r.Type) : "";
+            return rank + "  " + RecordName(names, r) + "가문  " + r.Years + "년 가족  " + type
+                + "\n      " + r.StartY + "년 " + r.StartM + "월 " + r.StartD + "일 ~ " + r.EndY + "년 " + r.EndM + "월 " + r.EndD + "일 · 역대 가족 " + r.Members + "명";
+        }
+
+        // 플레이어 이름 (결과 문구의 플레이어 이름 자리 — 원작은 카트리지 0x0202C660 에 둔다). 앱은 로컬 파일에 두고 새 가족마다 넣는다.
+        string PlayerNamePath { get { return Path.Combine(Application.persistentDataPath, "player_name.txt"); } }
+        string SavedPlayerName() { try { return File.Exists(PlayerNamePath) ? File.ReadAllText(PlayerNamePath).Trim() : ""; } catch (Exception) { return ""; } }
+
+        /// <summary>새 원작 가족을 연 뒤: 저장해 둔 플레이어 이름을 넣고, 없으면 한 번 묻는다.</summary>
+        void ApplyPlayerName()
+        {
+            if (!(session is Core.Orig.OrigSession os)) return;
+            var n = SavedPlayerName();
+            if (n.Length > 0) os.PlayerName = n; else OpenPlayerName();
+        }
+
+        void OpenPlayerName()
+        {
+            if (!(session is Core.Orig.OrigSession os)) return;
+            string name = os.PlayerName;
+            var body = Window("플레이어 이름", 260); float w = BodyW(body);
+            var q = UiKit.Label(body, "q", "신님에게 감사가 도착할 때 부를 이름이에요.", Px(14), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(q.rectTransform, 0, 0, w, Px(30));
+            var f = UiKit.Input(body, "name", name, Px(18), 6, v => name = v.Trim());
+            UiKit.SetPx(f.GetComponent<RectTransform>(), 0, Px(36), w, Px(52));
+            f.ActivateInputField();
+            NextBtn(body, Px(104), "결정", () =>
+            {
+                if (name.Length == 0) { Toast("이름을 입력해 줘"); return; }
+                os.PlayerName = name;
+                try { File.WriteAllText(PlayerNamePath, name); } catch (Exception) { }
+                ClosePopup(); SaveSlot("auto", true);
+            });
+        }
+
+        /// <summary>제목 화면의 가문의 기록 (카트리지에 남은 상위 3).</summary>
+        void OpenRecords()
+        {
+            if (!LoadOrig()) { Toast("원작 팩이 없어 기록을 볼 수 없습니다"); return; }
+            var recs = Core.Orig.OrigSession.ReadRecords(origRules, LastCartridge());
+            var body = Window("가문의 기록", 420); float w = BodyW(body);
+            var names = LoadRecordNames(); var os = session as Core.Orig.OrigSession;
+            string txt = recs.Count == 0 ? "아직 기록이 없습니다." : string.Join("\n\n", recs.ConvertAll(r => RecordLine(names, r, os)));
+            var l = UiKit.Label(body, "recs", txt, Px(14), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(l.rectTransform, 0, 0, w, BodyH(body));
+        }
+
         /// <summary>원작 코드로 새 가족 — 원작 "신이 추천하는 가족" 경로 그대로(OrigNewGame).</summary>
         void BeginOrig()
         {
             if (!LoadOrig()) { Toast("원작 팩을 불러오지 못했습니다"); return; }
             try
             {
-                session = Core.Orig.OrigSession.NewRecommended(origRules, origText, "", OrigSeed());
-                EnterGame(); Toast("원작 규칙으로 시작합니다 (신님이 추천하는 가족)");
+                session = Core.Orig.OrigSession.NewRecommended(origRules, origText, "", OrigSeed(), cartridge: LastCartridge());
+                EnterGame(); Toast("원작 규칙으로 시작합니다 (신님이 추천하는 가족)"); ApplyPlayerName();
             }
             catch (Exception e) { Toast("원작 진행 시작 실패: " + e.Message); session = null; }
         }
@@ -364,7 +436,9 @@ namespace SennenKazoku.Game
             var n = UiKit.Btn(titleRoot, "new", "처음부터", Px(18), new Color32(0xE8, 0x70, 0x40, 255), Color.white, StartNew);
             UiKit.SetPx(n.GetComponent<RectTransform>(), x + pad, y, bw, bh); y += bh + Px(10);
             var l = UiKit.Btn(titleRoot, "load", "저장 슬롯", Px(16), new Color32(0x10, 0x4E, 0x6E, 255), Color.white, () => OpenSaveSlots());
-            UiKit.SetPx(l.GetComponent<RectTransform>(), x + pad, y, bw, Px(48));
+            UiKit.SetPx(l.GetComponent<RectTransform>(), x + pad, y, (bw - Px(10)) / 2, Px(48));
+            var rc = UiKit.Btn(titleRoot, "records", "가문의 기록", Px(16), new Color32(0x10, 0x4E, 0x6E, 255), Color.white, OpenRecords);
+            UiKit.SetPx(rc.GetComponent<RectTransform>(), x + pad + (bw + Px(10)) / 2, y, (bw - Px(10)) / 2, Px(48));
         }
         RawImage titleHouse;
 
@@ -541,8 +615,8 @@ namespace SennenKazoku.Game
                 // 원작 "내가 아는 가족" 경로: 원작 마무리·입력 확인·가족 레코드 만들기(능력치도 원작이 정한다)
                 try
                 {
-                    session = Core.Orig.OrigSession.NewCustom(origRules, origText, setup, OrigSeed());
-                    var name = session.Family.Name; setup = null; EnterGame(); Toast("이제 모두 끝! " + name + "가를 지켜보자 (원작 규칙)");
+                    session = Core.Orig.OrigSession.NewCustom(origRules, origText, setup, OrigSeed(), LastCartridge());
+                    var name = session.Family.Name; setup = null; EnterGame(); Toast("이제 모두 끝! " + name + "가를 지켜보자 (원작 규칙)"); ApplyPlayerName();
                 }
                 catch (Exception e) { Toast("원작 가족 만들기 실패: " + e.Message); }
                 return;
@@ -1156,7 +1230,24 @@ namespace SennenKazoku.Game
         /// <summary>가문이 끊김: 원작은 이때 시간의 책갈피가 있으면 쓴 날로 돌아갈 수 있다(0x0809EE4E → 0x08010AB4).</summary>
         void OpenLineageEnd(Core.Orig.OrigSession os)
         {
-            var body = Window("가문이 끊겼습니다", 360); float w = BodyW(body);
+            var body = Window("가문이 끊겼습니다", 520); float w = BodyW(body);
+            // 원작 가문의 기록(0x0801045C 가 적은 칸) — 화면 배치는 앱이 정했다(원작 정리 화면 0x0809EAAC 의 그림 연출은 옮기지 않음)
+            var names = LoadRecordNames(); var cur = os.CurrentRecord();
+            if (cur != null)
+            {
+                names[Core.Orig.OrigSession.RecordKey(cur)] = os.Family.Name;
+                try { File.WriteAllText(RecordNamesPath, MiniJson.Serialize(names)); } catch (Exception) { }
+            }
+            string head = cur != null ? os.Family.Name + "가문  " + cur.Years + "년 가족\n" + os.FamilyTypeName(cur.Type) + " · 역대 가족 " + cur.Members + "명"
+                                      : os.Family.Name + "가문 (가문의 기록 상위 3에 들지 못했습니다)";
+            var hd = UiKit.Label(body, "head", head, Px(17), new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.UpperCenter, FontStyle.Bold);
+            UiKit.SetPx(hd.rectTransform, 0, 0, w, Px(60));
+            var recs = os.FamilyRecords();
+            var rl = UiKit.Label(body, "recs", "가문의 기록\n" + string.Join("\n", recs.ConvertAll(r => RecordLine(names, r, os))), Px(13), UiKit.Ink, TextAnchor.UpperLeft);
+            UiKit.SetPx(rl.rectTransform, 0, Px(66), w, Px(170));
+            var btns = new GameObject("btns", typeof(RectTransform)).GetComponent<RectTransform>(); btns.SetParent(body, false);
+            UiKit.SetPx(btns, 0, Px(244), w, Px(130));
+            body = btns;
             if (os.HasBookmark)
             {
                 var b = UiKit.Btn(body, "bm", "시간의 책갈피로 돌아가기", Px(16), Color.white, UiKit.Ink, () =>
@@ -1203,7 +1294,7 @@ namespace SennenKazoku.Game
         // ---- 설정 (속도·따라가기·저장·콘텐츠·타이틀) ----
         void OpenSettings()
         {
-            var body = Window("설정", 600); float w = BodyW(body), bw = (w - Px(18)) / 4f, y = 0;
+            var body = Window("설정", 660); float w = BodyW(body), bw = (w - Px(18)) / 4f, y = 0;
             if (session.Family.GodRank >= 0)
             {
                 string gen = session is Core.Orig.OrigSession gos ? GenLabel(gos.Generation(session.Family.HeadId)) + "째 " + session.Family.Name + "가 · " : "";   // 원작 메뉴 머리 "N대째 ○○가" — 가장의 세대로 보여 준다(추정: 실기 "1대째" = 가장 세대 1 과 일치, 머리 글을 만드는 원작 코드는 확인하지 않음)
@@ -1222,10 +1313,12 @@ namespace SennenKazoku.Game
             var items = new List<KeyValuePair<string, Action>> {
                 new KeyValuePair<string, Action>(follow ? "선택한 사람 따라가기: 켜짐" : "선택한 사람 따라가기: 꺼짐", () => { follow = !follow; OpenSettings(); }),
                 new KeyValuePair<string, Action>("저장 / 불러오기", () => OpenSaveSlots()),
+                new KeyValuePair<string, Action>(session is Core.Orig.OrigSession pos ? "플레이어 이름: " + pos.PlayerName : null, OpenPlayerName),
                 new KeyValuePair<string, Action>("콘텐츠 · 업데이트", OpenContent),
                 new KeyValuePair<string, Action>("타이틀로", () => { SaveSlot("auto", true); ShowTitle(); }) };
             foreach (var kv in items)
             {
+                if (kv.Key == null) continue;
                 var act = kv.Value;
                 var b = UiKit.Btn(body, kv.Key, kv.Key, Px(16), Color.white, new Color32(0x1E, 0x46, 0x9A, 255), () => act());
                 UiKit.SetPx(b.GetComponent<RectTransform>(), 0, y, w, Px(52)); y += Px(60);

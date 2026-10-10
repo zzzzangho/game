@@ -54,10 +54,11 @@ namespace SennenKazoku.Core.Orig
         }
 
         /// <summary>원작 "신이 추천하는 가족"으로 새로 시작. seed = 원작 난수(0x02000000) 값(BootSeed).</summary>
-        public static OrigSession NewRecommended(OrigRules rules, OrigText text, string surname, uint seed, int year = 2005, int month = 1, int day = 1)
+        /// <param name="cartridge">이전 원작 세이브 영역(CartridgeOf) — 있으면 빈 카트리지 대신 그 카트리지에서 새로 시작한다(가문의 기록 등이 원작처럼 남는다).</param>
+        public static OrigSession NewRecommended(OrigRules rules, OrigText text, string surname, uint seed, int year = 2005, int month = 1, int day = 1, byte[] cartridge = null)
         {
             var m = new OrigMem(); var vm = rules.CreateVm(m);
-            OrigNewGame.BlankCartridge(vm);
+            if (cartridge != null) OrigNewGame.Cartridge(vm, cartridge); else OrigNewGame.BlankCartridge(vm);
             OrigNewGame.TitleNewGame(vm);
             m.W32(OrigMem.Seed, seed);
             OrigNewGame.Recommended(vm, year, month, day);
@@ -74,7 +75,7 @@ namespace SennenKazoku.Core.Orig
         /// 능력치 등은 원작 가족 레코드 만들기가 정한다. 입력한 이름은 표시 이름(OrigNames)으로 쓴다.
         /// 체격·외형 바이트는 원작 기본값(화면 외형은 앱의 Look) — 규칙 판정에는 쓰이지 않는 값이다.
         /// </summary>
-        public static OrigSession NewCustom(OrigRules rules, OrigText text, FamilySetup setup, uint seed)
+        public static OrigSession NewCustom(OrigRules rules, OrigText text, FamilySetup setup, uint seed, byte[] cartridge = null)
         {
             var ordered = new List<MemberSetup>(); var slots = new List<int>();
             int child = 4;
@@ -99,7 +100,7 @@ namespace SennenKazoku.Core.Orig
                 cms.Add(c);
             }
             var m = new OrigMem(); var vm = rules.CreateVm(m);
-            OrigNewGame.BlankCartridge(vm);
+            if (cartridge != null) OrigNewGame.Cartridge(vm, cartridge); else OrigNewGame.BlankCartridge(vm);
             OrigNewGame.TitleNewGame(vm);
             m.W32(OrigMem.Seed, seed);
             OrigNewGame.Custom(vm, GameDate.Year(setup.StartDay), GameDate.Month(setup.StartDay), GameDate.Day(setup.StartDay), cms);
@@ -138,6 +139,16 @@ namespace SennenKazoku.Core.Orig
             var s = new OrigSession(rules, text, f, m);
             if (b.Length >= n + 5 && b[n + 4] != 0) s.Game.ResumeMorning();
             return s;
+        }
+
+        /// <summary>저장한 원작 가족의 세이브 영역(카트리지 상태) — 다음 새 게임을 이 카트리지에서 시작할 때 쓴다. 원작 저장이 아니면 null.</summary>
+        public static byte[] CartridgeOf(Family f)
+        {
+            if (f == null || !f.IsOriginal) return null;
+            var b = Convert.FromBase64String(f.OrigState);
+            int n = (int)(OrigMem.SaveEnd - OrigMem.SaveStart);
+            if (b.Length < n) return null;
+            var blk = new byte[n]; Array.Copy(b, blk, n); return blk;
         }
 
         /// <summary>원작 메모리(세이브 영역 + 난수 seed + 장면이 날을 끝냈는지)를 Family.OrigState 에 적는다.</summary>
@@ -259,6 +270,80 @@ namespace SennenKazoku.Core.Orig
 
         /// <summary>선대의 마음 목록에 보이는 이름 (앱이 붙인 이름 — 세상을 떠난 사람도 저장된 이름을 쓴다).</summary>
         public string LegacyName(int personId) { return NameOf(personId, -1); }
+
+        /// <summary>
+        /// 가문의 기록 (원작 0x0801045C 가 가문이 끝날 때 적는 상위 3칸, 0x0202C038 + 32·k, 햇수 순).
+        /// +0 [0x0202C6B8] · +4 u16 역대 가족 수(족보 +0x37 의 8 비트가 없는 사람 수, 0 = 빈 칸) · +6 가문 이름 칸 14바이트(0x0202C6A0) ·
+        /// +0x14 시작 날(0x0202C688) · +0x17 끝난 날 · +0x1A 가족 유형(0x08118D28: 재산 3단계×3 + 무드 3단계 → 반짝반짝가족~밑바닥 가족) ·
+        /// +0x1B [0x0202C692] · +0x1C [0x0202C6AF]&amp;0xF · +0x1D [0x0202C6B3]. 햇수 = 0x08095EE8(시작, 끝) (원작 순위 기준과 같은 함수).
+        /// </summary>
+        public sealed class FamilyRecord
+        {
+            public int Rank, Years, Members, Type;
+            public int StartY, StartM, StartD, EndY, EndM, EndD;
+            public byte[] Raw = new byte[32];
+        }
+        public const uint RecordTable = 0x0202C038, RecordSize = 32;
+
+        public List<FamilyRecord> FamilyRecords() { return ReadRecords(Game.Vm); }
+
+        public static List<FamilyRecord> ReadRecords(OrigVm vm)
+        {
+            var m = vm.Mem; var r = new List<FamilyRecord>();
+            for (uint k = 0; k < 3; k++)
+            {
+                uint a = RecordTable + RecordSize * k;
+                if (m.R16(a + 4) == 0) break;
+                var e = new FamilyRecord { Rank = (int)k + 1, Members = (int)m.R16(a + 4), Type = (int)m.R8(a + 0x1A) };
+                for (uint i = 0; i < 32; i++) e.Raw[i] = (byte)m.R8(a + i);
+                OrigDate.Get(m, a + 0x14, out e.StartY, out e.StartM, out e.StartD);
+                OrigDate.Get(m, a + 0x17, out e.EndY, out e.EndM, out e.EndD);
+                const uint tmp = 0x0F03B000;   // 작업 영역에 날짜를 옮겨 원작 햇수 함수로 센다
+                for (uint i = 0; i < 4; i++) { m.W8(tmp + i, i < 3 ? m.R8(a + 0x14 + i) : 0); m.W8(tmp + 4 + i, i < 3 ? m.R8(a + 0x17 + i) : 0); }
+                try { e.Years = (int)vm.Call("08095EE8", tmp, tmp + 4); } catch (OrigUnmodeled) { e.Years = e.EndY - e.StartY; }
+                r.Add(e);
+            }
+            return r;
+        }
+
+        /// <summary>카트리지(세이브 영역)의 가문의 기록 — 제목 화면에서 보기.</summary>
+        public static List<FamilyRecord> ReadRecords(OrigRules rules, byte[] cartridge)
+        {
+            if (cartridge == null) return new List<FamilyRecord>();
+            var m = new OrigMem(); m.LoadSaveBlock(cartridge);
+            return ReadRecords(rules.CreateVm(m));
+        }
+
+        /// <summary>기록에 남은 원작 가문 이름 칸(+6, 14바이트)을 글자표로 푼 것. 글자표가 없으면 빈 글.</summary>
+        public static string RecordOrigName(OrigText text, FamilyRecord r)
+        {
+            var b = new List<byte>(); for (int i = 6; i < 0x14 && r.Raw[i] != 0; i++) b.Add(r.Raw[i]);
+            if (text == null || !text.HasCharset) return "";
+            var pages = text.Decode(b, null, null); return pages.Count > 0 ? pages[0] : "";
+        }
+
+        /// <summary>앱 이름표 열쇠 — 시작·끝 날과 가족 유형, 역대 인원.</summary>
+        public static string RecordKey(FamilyRecord r) { return BitConverter.ToString(r.Raw, 0x14, 7).Replace("-", "") + "-" + r.Members; }
+
+        /// <summary>지금 가족이 끝나며 남긴 기록 (시작 날 0x0202C688 · 끝난 날 = 오늘). 없으면(상위 3 밖) null.</summary>
+        public FamilyRecord CurrentRecord()
+        {
+            var m = Game.Mem;
+            foreach (var r in FamilyRecords())
+            {
+                bool same = true;
+                for (uint i = 0; i < 3; i++) if (r.Raw[0x14 + i] != m.R8(0x0202C688 + i) || r.Raw[0x17 + i] != m.R8(OrigMem.Date + i)) same = false;
+                if (same) return r;
+            }
+            return null;
+        }
+
+        /// <summary>가족 유형 이름 (원작 화면 글 349 + 유형). 글자표가 없으면 앱 표기.</summary>
+        public string FamilyTypeName(int type)
+        {
+            string[] fb = { "반짝반짝 가족", "느긋한 가족", "냉랭한 가족", "북적북적 가족", "화목한 가족", "침울한 가족", "노력하는 가족", "버티는 가족", "밑바닥 가족" };
+            return type >= 0 && type < 9 ? Text.UiText(349 + type, fb[type]) : "?";
+        }
 
         /// <summary>세대 (원작 0x08025DFC — 족보의 부모를 거슬러 센다, 0 = 모름 → 원작 목록은 "?"). 실기 목록과 같음(시험).</summary>
         public int Generation(int personId)
@@ -399,7 +484,7 @@ namespace SennenKazoku.Core.Orig
             if (!Text.HasCharset || untranslated) { var god = GodPage(cur, untranslated); if (god != null) pages.Add(god); }
         }
 
-        /// <summary>플레이어 이름 — 원작은 처음에 입력받지만(0x0202C660) 앱은 아직 입력 화면이 없어 "신님"을 쓴다(앱이 정한 기본값).</summary>
+        /// <summary>플레이어 이름 — 원작은 카트리지(0x0202C660)에 두는 이름. 앱은 입력받은 이름을 OrigNames[-2] 에 두고, 아직 없으면 "신님"(앱 기본값).</summary>
         public string PlayerName
         {
             get { string s; return Family.OrigNames.TryGetValue(PlayerNameKey, out s) && !string.IsNullOrEmpty(s) ? s : "신님"; }

@@ -78,11 +78,21 @@ def runs(units):
 SKILLS = 0x088A309C
 
 
+UI = 0x085C081C
+
+
 def decode(rom, table, p, limit=64):
-    """ROM 글 하나를 글자표로 푼다 (글자만 — 0 이나 1A 에서 끝)."""
+    """ROM 글 하나를 글자표로 푼다 (0 이나 1A FF 에서 끝, 1A 01 줄바꿈, 1A 06 aa 이름 자리 "{이름aa}", 그 밖 토큰은 뺀다)."""
     o, out = p - 0x08000000, []
-    while len(out) < limit and rom[o] not in (0, 0x1A):
-        if rom[o] >= 0x80: out.append(table.get('%04X' % (rom[o] << 8 | rom[o + 1]), '□')); o += 2
+    lens = {1: 2, 2: 2, 9: 2, 0xD: 2, 3: 3, 0xA: 3, 5: 4, 6: 4, 8: 4, 0xB: 4, 0xF: 4, 0x10: 5}
+    while len(out) < limit and rom[o] != 0:
+        if rom[o] == 0x1A:
+            op = rom[o + 1]
+            if op == 0xFF or op == 0x12 or (op not in lens and op != 0xE): break
+            if op == 1: out.append('\n')
+            if op == 6: out.append('{이름%d}' % rom[o + 2])
+            o += {0: 4, 1: 7, 2: 5}.get(rom[o + 2], 2) if op == 0xE else lens[op]
+        elif rom[o] >= 0x80: out.append(table.get('%04X' % (rom[o] << 8 | rom[o + 1]), '□')); o += 2
         else: out.append(table.get('%04X' % rom[o], '□')); o += 1
     return ''.join(out)
 
@@ -132,8 +142,15 @@ def main():
         if not 0x08000000 <= e < 0x0A000000: break
         skills.append(decode(rom, table, struct.unpack_from('<I', rom, e - 0x08000000)[0]))
     pack['skills'] = skills
+    # 화면 글 표 0x085C081C (메뉴·설정·가족 유형·종합 진단 등, 원작 코드가 0x085C081C + 4·번호 로 고른다). 이름 자리 1A 06 aa → "{이름aa}".
+    ui = []
+    for k in range(2048):
+        p = struct.unpack_from('<I', rom, UI - 0x08000000 + 4 * k)[0]
+        if not 0x08000000 <= p < 0x0A000000: break
+        ui.append(decode(rom, table, p, 200))
+    pack['ui'] = ui
     json.dump(pack, open(sys.argv[2], 'w', encoding='utf8'), ensure_ascii=False, separators=(',', ':'))
-    print('글자 %d개 (대사 맞추기 %d, 손으로 읽음 %d, 나머지 Shift-JIS), 스킬 이름 %d개' % (len(table), voted, manual, len(skills)))
+    print('글자 %d개 (대사 맞추기 %d, 손으로 읽음 %d, 나머지 Shift-JIS), 스킬 이름 %d개, 화면 글 %d개' % (len(table), voted, manual, len(skills), len(ui)))
 
 
 if __name__ == '__main__':

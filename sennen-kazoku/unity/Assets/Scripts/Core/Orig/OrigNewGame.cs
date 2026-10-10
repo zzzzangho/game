@@ -34,6 +34,13 @@ namespace SennenKazoku.Core.Orig
         }
         public const uint FlashEnd = 0x0203BA38;
 
+        /// <summary>
+        /// 이전에 쓰던 카트리지(정상 세이브): 전원을 켜면 원작은 세이브를 읽고 검사(0x0800E358)해서 1 이하면 초기화하지 않는다
+        /// (0x080089A0 — 2 이상일 때만 0x0800D778(0)). 그래서 세이브 영역을 그대로 둔다. 이어서 제목 화면 새로 시작(방식 1·2)이
+        /// 지우는 구획만 지우고 가문의 기록(0x0202C038) 등은 남는다(시험으로 확인).
+        /// </summary>
+        public static void Cartridge(OrigVm vm, byte[] saveBlock) { vm.Mem.LoadSaveBlock(saveBlock); }
+
         /// <summary>제목 화면의 새로 시작 방식 (0x0809B5E0).</summary>
         public static uint TitleResetMode(OrigMem m) { return (m.R32(0x0202C030) & 0x40) != 0 ? 1u : 2u; }
 
