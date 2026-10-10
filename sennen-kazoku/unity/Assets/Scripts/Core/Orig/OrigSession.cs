@@ -13,7 +13,6 @@ namespace SennenKazoku.Core.Orig
     /// 사건은 원작처럼 그날 진행(OrigGame.TickDay) 안에서 효과까지 끝나고, 화면에는 그 뒤 대사(로컬 글 대응표)로 보여 준다.
     /// 아직 원작대로 하지 못한 것(표시):
     ///  - 이름: 한국식 이름을 앱이 붙인다(OrigNames, 가족 안에서 겹치지 않게). 원작 이름(자체 글자표)은 쓰지 않는다 — 사용자 결정.
-    ///  - 하트: 레코드 +0x5B(0~255)를 화면 3칸에 비례로 나눠 보여 준다(원작 화면의 칸 나눔은 아직 재지 않았다).
     ///  - 아직 보여 주지 않은 그날 사건 목록은 저장하지 않는다(효과는 이미 원작 메모리에 들어가 있다).
     /// </summary>
     public sealed class OrigSession : IGameSession
@@ -182,7 +181,6 @@ namespace SennenKazoku.Core.Orig
                 if (q == null || !snaps.TryGetValue(q.Id, out sn)) continue;
                 if (q.ArrowFlags != sn.Arrow) m.W8(p + 0x69, (uint)q.ArrowFlags & 0xFF);
                 for (int i = 0; i < 4; i++) if (q.Stats[i] != sn.Stats[i]) m.W16(p + 0x50 + 2 * (uint)i, (uint)Math.Max(0, Math.Min(Stat.Max, q.Stats[i])));
-                if (q.Hearts != sn.Hearts) m.W8(p + 0x5B, (uint)Math.Max(0, Math.Min(255, q.Hearts * 255 / Person.HeartMax)));
             }
             if (Family.Mood != famSnap.Mood) m.W8(0x0202C6AE, (uint)Math.Max(0, Math.Min(255, Family.Mood)));
             foreach (var t in Interventions.Tools)
@@ -398,8 +396,8 @@ namespace SennenKazoku.Core.Orig
                 p.BirthDay = SafeDay(by, bm, bd);
                 for (int k = 0; k < 4; k++) p.Stats[k] = (int)m.R16(a + 0x50 + 2 * (uint)k);
                 p.Gauge = (int)m.R8(a + 0x5A); p.Immersion = (int)m.R8(a + 0x5B);
-                // 하트 = +0x5B (0~255): 참고 자료의 "하트 상승(기본+12)" 효과(0x0811ABC9)를 원작 ROM 으로 돌리면 +0x5B 가 +12. 화면 3칸에는 비례로 나눈다.
-                p.Hearts = (int)m.R8(a + 0x5B) * Person.HeartMax / 255;
+                // 하트 = +0x5B (0~255). 화면 3칸은 원작 0x08021F14 의 반 칸 수(0~6)로 보인다.
+                p.Hearts = HalfHearts(m.R8(a + 0x5B)) * Person.HeartUnit / 2;
                 p.Job = (int)m.R8(a + 0x58); p.JobMastery = (int)m.R8(a + 0x5E);
                 p.Skills.Clear(); for (uint k = 0; k < 3; k++) { uint sk = m.R8(a + 0x62 + k); if (sk != 0xFF) p.Skills.Add((int)sk); }
                 p.InterestDay = (int)m.R16(a + 0x48); p.ArrowFlags = (int)m.R8(a + 0x69);
@@ -424,6 +422,14 @@ namespace SennenKazoku.Core.Orig
             f.Today = SafeDay(y, mo, d);
             OrigDate.Get(m, 0x0202C688, out int sy, out int sm, out int sd);
             f.StartDay = sy > 0 ? SafeDay(sy, sm, sd) : f.Today;
+        }
+
+        /// <summary>원작 하트 표시(0x08021F14): 0 → 0, 1~47 → 1, ~95 → 2, ~143 → 3, ~191 → 4, ~239 → 5, 그 위 6 (반 칸 수).</summary>
+        public static int HalfHearts(uint raw)
+        {
+            if (raw == 0) return 0;
+            if (raw <= 0x2F) return 1; if (raw <= 0x5F) return 2; if (raw <= 0x8F) return 3; if (raw <= 0xBF) return 4; if (raw <= 0xEF) return 5;
+            return 6;
         }
 
         static int SafeDay(int y, int mo, int d) { return GameDate.Make(Math.Max(1, Math.Min(9999, y)), Math.Max(1, Math.Min(12, mo)), Math.Max(1, d)); }

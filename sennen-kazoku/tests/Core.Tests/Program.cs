@@ -407,6 +407,9 @@ namespace SennenKazoku.Tests
                 // 부팅 씨앗 = VCOUNT × 0xAD (0x080089DC, 실기 감시: 4498 = 26×173 → 다음 값 491303 → 53553048)
                 T.Eq(SennenKazoku.Core.Orig.OrigSession.BootSeed(26, 0), 4498u); T.Eq(SennenKazoku.Core.Orig.OrigSession.BootSeed(26, 1), 491303u);
                 T.Eq(SennenKazoku.Core.Orig.OrigSession.BootSeed(26, 2), 53553048u);
+                // 하트 표시 반 칸 수 (0x08021F14) — 실기: 128 → 1.5칸, 하트 열매 뒤 223 → 2.5칸
+                var hh = new[] { 0, 1, 47, 48, 95, 96, 128, 143, 144, 191, 192, 223, 239, 240, 255 }; var want = new[] { 0, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6 };
+                for (int i = 0; i < hh.Length; i++) T.Eq(SennenKazoku.Core.Orig.OrigSession.HalfHearts((uint)hh[i]), want[i]);
             });
             T.Run("원작 열중 게이지 하루 규칙 (ROM 0x08027E78 해독)", () => {
                 T.Eq(GameSession.ThresholdDays(0, 2), 11); T.Eq(GameSession.ThresholdDays(1, 0), 11);
