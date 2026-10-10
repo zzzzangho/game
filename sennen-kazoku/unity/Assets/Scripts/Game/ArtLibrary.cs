@@ -102,7 +102,8 @@ namespace SennenKazoku.Game
         public Sprite LookSprite(CharacterLook look, AgeSlots ages, CharacterComposer.Pose pose, int outfitSet)
         {
             if (look == null || !Parts.Available) return null;
-            var key = MiniJson.Serialize(look.ToJson()) + "|" + ages.Body + ages.Face + ages.Hair + ages.Feat + "|" + (int)pose + "|" + outfitSet;
+            var key = MiniJson.Serialize(look.ToJson()) + "|" + ages.Body + ages.Face + ages.Hair + ages.Feat + "c" + ages.Class + "|" + (int)pose + "|" + outfitSet
+                + "|" + (look.PresetPalette != null ? string.Join(",", look.PresetPalette) : "");
             Sprite s;
             if (lookCache.TryGetValue(key, out s)) return s;
             var idx = CharacterComposer.Compose(Parts, look, ages, pose, outfitSet); var pal = Parts.Palette(look);

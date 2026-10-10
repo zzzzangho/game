@@ -16,7 +16,20 @@ namespace SennenKazoku.Core
     {
         public string Rom = "";
         public List<PartImage> Variants = new List<PartImage>();
+        /// <summary>묶음 머리 2바이트 (원작 나이 칸 선택, AtClass). −1 = 모름(옛 parts.json).</summary>
+        public int Hdr0 = -1, Hdr1 = -1;
         public PartImage At(int age) { return Variants.Count == 0 ? null : Variants[Math.Max(0, Math.Min(age, Variants.Count - 1))]; }
+
+        /// <summary>
+        /// 원작 0x080972EC: 나이 구분(0x08097398) 3 = 7~12세 → Hdr0 아래 4비트 · 4 = 13~34세 → Hdr0 위 4비트 ·
+        /// 5 = 35~60세 → Hdr1 아래 4비트 · 6 = 61세~ → Hdr1 위 4비트(= 마지막 칸). 0~2(6세 이하)는 원작이 다른 길로 그려 아직 모름 → 0번 칸.
+        /// </summary>
+        public PartImage AtClass(int cls, int fallback)
+        {
+            if (Hdr0 < 0 || cls < 3) return At(fallback);
+            int slot = cls == 3 ? Hdr0 & 15 : cls == 4 ? Hdr0 >> 4 : cls == 5 ? Hdr1 & 15 : Hdr1 >> 4;
+            return At(slot);
+        }
     }
 
     /// <summary>
@@ -54,6 +67,7 @@ namespace SennenKazoku.Core
                     foreach (var go in J.Arr(kv.Value))
                     {
                         var g = J.Obj(go); var pg = new PartGroup { Rom = J.Str(g, "rom") };
+                        var hdr = J.List(g, "hdr"); if (hdr.Count >= 2) { pg.Hdr0 = Convert.ToInt32(hdr[0]); pg.Hdr1 = Convert.ToInt32(hdr[1]); }
                         foreach (var po in J.List(g, "parts"))
                         {
                             var p = J.Obj(po);
@@ -165,12 +179,21 @@ namespace SennenKazoku.Core
     public struct AgeSlots
     {
         public int Body, Face, Hair, Feat;
-        public AgeSlots(int body, int face, int hair, int feat) { Body = body; Face = face; Hair = hair; Feat = feat; }
+        public AgeSlots(int body, int face, int hair, int feat) { Body = body; Face = face; Hair = hair; Feat = feat; Class = -1; }
         public static AgeSlots Uniform(int a) { return new AgeSlots(a, a, a, a); }
         public static readonly AgeSlots Child = Uniform(0), Adult = Uniform(1);
         public static readonly AgeSlots Elder = new AgeSlots(2, 1, 1, 2);
-        public const int ElderFromAge = 60;          // 추정: 원작 노화 시점 미확인
-        public static AgeSlots ForAge(int years) { return years < 13 ? Child : years >= ElderFromAge ? Elder : Adult; }
+        public const int ElderFromAge = 35;          // 원작 나이 구분 5(35~60세)부터 — 칸은 묶음 머리 바이트가 정한다(PartGroup.AtClass)
+        /// <summary>원작 나이 구분 (0x08097398): 0세 0 · ~3세 1 · ~6세 2 · ~12세 3 · ~34세 4 · ~60세 5 · 그 위 6. −1 = 쓰지 않음(갤러리 등 칸 고정).</summary>
+        public int Class;
+        public static int OrigClass(int years) { return years <= 0 ? 0 : years <= 3 ? 1 : years <= 6 ? 2 : years <= 12 ? 3 : years <= 34 ? 4 : years <= 60 ? 5 : 6; }
+        /// <summary>나이 → 칸. 원작 나이 구분을 함께 담아, 머리 바이트가 있는 부품은 원작 규칙으로 고른다.</summary>
+        public static AgeSlots ForAge(int years)
+        {
+            var a = years < 13 ? Child : years >= ElderFromAge ? Elder : Adult;
+            a.Class = OrigClass(years);
+            return a;
+        }
         public static AgeSlots FromJson(object o, AgeSlots def)
         {
             var d = J.Obj(o);
@@ -238,8 +261,8 @@ namespace SennenKazoku.Core
             bool back = pose == Pose.BackA || pose == Pose.BackB;
             int ox = Width / 2 - (back ? 1 : 0), oy = Height;          // 뒷모습은 원점이 1 왼쪽 (캡처와 일치)
             int block = ((outfitSet & 3) * 4 + (int)pose) * 24;
-            var b = lib.Group("body", block + (look.Body % 24 + 24) % 24).At(a.Body);
-            var f = lib.Group("face", look.Face).At(a.Face);
+            var b = Pick(lib.Group("body", block + (look.Body % 24 + 24) % 24), a, a.Body);
+            var f = Pick(lib.Group("face", look.Face), a, a.Face);
             if (b == null || f == null || f.Ext.Length < 7 || b.Ext.Length < 2) return c;
             // 얼굴 메타 m[0..8] = 헤더 4바이트째부터 = (Ax, Ay, Ext[0..])
             int[] m = new int[9]; m[0] = f.Ax; m[1] = f.Ay; for (int i = 0; i < 7; i++) m[2 + i] = f.Ext[i];
@@ -248,25 +271,27 @@ namespace SennenKazoku.Core
             {
                 // 뒷모습: 몸통 → 뒷통수(faceB, 얼굴과 같은 번호) → 뒷머리(머리 번호 + 104)
                 Put(lib, c, b, ox, oy - 16, false);
-                var fb = Part(lib, "faceB", look.Face, a.Face);
+                var fb = Part(lib, "faceB", look.Face, a, a.Face);
                 if (fb != null && fb.Ext.Length >= 1) Put(lib, c, fb, nx - fb.Ext[0] + fb.Ax, refY + m[1] - 2 + fb.Ay, false);
-                var bh = Part(lib, "hairback", 104 + look.Hair, a.Hair);
+                var bh = Part(lib, "hairback", 104 + look.Hair, a, a.Hair);
                 if (bh != null && !bh.Empty && bh.Ext.Length >= 2) Put(lib, c, bh, nx, refY + m[2] + 16 - bh.Ext[1], false);
                 return c;
             }
-            var hb = lib.Group("hairback", look.Hair).At(a.Hair);
+            var hb = Pick(lib.Group("hairback", look.Hair), a, a.Hair);
             if (hb != null && !hb.Empty && hb.Ext.Length >= 2) Put(lib, c, hb, nx, refY + m[2] + 16 - hb.Ext[1], false);
             Put(lib, c, b, ox, oy - 16, false);
             // 얼굴 세로 위치: 아이 칸(0)은 1 아래 (원작 아이 목록 대조로 확인)
             Put(lib, c, f, nx - m[7] + f.Ax, refY + m[1] - 2 + (a.Face == 0 ? 1 : 0) + f.Ay, false);
-            Put(lib, c, Part(lib, "nose", look.Nose, a.Feat), nx, refY + m[4], look.NoseFlip);
-            Put(lib, c, Part(lib, "eyes", look.Eyes, a.Feat), nx, refY + m[3], look.EyesFlip);
-            Put(lib, c, Part(lib, "mouth", look.Mouth, a.Feat), nx, refY + m[5], look.MouthFlip);
-            Put(lib, c, Part(lib, "hairfront", look.Hair, a.Hair), nx, refY + m[1], false);
+            Put(lib, c, Part(lib, "nose", look.Nose, a, a.Feat), nx, refY + m[4], look.NoseFlip);
+            Put(lib, c, Part(lib, "eyes", look.Eyes, a, a.Feat), nx, refY + m[3], look.EyesFlip);
+            Put(lib, c, Part(lib, "mouth", look.Mouth, a, a.Feat), nx, refY + m[5], look.MouthFlip);
+            Put(lib, c, Part(lib, "hairfront", look.Hair, a, a.Hair), nx, refY + m[1], false);
             return c;
         }
 
         static PartImage Part(PartsLibrary lib, string cat, int i, int age) { var g = lib.Group(cat, i); return g == null ? null : g.At(age); }
+        static PartImage Part(PartsLibrary lib, string cat, int i, AgeSlots a, int slot) { return Pick(lib.Group(cat, i), a, slot); }
+        static PartImage Pick(PartGroup g, AgeSlots a, int slot) { return g == null ? null : a.Class >= 0 ? g.AtClass(a.Class, slot) : g.At(slot); }
 
         static void Put(PartsLibrary lib, byte[] c, PartImage p, int axAbs, int ayAbs, bool flip)
         {

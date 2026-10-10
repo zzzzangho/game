@@ -36,6 +36,44 @@ namespace SennenKazoku.Tests
             return p;
         }
         /// <summary>tools/romlift/make_vectors.py 가 원작 ROM 을 실제 RAM 덤프 위에서 돌린 결과와 C# 이식을 비교한다.</summary>
+        /// <summary>시험용: 원작 메모리로 원작 세션 만들기 (세이브 영역만 옮김).</summary>
+        static SennenKazoku.Core.Family SessionFixture(SennenKazoku.Core.Orig.OrigMem m, SennenKazoku.Core.Family f)
+        {
+            var blk = m.SaveBlock(); var b = new byte[blk.Length + 5]; Array.Copy(blk, b, blk.Length);
+            Array.Copy(BitConverter.GetBytes(m.R32(SennenKazoku.Core.Orig.OrigMem.Seed)), 0, b, blk.Length, 4);
+            f.OrigState = Convert.ToBase64String(b); return f;
+        }
+
+        /// <summary>시험용 PNG 읽기 (8비트 RGB/RGBA, 필터 0~4) — 0xRRGGBB, 투명은 −1.</summary>
+        static int[] ReadPng(string path, out int w, out int h)
+        {
+            var d = File.ReadAllBytes(path); int p = 8; w = h = 0; int ct = 2; var idat = new MemoryStream();
+            while (p < d.Length)
+            {
+                int len = d[p] << 24 | d[p + 1] << 16 | d[p + 2] << 8 | d[p + 3]; string t = System.Text.Encoding.ASCII.GetString(d, p + 4, 4);
+                if (t == "IHDR") { w = d[p + 8] << 24 | d[p + 9] << 16 | d[p + 10] << 8 | d[p + 11]; h = d[p + 12] << 24 | d[p + 13] << 16 | d[p + 14] << 8 | d[p + 15]; ct = d[p + 17]; }
+                if (t == "IDAT") idat.Write(d, p + 8, len);
+                p += 12 + len;
+            }
+            idat.Position = 2;
+            var raw = new MemoryStream(); using (var z = new System.IO.Compression.DeflateStream(idat, System.IO.Compression.CompressionMode.Decompress)) z.CopyTo(raw);
+            var r = raw.ToArray(); int bpp = ct == 6 ? 4 : 3, stride = w * bpp; var cur = new byte[stride]; var prev = new byte[stride]; var o = new int[w * h];
+            for (int y = 0; y < h; y++)
+            {
+                int f = r[y * (stride + 1)];
+                for (int i = 0; i < stride; i++)
+                {
+                    int x = r[y * (stride + 1) + 1 + i], a = i >= bpp ? cur[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
+                    int pa = Math.Abs(b - c), pb = Math.Abs(a - c), pc = Math.Abs(a + b - 2 * c);
+                    int pr = f == 0 ? 0 : f == 1 ? a : f == 2 ? b : f == 3 ? (a + b) / 2 : (pa <= pb && pa <= pc ? a : pb <= pc ? b : c);
+                    cur[i] = (byte)(x + pr);
+                }
+                for (int x = 0; x < w; x++) o[y * w + x] = bpp == 4 && cur[x * 4 + 3] == 0 ? -1 : cur[x * bpp] << 16 | cur[x * bpp + 1] << 8 | cur[x * bpp + 2];
+                var t2 = prev; prev = cur; cur = t2;
+            }
+            return o;
+        }
+
         static void OrigVectors(string dir)
         {
             SennenKazoku.Core.Orig.OrigVm.Trail = Environment.GetEnvironmentVariable("SK_TRACE") != null;
@@ -125,6 +163,72 @@ namespace SennenKazoku.Tests
             Console.WriteLine("       MAX/MIN 사건(변형 고르기+효과) " + eN + "건 중 원작과 같음 " + eOk + " (옮기지 못함 " + eUnm + ")");
             T.Eq(eOk, eN, "사건 결과가 원작과 다름");
 
+            // 인물 팔레트(0x08099448): 실기 사건 장면에서 잇세이(인물 3) 그림의 OBJ 팔레트 (그림자 버퍼 0x02005318, 칸 1~14)
+            {
+                var pm = Fresh("main.ram"); var pvm = rules.CreateVm(pm);
+                uint rec = SennenKazoku.Core.Orig.OrigMem.PersonAddr(3), buf = 0x0F03B200, look = 0x0F03B300;
+                for (uint i = 0; i < 16; i++) pm.W8(look + i, pm.R8(rec + i));
+                ushort[] want = { 0x0000, 0x7fff, 0x6f7a, 0x4650, 0x2126, 0x6fbf, 0x5f7f, 0x42be, 0x2e17, 0x5e7f, 0x673a, 0x7fff, 0x7232, 0x594d };
+                for (uint i = 0; i < 32; i++) pm.W8(buf + i, 0);
+                pvm.Call("08099448", buf, look + 8, look, 4, 0xFF, 0);   // 나이 구분 4(18세), 옷 인자 0xFF, 마지막 인자 0 (실기 사건 장면과 같은 값)
+                int okp = 0; for (uint i = 1; i <= 14; i++) if (pm.R16(buf + 2 * i) == want[i - 1]) okp++;
+                Console.WriteLine("       인물 팔레트(0x08099448): 실기 사건 그림 팔레트와 같은 칸 " + okp + "/14");
+                T.Eq(okp, 14, "인물 팔레트가 실기와 다름");
+            }
+            // 원작 외형 → 앱 조합: 실기 사건 장면의 잇세이(인물 3, 말풍선 없는 동작) 그림과 픽셀 색 비교 (로컬 캡처 cap_actor3.png 가 있을 때)
+            if (File.Exists(Path.Combine(dir, "cap_actor3.png")) && File.Exists(Path.Combine(dir, "parts.json")))
+            {
+                var lib = SennenKazoku.Core.PartsLibrary.Load(File.ReadAllText(Path.Combine(dir, "parts.json")), File.ReadAllBytes(Path.Combine(dir, "parts.bin.bytes")));
+                var cm = Fresh("main.ram");
+                var fam = new SennenKazoku.Core.Family { Name = "t" };
+                var os3 = SennenKazoku.Core.Orig.OrigSession.Load(rules, new SennenKazoku.Core.Orig.OrigText(), SessionFixture(cm, fam));
+                var look = os3.OrigLook(3);
+                var idx = SennenKazoku.Core.CharacterComposer.Compose(lib, look, SennenKazoku.Core.AgeSlots.ForAge(18), SennenKazoku.Core.CharacterComposer.Pose.FrontA, 0);
+                var pal = lib.Palette(look);
+                var cap = ReadPng(Path.Combine(dir, "cap_actor3.png"), out int cw, out int ch);
+                int best = -1, bt = 0;
+                for (int dy = -8; dy <= 8; dy++)
+                    for (int dx = -4; dx <= 4; dx++)
+                    {
+                        int ok = 0, tot = 0;
+                        for (int y = 0; y < 64; y++) for (int x = 0; x < 32; x++)
+                        {
+                            int v = idx[y * 32 + x]; int X = x + dx, Y = y + dy;
+                            int c = X >= 0 && X < cw && Y >= 0 && Y < ch ? cap[Y * cw + X] : -1;
+                            bool capOn = c >= 0 && c != 0x636363;
+                            if (v == 0 && !capOn) continue;
+                            tot++;
+                            if (v != 0 && capOn)
+                            {
+                                int q = pal[v]; int r = (q & 31) * 255 / 31, g = ((q >> 5) & 31) * 255 / 31, b = ((q >> 10) & 31) * 255 / 31;
+                                if (Math.Abs(r - (c >> 16 & 255)) <= 10 && Math.Abs(g - (c >> 8 & 255)) <= 10 && Math.Abs(b - (c & 255)) <= 10) ok++;
+                            }
+                        }
+                        if (tot > 0 && ok * 1000 / tot > best) { best = ok * 1000 / tot; bt = tot; }
+                    }
+                foreach (int pn in new[] { 0, 1 })   // 집 화면 캡처(시작 가족 아버지 48세·어머니 47세 — 나이 구분 5)
+                {
+                    string cf = Path.Combine(dir, "cap_house" + pn + ".png"); if (!File.Exists(cf)) continue;
+                    var lk = os3.OrigLook(pn); int age = pn == 0 ? 48 : 47;
+                    var cp = ReadPng(cf, out int w2, out int h2); int bestP = -1;
+                    foreach (var pose in new[] { SennenKazoku.Core.CharacterComposer.Pose.FrontA, SennenKazoku.Core.CharacterComposer.Pose.FrontB })
+                    {
+                        var ix = SennenKazoku.Core.CharacterComposer.Compose(lib, lk, SennenKazoku.Core.AgeSlots.ForAge(age), pose, 0); var pl = lib.Palette(lk);
+                        int ok = 0, tot = 0;
+                        for (int i = 0; i < 32 * 64 && i < cp.Length; i++)
+                        {
+                            bool on = cp[i] >= 0; if (ix[i] == 0 && !on) continue; tot++;
+                            if (ix[i] != 0 && on) { int q = pl[ix[i]]; int r = (q & 31) * 255 / 31, g = ((q >> 5) & 31) * 255 / 31, b = ((q >> 10) & 31) * 255 / 31; int c = cp[i];
+                                if (Math.Abs(r - (c >> 16 & 255)) <= 10 && Math.Abs(g - (c >> 8 & 255)) <= 10 && Math.Abs(b - (c & 255)) <= 10) ok++; }
+                        }
+                        bestP = Math.Max(bestP, tot > 0 ? ok * 1000 / tot : 0);
+                    }
+                    Console.WriteLine("       원작 외형 조합(인물 " + pn + ", " + age + "세): 집 화면 캡처와 색까지 같은 픽셀 " + bestP / 10.0 + "%");
+                    T.True(bestP >= 980, "원작 외형 조합이 집 화면 캡처와 다름");
+                }
+                Console.WriteLine("       원작 외형 조합(인물 3, 얼굴 " + look.Face + " 머리 " + look.Hair + " 눈 " + look.Eyes + " 코 " + look.Nose + " 입 " + look.Mouth + " 몸통 " + look.Body + "): 실기 그림과 색까지 같은 픽셀 " + best / 10.0 + "%");
+                T.True(best >= 980, "원작 외형 조합이 실기 그림과 다름");
+            }
             // 종합 진단(0x0806614C): 원작 ROM 을 같은 RAM 덤프에서 돌린 값 (unicorn) — main.ram 3·3·3·3, custom_create.ram 3·1·4·2
             {
                 var d1 = SennenKazoku.Core.Orig.OrigSession.Diagnosis(rules.CreateVm(Fresh("main.ram")));

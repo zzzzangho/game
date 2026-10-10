@@ -43,7 +43,9 @@ def main(rom_path, out_dir, presets=None):
             parts.append({"w": p["w"], "h": p["h"], "ax": s8(m[4]) if p["w"] else 0, "ay": s8(m[5]) if p["w"] else 0,
                           "ext": list(m[6:]), "off": len(blob)})
             blob += bytes(R.part_pixels(p)) if p["w"] else b""
-        cats.setdefault(c, []).append({"rom": "0x%X" % g["addr"], "parts": parts})
+        # hdr: 묶음 머리 2바이트 — 원작 0x080972EC 가 나이 구분(0x08097398)별 칸을 고른다:
+        # 7~12세 hdr0 아래 4비트 · 13~34세 hdr0 위 4비트 · 35~60세 hdr1 아래 4비트 · 61세~ hdr1 위 4비트
+        cats.setdefault(c, []).append({"rom": "0x%X" % g["addr"], "hdr": [rom[g["addr"]], rom[g["addr"] + 1]], "parts": parts})
     os.makedirs(out_dir, exist_ok=True)
     open(os.path.join(out_dir, "parts.bin.bytes"), "wb").write(blob)
     pre = {}

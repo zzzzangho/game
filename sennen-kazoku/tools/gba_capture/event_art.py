@@ -11,7 +11,8 @@ BG3 액자 안 배경 그림(56,40 에서 128×64) · OBJ 인물·큐피트·감
 
   python3 event_art.py <capture 실행 파일> <ROM> <세이브상태(.state, 확장자 빼고)> <기록 R 주소> <사건 시작 뒤 프레임> <orig_rules.json> <출력 디렉터리>
 출력(앱 LocalArt 이름, .png.bytes): ev_pic_<포인터> (128×64, BG3) · ev_band_<포인터> (240×24, BG0 위쪽, 글 없음) ·
-      ev_back_<포인터> (240×160, BG2) · ev_frame (BG1) · ev_cupid (32×40, OBJ) · ev_emo_<번호> (감정 말풍선 32×19, OBJ) — 회색 바탕(99,99,99)은 투명.
+      ev_back_<포인터> (240×160, BG2) · ev_frame (BG1) · ev_cupid (32×40, OBJ) · ev_emo_<번호> (감정 말풍선 32×19, OBJ) ·
+      ev_npc_<인자 5바이트> (가족이 아닌 사람 32×48, OBJ) — 회색 바탕(99,99,99)은 투명.
 감정 말풍선: 기록 R 대사 머리의 "1A 0E 02 (동작) (인물)" 의 동작 번호를 0~0x14 로 바꿔 OBJ 층을 찍고 첫 인물 머리 위
 (액자 안 33,0 ~ 65,19)를 자른다 — 이 자리는 기록 0x08923648(인물 둘) 기준이다. 0x15 부터는 말풍선 없이 자세만 바뀐다.
 """
@@ -70,7 +71,29 @@ def main():
         ims = shot(4, with_(0x28, base[3][1]), [(t + 3, bytes([e])) for t in toks], extra=[4] * 16)
         crops = [im.crop((56 + 33, 40, 56 + 65, 40 + 19)) for im in ims]
         save(max(crops, key=lambda c: sum(1 for q in c.getdata() if q != (99, 99, 99))), 'ev_emo_%02X' % e)
-    print('배경 %d · 띠 %d · 무늬 %d (포인터가 아닌 값 포함 수) · 말풍선 21' % (len(vals[0x28]), len(vals[0x20]), len(vals[0x24])))
+    # 가족이 아닌 사람(1A 0E 04 인자 5바이트): 원작 대사에 나오는 조합마다 R 의 첫 04 토큰 인자를 바꾸고, 동작을 말풍선 없는 0x15 로 두고
+    # OBJ 층에서 왼쪽 인물(액자 안 32~64, 16~64 — 발은 아래에서 6줄 위)을 자른다. R 은 04 → 01 순서로 두 사람이 나오는 기록이어야 한다.
+    combos = set()
+    for r in recs:
+        p = struct.unpack_from('<I', rom, r - 0x08000000 + 0x14)[0]
+        if not 0x08000000 <= p < 0x0A000000: continue
+        o = p - 0x08000000
+        for _ in range(6000):
+            if rom[o] == 0x1A:
+                op = rom[o + 1]
+                if op in (0xFF, 0x12): break
+                if op == 0x0E:
+                    sub = rom[o + 2]
+                    if sub == 4: combos.add(rom[o + 3:o + 8])
+                    o += {0: 4, 3: 4, 1: 7, 2: 5, 4: 8}.get(sub, 3); continue
+                o += {1: 2, 2: 2, 9: 2, 0xD: 2, 3: 3, 0xA: 3, 5: 4, 6: 4, 8: 4, 0xB: 4, 0xF: 4, 0x10: 5}.get(op, 2)
+            else: o += 2 if rom[o] >= 0x80 else 1
+    s4 = rom.find(b'\x1a\x0e\x04', dlg, dlg + 64)
+    if s4 >= 0:
+        for cb in sorted(combos):
+            im = shot(4, with_(0x28, base[3][1]), [(s4 + 3, cb)] + [(t + 3, b'\x15') for t in toks])
+            save(im.crop((56 + 32, 40 + 16, 56 + 64, 40 + 64)), 'ev_npc_' + cb.hex().upper())
+    print('배경 %d · 띠 %d · 무늬 %d (포인터가 아닌 값 포함 수) · 말풍선 21 · 가족이 아닌 사람 %d' % (len(vals[0x28]), len(vals[0x20]), len(vals[0x24]), len(combos)))
 
 
 if __name__ == '__main__':

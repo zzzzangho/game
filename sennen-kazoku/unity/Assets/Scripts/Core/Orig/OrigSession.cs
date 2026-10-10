@@ -596,7 +596,7 @@ namespace SennenKazoku.Core.Orig
                 {
                     int id = -1;
                     if (a.Slot >= 0 && a.Slot < 28 && cur.Slots[a.Slot] != 0xFFFF) id = (int)cur.Slots[a.Slot];
-                    sv.Actors.Add(new SceneActor { PersonId = id, Anim = a.Anim, NpcKind = a.NpcKind, NpcAge = a.NpcAge, Outfit = a.Outfit });
+                    sv.Actors.Add(new SceneActor { PersonId = id, Anim = a.Anim, NpcKind = a.NpcKind, NpcAge = a.NpcAge, Outfit = a.Outfit, NpcKey = a.NpcKey });
                 }
             return sv;
         }
@@ -652,6 +652,36 @@ namespace SennenKazoku.Core.Orig
         }
 
         // ---------- 원작 레코드 → 화면용 가족 ----------
+        /// <summary>
+        /// 원작 외형 (인물 레코드 +0x00~0x0F, 실기 바이트 바꿔 보기 + 조합 대조로 확인): +0 얼굴 · +1 머리(앞·뒤) · +2 입 · +4 코(번호 +1) ·
+        /// +5 눈 · +6 뒷머리(= 머리) · +7 몸통(0~11 남, 12~23 여) · +9 머리색 · +10 피부색 · +12 옷 색. 색은 원작 팔레트 함수 0x08099448
+        /// (팔레트, 레코드+8, 레코드, 나이 구분 0x08097398, 0xFF, 0)로 만든 16색을 그대로 쓴다(실기 사건 그림 팔레트와 14/14 일치).
+        /// +3·+8 은 바꿔도 그림 변화가 거의 없어 아직 모름(좌우 반전 등은 쓰지 않는다).
+        /// </summary>
+        public CharacterLook OrigLook(int n)
+        {
+            var m = Game.Mem; uint a = OrigMem.PersonAddr(n);
+            var l = new CharacterLook
+            {
+                Face = (int)m.R8(a), Hair = (int)m.R8(a + 1), Mouth = (int)m.R8(a + 2), Nose = Math.Max(0, (int)m.R8(a + 4) - 1),
+                Eyes = (int)m.R8(a + 5), Body = (int)m.R8(a + 7) % 24, Preset = "orig"
+            };
+            l.Outfit = CharacterComposer.OutfitOf(l);
+            OrigDate.Get(m, a + 0x2E, out int by, out int bm, out int bd);
+            int years = Family.Today >= 0 ? Math.Max(0, GameDate.Year(Family.Today) - by - ((GameDate.Month(Family.Today) * 100 + GameDate.Day(Family.Today)) < (bm * 100 + bd) ? 1 : 0)) : 20;
+            const uint buf = 0x0F03B400;
+            try
+            {
+                for (uint i = 0; i < 32; i++) m.W8(buf + i, 0);
+                Game.Vm.Call("08099448", buf, a + 8, a, (uint)AgeSlots.OrigClass(years), 0xFF, 0);
+                var pal = new int[16]; pal[0] = -1;
+                for (uint i = 1; i < 16; i++) pal[i] = (int)m.R16(buf + 2 * i);
+                l.PresetPalette = pal;
+            }
+            catch (OrigUnmodeled) { }
+            return l;
+        }
+
         public void Project()
         {
             var m = Game.Mem; var f = Family;
@@ -663,6 +693,8 @@ namespace SennenKazoku.Core.Orig
                 uint a = OrigMem.PersonAddr(n);
                 int id = (int)m.R16(a + 0x3C);
                 Person p; if (!old.TryGetValue(id, out p)) p = new Person { Id = id };
+                // 외형: 앱에서 고른 외형(내가 아는 가족 입력)이 없으면 원작 레코드 외형을 쓴다(날마다 다시 — 나이에 따라 칸·색이 바뀐다)
+                if (p.Look == null || p.Look.Preset == "orig") p.Look = OrigLook(n);
                 p.Gender = (int)m.R8(a + 0x31) == 0 ? 0 : 1;
                 OrigDate.Get(m, a + 0x2E, out int by, out int bm, out int bd);
                 p.BirthDay = SafeDay(by, bm, bd);

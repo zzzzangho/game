@@ -1116,7 +1116,10 @@ namespace SennenKazoku.Game
                 // 자리는 인원수로만 정해진다(옷·나이 인자를 바꿔도 자리는 그대로) — 셋 이상은 같은 간격 32 로 둔 앱 배치.
                 var a = v.Scene.Actors[i]; float cx = 56 + 64 + 32f * (i - (n - 1) / 2f), foot = 40 + 58, headY = foot - 39;
                 var p = a.PersonId >= 0 ? session.Family.Get(a.PersonId) : null;
-                Sprite sp = p != null ? Figure(p, false, 0) : NpcFigure(a, v.EventId, i);
+                var npcTex = p == null && a.NpcKey.Length > 0 ? art.Texture("ev_npc_" + a.NpcKey) : null;
+                if (npcTex != null)   // 원작 그림 (32×48, 발이 아래에서 6줄 위 — event_art.py 의 npc 단계)
+                    Raw("npc" + i, "ev_npc_" + a.NpcKey, cx - 16, foot - 42, 32, 48, new Rect(0, 0, 1, 1));
+                Sprite sp = p != null ? Figure(p, false, 0) : npcTex != null ? null : NpcFigure(a, v.EventId, i);
                 {
                     if (sp != null)
                     {
@@ -1134,7 +1137,7 @@ namespace SennenKazoku.Game
         }
 
         /// <summary>
-        /// 가족이 아닌 사람: 원작 그림(NPC 스프라이트)은 아직 뽑지 않아 앱 캐릭터 조합으로 대신한다(앱 대체 그림 — 성별·나이대만 원작 인자를 따른다).
+        /// 가족이 아닌 사람 중 원작 그림(ev_npc_, 원작 대사에 나오는 41가지)이 없는 조합만 앱 캐릭터 조합으로 대신한다(앱 대체 그림 — 성별·나이대만 원작 인자를 따른다).
         /// 나이대 인자(1A 0E 04 둘째): 01 아기 · 02 어린이 · 03 어린이 · 06 노인 · 그 밖 청년~어른.
         /// </summary>
         Sprite NpcFigure(SceneActor a, string seedKey, int i)
