@@ -11,6 +11,7 @@
 실기 화면 글자 그림을 보고 읽은 값을 따로 주는 파일(한 줄에 "코드 글자")로 채운다.
 
   python3 export_charset.py ROM.gba orig_text.json [손으로_읽은_글자.txt]
+  python3 export_charset.py ROM.gba orig_text.json --jobs-only   — 직업 이름만 더하기
 결과: orig_text.json 에 "charset": {"889F": "가", ..., "8740": "은/는"} 를 더해 다시 쓴다.
 """
 import collections, json, re, struct, sys
@@ -79,6 +80,7 @@ SKILLS = 0x088A309C
 
 
 UI = 0x085C081C
+JOBS = 0x0889D3B8
 
 
 def decode(rom, table, p, limit=64):
@@ -97,11 +99,26 @@ def decode(rom, table, p, limit=64):
     return ''.join(out)
 
 
+def job_names(rom, table):
+    """직업 이름: 직업 표 0x0889D3B8 (직업 번호 → 직업 기록, 기록 +0 = 이름 글). 시대가 바뀌면 같은 자리의 다른 번호(예: 26 → 65)가 된다."""
+    jobs = []
+    for k in range(1024):
+        p = struct.unpack_from('<I', rom, JOBS - 0x08000000 + 4 * k)[0]
+        if not 0x08000000 <= p < 0x0A000000: break
+        n = struct.unpack_from('<I', rom, p - 0x08000000)[0]
+        jobs.append(decode(rom, table, n, 40) if 0x08000000 <= n < 0x0A000000 else '')
+    return jobs
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__); return 2
     rom = open(sys.argv[1], 'rb').read()
     pack = json.load(open(sys.argv[2], encoding='utf8'))
+    if '--jobs-only' in sys.argv:   # 이미 만든 글자표로 직업 이름만 더한다 (번역해 넣은 스킬 등은 그대로)
+        pack['jobs'] = job_names(rom, pack['charset'])
+        json.dump(pack, open(sys.argv[2], 'w', encoding='utf8'), ensure_ascii=False, separators=(',', ':'))
+        print('직업 이름 %d개' % len(pack['jobs'])); return 0
     votes = collections.defaultdict(collections.Counter)
     for k, v in pack['records'].items():
         p = struct.unpack_from('<I', rom, int(k, 16) - 0x08000000 + 0x14)[0]
@@ -149,8 +166,9 @@ def main():
         if not 0x08000000 <= p < 0x0A000000: break
         ui.append(decode(rom, table, p, 200))
     pack['ui'] = ui
+    jobs = pack['jobs'] = job_names(rom, table)
     json.dump(pack, open(sys.argv[2], 'w', encoding='utf8'), ensure_ascii=False, separators=(',', ':'))
-    print('글자 %d개 (대사 맞추기 %d, 손으로 읽음 %d, 나머지 Shift-JIS), 스킬 이름 %d개, 화면 글 %d개' % (len(table), voted, manual, len(skills), len(ui)))
+    print('글자 %d개 (대사 맞추기 %d, 손으로 읽음 %d, 나머지 Shift-JIS), 스킬 이름 %d개, 화면 글 %d개, 직업 이름 %d개' % (len(table), voted, manual, len(skills), len(ui), len(jobs)))
 
 
 if __name__ == '__main__':

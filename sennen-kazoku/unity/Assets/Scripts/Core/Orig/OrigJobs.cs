@@ -19,7 +19,13 @@ namespace SennenKazoku.Core.Orig
             { 29, "미용사" }, { 30, "정비사" },
         };
 
-        public static string Name(int id) { string s; return Names.TryGetValue(id, out s) ? s : "직업 #" + id; }
+        /// <summary>원작 직업 이름 표(로컬 글 팩 "jobs", OrigText 가 넣는다 — 시대별 직업까지). 없으면 아래 Names.</summary>
+        public static List<string> PackNames;
+        public static string Name(int id)
+        {
+            if (PackNames != null && id >= 0 && id < PackNames.Count && PackNames[id].Length > 0) return PackNames[id] == "없어" ? "없음" : PackNames[id];
+            string s; return Names.TryGetValue(id, out s) ? s : "직업 #" + id;
+        }
 
         /// <summary>원작 관계 코드(가족 구성 확인 0x0802C9A0): 조부 0 · 조모 1 · 부 2 · 모 4 · 아들 6 · 딸 7.</summary>
         public static int Relation(FamilyRole r, int gender)

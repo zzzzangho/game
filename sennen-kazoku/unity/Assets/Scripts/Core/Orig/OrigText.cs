@@ -35,6 +35,8 @@ namespace SennenKazoku.Core.Orig
         public readonly Dictionary<uint, string> Overrides = new Dictionary<uint, string>();
         /// <summary>화면 글 표 0x085C081C (원작 코드가 0x085C081C + 4·번호로 고른다 — 가족 유형 349~357, 순위 381~385 등). orig_text.json "ui".</summary>
         public readonly List<string> Ui = new List<string>();
+        /// <summary>직업 이름 (직업 표 0x0889D3B8 → 기록 +0 글, 번호 = 직업 번호 — 시대별로 39칸씩: 26 전업주부 · 65 미래 전업주부 …). orig_text.json "jobs".</summary>
+        public readonly List<string> Jobs = new List<string>();
         public string UiText(int k, string fallback) { return k >= 0 && k < Ui.Count && Ui[k].Length > 0 ? Ui[k] : fallback; }
         /// <summary>Decode 에서 만난, 글자표에 없는 코드 (점검용).</summary>
         public readonly HashSet<int> Missing = new HashSet<int>();
@@ -61,6 +63,8 @@ namespace SennenKazoku.Core.Orig
             if (cs != null) foreach (var kv in cs) t.Charset[Convert.ToInt32(kv.Key, 16)] = kv.Value as string ?? "";
             var ui = d.ContainsKey("ui") ? d["ui"] as List<object> : null;
             if (ui != null) foreach (var x in ui) t.Ui.Add(x as string ?? "");
+            var jobs = d.ContainsKey("jobs") ? d["jobs"] as List<object> : null;
+            if (jobs != null) { foreach (var x in jobs) t.Jobs.Add(x as string ?? ""); OrigJobs.PackNames = t.Jobs; }
             var ov = J.Child(d, "overrides");
             if (ov != null) foreach (var kv in ov) t.Overrides[Convert.ToUInt32(kv.Key.Substring(2), 16)] = kv.Value as string ?? "";
             var sk = d.ContainsKey("skills") ? d["skills"] as List<object> : null;

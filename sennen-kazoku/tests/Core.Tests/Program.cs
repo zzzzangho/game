@@ -1068,6 +1068,7 @@ namespace SennenKazoku.Tests
                         var jobs0 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job)); uint bm0 = cmm.R8(0x0202C65A);
                         cs.CenturyCheck(); cs.Project();
                         int era1 = (int)cmm.R8(0x0202C692); var jobs1 = string.Join(",", cs.Family.Members.ConvertAll(p => p.Job)); uint bm1 = cmm.R8(0x0202C65A);
+                        Console.WriteLine("       새 시대 직업 이름: " + string.Join(", ", cs.Family.Members.ConvertAll(p => SennenKazoku.Core.Orig.OrigJobs.Name(p.Job))));
                         Console.WriteLine("       세기 확인(100년째 세대교체): 몸통 세트 " + era1 + ", 직업 " + jobs0 + " → " + jobs1 + ", 시간의 책갈피 " + bm0 + " → " + bm1 + ", 화면 세트 " + cs.Family.BodySet);
                         T.True(era1 == 1 && cs.Family.BodySet == 1 && jobs0 != jobs1 && bm1 == bm0 + 1, "세기 확인(100년째)");
                     }
