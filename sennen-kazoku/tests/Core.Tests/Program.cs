@@ -839,6 +839,17 @@ namespace SennenKazoku.Tests
                             Console.WriteLine("       " + t.Name + " → " + q.Name + ": " + (r ?? "씀") + " (바뀐 바이트 " + diff + ", 맞은 화살 칸 " + hitNow + ")");
                             if (r == null && t.OrigSlot <= 5) T.Eq(hitNow, t.OrigSlot);
                         }
+                    // 시간의 책갈피: 쓰면 책갈피 표시(0x0202C678 & 0x80), 능력치를 바꾼 뒤 되돌리면 쓴 때 값으로
+                    {
+                        s.Family.Items["item.bookmark"] = 1;
+                        var bw = s.Family.Get(who.Id); int st0 = bw.Stats[1];
+                        var br = s.Use(bw, "item.bookmark");
+                        T.True(br == null && s.HasBookmark, "시간의 책갈피 쓰기: " + br);
+                        mm.W16(whoRec + 0x52, 1234); s.Project();
+                        bool rb = s.RestoreBookmark();
+                        Console.WriteLine("       시간의 책갈피: 되돌리기 " + rb + ", 체력 " + st0 + " → 1234 → " + s.Family.Get(who.Id).Stats[1]);
+                        T.True(rb && s.Family.Get(who.Id).Stats[1] == st0, "책갈피로 되돌아가지 않음");
+                    }
                     s.Game.Vm.BeforeTop = null; s.Game.Vm.AfterTop = null;
                     s.StepDay(); while (s.Paused) s.Advance();
                     var who2 = s.Family.Get(who.Id);

@@ -881,6 +881,7 @@ namespace SennenKazoku.Game
                 if (MemberIds() != before) RebuildActors();   // 결혼·출생·사망·독립 (같은 날 들고 나도 알아챈다)
                 if (session.Family.Today - lastAutoDay >= 30) { lastAutoDay = session.Family.Today; SaveSlot("auto", true); }
             }
+            if (session.Family.Members.Count == 0 && session is Core.Orig.OrigSession eos) { OpenLineageEnd(eos); return; }
             if (started)
             {
                 acc = 0; SaveSlot("auto", true);
@@ -1141,6 +1142,28 @@ namespace SennenKazoku.Game
             {
                 var l = UiKit.Label(body, "none", kind == "arrow" ? "가진 화살이 없습니다." : "가진 아이템이 없습니다.", Px(15), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(l.rectTransform, 0, 0, w, Px(80));
             }
+        }
+
+        /// <summary>가문이 끊김: 원작은 이때 시간의 책갈피가 있으면 쓴 날로 돌아갈 수 있다(0x0809EE4E → 0x08010AB4).</summary>
+        void OpenLineageEnd(Core.Orig.OrigSession os)
+        {
+            var body = Window("가문이 끊겼습니다", 360); float w = BodyW(body);
+            if (os.HasBookmark)
+            {
+                var b = UiKit.Btn(body, "bm", "시간의 책갈피로 돌아가기", Px(16), Color.white, UiKit.Ink, () =>
+                {
+                    ClosePopup();
+                    if (os.RestoreBookmark()) { RebuildActors(); RefreshAll(); SaveSlot("auto", true); Toast("책갈피를 쓴 날로 돌아왔습니다"); }
+                    else Toast("되돌리지 못했습니다");
+                });
+                UiKit.SetPx(b.GetComponent<RectTransform>(), 0, 0, w, Px(56));
+            }
+            else
+            {
+                var l = UiKit.Label(body, "none", "시간의 책갈피가 없습니다.", Px(15), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(l.rectTransform, 0, 0, w, Px(40));
+            }
+            var t = UiKit.Btn(body, "title", "타이틀로", Px(16), Color.white, UiKit.Ink, () => { ClosePopup(); ShowTitle(); });
+            UiKit.SetPx(t.GetComponent<RectTransform>(), 0, Px(66), w, Px(56));
         }
 
         /// <summary>선대 마음의 결정: 원작처럼 선대의 마음 목록(0x0202C328)을 보여 주고 고른 마음을 이어받게 한다.</summary>
