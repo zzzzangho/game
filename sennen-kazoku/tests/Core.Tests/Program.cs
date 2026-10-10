@@ -836,6 +836,8 @@ namespace SennenKazoku.Tests
                     for (int d = 0; d < 730; d++) { s.StepDay(); Drain(s); }
                     Console.WriteLine("       2년: 보여 준 사건 " + shown + "개 (대사 있음 " + withText + "), 장 " + pagesTotal + ", " + GameDate.Format(s.Family.Today));
                     Console.WriteLine("       예: " + sample);
+                    Console.WriteLine("       2년 뒤 보유: " + string.Join(", ", Interventions.Tools.FindAll(t => Interventions.Count(s.Family, t.Id) > 0).ConvertAll(t => t.Name + "×" + Interventions.Count(s.Family, t.Id)))
+                        + " / 신님에게 감사 " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + " " + p.Gratitude)));
                     T.True(shown > 100 && withText * 10 >= shown * 9, "사건 수·대사 비율");
                     // 저장 → 불러오기 → 두 세션을 60일 같이 진행: 같은 사건이 나야 한다
                     s.PrepareSave();

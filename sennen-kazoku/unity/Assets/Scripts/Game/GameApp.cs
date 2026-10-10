@@ -1059,7 +1059,7 @@ namespace SennenKazoku.Game
                 var hi = UiKit.Box(body, "h" + i, s != null ? Color.white : Color.red, s ?? UiKit.Circle); hi.preserveAspect = true;
                 UiKit.SetPx(hi.rectTransform, x + Px(50) + i * Px(34), Px(134), Px(30), Px(30));
             }
-            var gr = UiKit.Label(body, "grat", "신님에게 감사  " + f.Gratitude + "개", Px(14), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(gr.rectTransform, x, Px(166), cw - Px(100), Px(24));
+            var gr = UiKit.Label(body, "grat", "신님에게 감사  " + (p.Gratitude >= 0 ? p.Gratitude : f.Gratitude) + "개", Px(14), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(gr.rectTransform, x, Px(166), cw - Px(100), Px(24));
             var ren = UiKit.Btn(body, "rename", "이름 바꾸기", Px(12), new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => OpenRename(p));
             UiKit.SetPx(ren.GetComponent<RectTransform>(), x + cw - Px(96), Px(164), Px(96), Px(28));
             PlannedStateDef st; catalog.States.TryGetValue(p.PlannedStateId ?? "", out st);

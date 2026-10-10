@@ -84,6 +84,8 @@ namespace SennenKazoku.Core
         public int[] Stats = new int[4];   // 0..5000 (확인됨: 범위·등급)
         public int Hearts;                 // 0..HeartMax. 원작 화면은 하트 3칸(부분 채움) — 칸당 단위는 미해명(임시 96)
         public int Immersion;              // 0..255 (확인됨: 범위)
+        /// <summary>신님에게 감사 (원작은 인물마다: 레코드 +0x65 | +0x66&lt;&lt;8, 실기 상세 화면으로 확인). 원작 세션이 매일 투영하며 저장하지 않는다(-1 = 가족 값 사용).</summary>
+        public int Gratitude = -1;
         public int Job;                    // 직업 코드 (이름표 미확보)
         public int JobMastery;
         public List<int> Skills = new List<int>();

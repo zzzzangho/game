@@ -401,6 +401,7 @@ namespace SennenKazoku.Core.Orig
                 p.Job = (int)m.R8(a + 0x58); p.JobMastery = (int)m.R8(a + 0x5E);
                 p.Skills.Clear(); for (uint k = 0; k < 3; k++) { uint sk = m.R8(a + 0x62 + k); if (sk != 0xFF) p.Skills.Add((int)sk); }
                 p.InterestDay = (int)m.R16(a + 0x48); p.ArrowFlags = (int)m.R8(a + 0x69);
+                p.Gratitude = (int)(m.R8(a + 0x65) | m.R8(a + 0x66) << 8);   // 신님에게 감사 (실기 상세 화면: +0x65=11, +0x66=12 → 3083개)
                 p.PersonalityCode = (int)(m.R8(a + 0x32) & 0xF);
                 int t = (int)m.R16(a + 0x80), i = (int)m.R16(a + 0x82);
                 p.PlannedStateId = t == 0xFFFF ? "" : "orig:" + t + "," + i;
