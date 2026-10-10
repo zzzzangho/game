@@ -1086,8 +1086,13 @@ namespace SennenKazoku.Game
             UiKit.SetPx(now.rectTransform, 0, Px(200), w, Px(48));
             string desc = st != null && !string.IsNullOrEmpty(st.Desc) ? st.Desc : "(예정 상태 설명은 원작 문구 팩에서 제공)";
             var os2 = session as Core.Orig.OrigSession;
-            string skills = p.Skills.Count == 0 ? "없음" : string.Join(" · ", p.Skills.ConvertAll(k => os2 != null ? os2.SkillName(k) : "스킬 " + k + "번"));
-            var dd = UiKit.Label(body, "desc", desc + "\n\n스킬  " + skills + "\n직업 코드 " + p.Job + " · 숙련 " + p.JobMastery + " · 몰입도 " + p.Immersion + "\n※ 직업 이름·하트 단위는 원작 확인 전 임시 표기", Px(14), UiKit.Ink, TextAnchor.UpperLeft);
+            string skills = p.Skills.Count == 0 ? "  없음" : string.Concat(p.Skills.ConvertAll(k =>
+            {
+                if (os2 == null) return "\n· 스킬 " + k + "번";
+                string d = os2.SkillDesc(k);
+                return "\n· " + os2.SkillName(k) + (d.Length > 0 ? " — " + d.Replace("\n", " ") : "");
+            }));
+            var dd = UiKit.Label(body, "desc", desc + "\n\n스킬" + skills + "\n직업 코드 " + p.Job + " · 숙련 " + p.JobMastery + " · 몰입도 " + p.Immersion + "\n※ 직업 이름·하트 단위는 원작 확인 전 임시 표기", Px(14), UiKit.Ink, TextAnchor.UpperLeft);
             UiKit.SetPx(dd.rectTransform, 0, Px(250), w, BodyH(body) - Px(250));
         }
 

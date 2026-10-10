@@ -246,7 +246,15 @@ namespace SennenKazoku.Core.Orig
         }
 
         /// <summary>스킬 이름 (로컬 팩의 원작 스킬 표). 없으면 "스킬 N번".</summary>
-        public string SkillName(int k) { return k >= 0 && k < Text.Skills.Count && Text.Skills[k].Length > 0 ? Text.Skills[k] : "스킬 " + k + "번"; }
+        public string SkillName(int k) { return k >= 0 && k < Text.Skills.Count && Text.Skills[k].Name.Length > 0 ? Text.Skills[k].Name : "스킬 " + k + "번"; }
+
+        /// <summary>스킬 설명 (원작 설명 + 효과 줄, 로컬 번역이 있을 때). 없으면 빈 글.</summary>
+        public string SkillDesc(int k)
+        {
+            if (k < 0 || k >= Text.Skills.Count) return "";
+            var sk = Text.Skills[k];
+            return sk.Effect.Length > 0 ? sk.Desc + " (" + sk.Effect + ")" : sk.Desc;
+        }
 
         /// <summary>선대의 마음 목록에 보이는 이름 (앱이 붙인 이름 — 세상을 떠난 사람도 저장된 이름을 쓴다).</summary>
         public string LegacyName(int personId) { return NameOf(personId, -1); }

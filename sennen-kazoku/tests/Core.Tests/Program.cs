@@ -845,6 +845,11 @@ namespace SennenKazoku.Tests
                         T.Eq(Interventions.Count(s.Family, "item.heart_crystal"), 0);
                         Console.WriteLine("       선대 마음의 결정: 스킬 " + string.Join(",", s.Family.Get(who.Id).Skills.ConvertAll(k => k + " " + s.SkillName(k))) + ", 남은 마음 " + s.LegacyHearts().Count + ", 스킬 이름 " + s.Text.Skills.Count + "개");
                         if (s.Text.HasCharset) T.True(s.Text.Skills.Count == 183 && !s.SkillName(12).Contains("번"), "스킬 이름 표");
+                        if (s.Text.Skills.Count > 12 && s.Text.Skills[12].Desc.Length > 0)
+                        {
+                            Console.WriteLine("       스킬 12: " + s.SkillName(12) + " — " + s.SkillDesc(12) + " / 스킬 5: " + s.SkillName(5) + " — " + s.SkillDesc(5).Replace("\n", " "));
+                            T.True(s.Text.Skills.TrueForAll(x => !SennenKazoku.Core.Orig.OrigText.Untranslated(x.Name + x.Desc + x.Effect)), "번역 안 된 스킬 글");
+                        }
                     }
                     foreach (var t in Interventions.Tools)
                         if (t.Kind == "arrow" && t.OrigSlot >= 2 && s.CanUse(t.Id))
