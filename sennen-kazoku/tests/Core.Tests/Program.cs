@@ -888,7 +888,7 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       개입: 지력 " + s0 + " → 고리 → 다음 날 " + who2.Stats[0] + ", 힘내라 화살 남은 수 " + Interventions.Count(s.Family, "arrow.encourage") + ", 화살 표시 " + who2.ArrowFlags);
                     T.True(who2.Stats[0] >= Math.Min(Stat.Max, s0 + 1000) - 50 && Interventions.Count(s.Family, "arrow.encourage") == 4, "개입이 원작 메모리에 남지 않음");
                     int shown = 0, withText = 0, pagesTotal = 0; string sample = null;
-                    string grat = null, unkSample = null; int unknownGlyph = 0;
+                    string grat = null, unkSample = null, rankPage = null; int unknownGlyph = 0, appSummary = 0;
                     void Drain(SennenKazoku.Core.Orig.OrigSession ss)
                     {
                         while (ss.Paused)
@@ -897,6 +897,8 @@ namespace SennenKazoku.Tests
                             if (ss == s && sample == null && v.TextSource != "none" && v.Text.Length > 20) sample = v.Title + " / " + v.Text.Replace("\n", " ");
                             if (ss == s && v.Text.Contains("□")) { unknownGlyph++; if (unkSample == null || unkSample.Length < 1500) unkSample += " ‖ " + v.Text.Replace("\n", " "); }
                             if (ss == s && grat == null && v.Text.Contains("감사의 마음")) grat = v.Text.Replace("\n", " ");
+                            if (ss == s && v.Text.Contains("천계에서 도착") && rankPage == null) rankPage = v.Text.Replace("\n", " ");
+                            if (ss == s && v.Text.Contains("[앱 요약]")) appSummary++;
                             if (ss.Advance()) { shown++; if (v.TextSource != "none") withText++; }
                         }
                     }
@@ -906,6 +908,8 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       원작 결과 문구 예: " + (grat ?? "없음") + " / 글자표에 없는 글자가 든 장 " + unknownGlyph);
                     if (unknownGlyph > 0) Console.WriteLine("       글자표에 없는 코드: " + string.Join(" ", s.Text.Missing.Select(c => c.ToString("X4"))) + " / 예: " + unkSample);
                     if (s.Text.HasCharset) T.Eq(unknownGlyph, 0, "글자표에 없는 글자");
+                    Console.WriteLine("       랭크 보상 설명(대체 글 " + s.Text.Overrides.Count + "개): " + (rankPage ?? "없음") + " / 앱 요약 장 " + appSummary);
+                    if (s.Text.Overrides.Count > 0) T.True(rankPage != null && appSummary == 0, "랭크 보상 설명을 대체 글로 보여 줘야 함");
                     Console.WriteLine("       2년 뒤 보유: " + string.Join(", ", Interventions.Tools.FindAll(t => Interventions.Count(s.Family, t.Id) > 0).ConvertAll(t => t.Name + "×" + Interventions.Count(s.Family, t.Id)))
                         + " / 신님에게 감사 " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + " " + p.Gratitude))
                         + " / 감사의 마음 " + s.Game.Mem.R32(0x0202C670) + ", 신님 랭크 " + s.Game.Mem.R16(0x0202C66E));

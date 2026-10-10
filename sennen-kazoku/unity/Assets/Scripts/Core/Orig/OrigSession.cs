@@ -37,6 +37,7 @@ namespace SennenKazoku.Core.Orig
         {
             Rules = rules; Text = text ?? new OrigText(); Family = f;
             Game = new OrigGame(m, rules);
+            Game.TextOverride = a => Text.Overrides.ContainsKey(a);
             Project();
         }
 
@@ -388,12 +389,14 @@ namespace SennenKazoku.Core.Orig
             else pages = new List<string>();
             if (pages.Count == 0) pages.Add("(원작 사건 " + cur.Data.ToString("X8") + " — 대사 자료 없음)");
             // 결과 스크립트가 낸 원작 결과 문구(능력 변화·감사·랭크·보상 안내). 글자표가 없으면 앱이 쓴 요약.
-            // 번역 패치가 옮기지 않은 일본어 장(랭크 보상 설명 일부)은 빼고, 대신 앱 요약(받은 것 목록)을 붙인다.
+            // 번역 패치가 옮기지 않은 원문은 대체 글(OrigText.Overrides)로 나오고, 대체 글도 없는 일본어 장만 빼고 앱 요약(받은 것 목록)을 붙인다.
             bool decoded = Text.HasCharset && cur.Shown.Length > 0, untranslated = false;
             if (decoded)
                 foreach (var pg in Text.Decode(cur.Shown, SlotName, MarkName))
-                    if (OrigText.Untranslated(pg)) untranslated = true; else pages.Add(pg);
-            if (!decoded || untranslated) { var god = GodPage(cur, untranslated); if (god != null) pages.Add(god); }
+                    if (OrigText.Untranslated(pg)) { untranslated = true; if (System.Environment.GetEnvironmentVariable("SK_UNTR") != null) System.Console.WriteLine("    [UNTR] " + cur.Data.ToString("X8") + " " + pg.Replace("\n", " ")); }
+                    else pages.Add(pg);
+            // 글자표가 있는데 결과 문구가 없으면 원작도 결과를 글로 보여 주지 않은 것이므로 요약을 붙이지 않는다.
+            if (!Text.HasCharset || untranslated) { var god = GodPage(cur, untranslated); if (god != null) pages.Add(god); }
         }
 
         /// <summary>플레이어 이름 — 원작은 처음에 입력받지만(0x0202C660) 앱은 아직 입력 화면이 없어 "신님"을 쓴다(앱이 정한 기본값).</summary>

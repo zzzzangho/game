@@ -59,6 +59,9 @@ namespace SennenKazoku.Core.Orig
             public byte[] Shown = new byte[0];
         }
 
+        /// <summary>결과 문구에서 앱 번역으로 바꿔 끼울 원문 글 주소인가 (OrigSession 이 OrigText.Overrides 로 정한다).</summary>
+        public System.Func<uint, bool> TextOverride;
+
         public OrigGame(OrigMem mem, OrigRules rules) { Mem = mem; Rules = rules; Vm = rules.CreateVm(mem); }
 
         public static bool Present(OrigMem m, int n) { return m.R16(OrigMem.PersonAddr(n) + 0x3C) != 0xFFFF; }
@@ -238,7 +241,7 @@ namespace SennenKazoku.Core.Orig
                 de.Points0 = Mem.R32(0x0202C670); de.Rank0 = Mem.R16(0x0202C66E);
                 for (uint i = 0; i < 32; i++) de.Inv0[i] = (byte)Mem.R8(0x0202C640 + i);
                 var shown = new List<byte>();
-                OrigEvents.RunScene(Vm, Rules, data, id, de.Slots, de.Result, shown);
+                OrigEvents.RunScene(Vm, Rules, data, id, de.Slots, de.Result, shown, TextOverride);
                 de.Shown = shown.ToArray();
                 if (de.Result[0] >= 1 && de.Result[0] <= 4) EndCodes.Add(de.Result[0] + "@" + data.ToString("X8"));
                 de.Points1 = Mem.R32(0x0202C670); de.Rank1 = Mem.R16(0x0202C66E);

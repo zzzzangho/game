@@ -28,6 +28,11 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         public sealed class Skill { public string Name = "", Desc = "", Effect = ""; }
         public readonly List<Skill> Skills = new List<Skill>();
+        /// <summary>
+        /// 번역 패치가 옮기지 않은 원문 글을 대신하는 한국어 (orig_text.json "overrides": 글 주소 → 글, 원문에서 직접 옮긴 로컬 번역).
+        /// 글 안의 "|" 다음 장, "/" 줄바꿈, {플레이어}·{가문} 이름, {이가}·{은는}·{을를}·{과와} 앞 이름 받침에 맞춘 조사.
+        /// </summary>
+        public readonly Dictionary<uint, string> Overrides = new Dictionary<uint, string>();
         /// <summary>Decode 에서 만난, 글자표에 없는 코드 (점검용).</summary>
         public readonly HashSet<int> Missing = new HashSet<int>();
 
@@ -51,6 +56,8 @@ namespace SennenKazoku.Core.Orig
                 }
             var cs = J.Child(d, "charset");
             if (cs != null) foreach (var kv in cs) t.Charset[Convert.ToInt32(kv.Key, 16)] = kv.Value as string ?? "";
+            var ov = J.Child(d, "overrides");
+            if (ov != null) foreach (var kv in ov) t.Overrides[Convert.ToUInt32(kv.Key.Substring(2), 16)] = kv.Value as string ?? "";
             var sk = d.ContainsKey("skills") ? d["skills"] as List<object> : null;
             if (sk != null)
                 foreach (var x in sk)
@@ -98,7 +105,12 @@ namespace SennenKazoku.Core.Orig
                     else if (op == 0x06 && i + 2 < b.Count) sb.Append((name != null ? name(b[i + 2]) : null) ?? "○○");
                     else if (op == 0x86 && i + 3 < b.Count) sb.Append((person != null ? person(OrigResultScript.MarkId(b[i + 2], b[i + 3])) : null) ?? "○○");
                     else if (op == 0x05) sb.Append('?');
-                    int len = op == 0x86 ? 4 : TokenLen(b, i);
+                    else if (op == 0x87 && i + 5 < b.Count)
+                    {
+                        uint addr = (uint)(b[i + 2] | b[i + 3] << 8 | b[i + 4] << 16 | b[i + 5] << 24);
+                        string ov; if (Overrides.TryGetValue(addr, out ov)) AppendOverride(sb, ov, person, Flush);
+                    }
+                    int len = op == 0x86 ? 4 : op == 0x87 ? 6 : TokenLen(b, i);
                     i += len > 0 ? len : 2;
                     continue;
                 }
@@ -108,6 +120,20 @@ namespace SennenKazoku.Core.Orig
             }
             Flush();
             return pages;
+        }
+
+        static void AppendOverride(StringBuilder sb, string text, Func<int, string> person, Action flush)
+        {
+            string P(uint id) { return (person != null ? person((int)id) : null) ?? "○○"; }
+            text = text.Replace("{플레이어}", P(OrigResultScript.MarkPlayer)).Replace("{가문}", P(OrigResultScript.MarkFamily))
+                       .Replace("{이가}", "이/가").Replace("{은는}", "은/는").Replace("{을를}", "을/를").Replace("{과와}", "과/와");
+            var pages = text.Split('|');
+            for (int k = 0; k < pages.Length; k++)
+            {
+                if (k > 0) flush();
+                sb.Append(pages[k].Replace('/', '\n'));
+            }
+            flush();
         }
 
         /// <summary>

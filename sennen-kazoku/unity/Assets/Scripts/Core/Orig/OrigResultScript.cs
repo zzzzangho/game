@@ -152,7 +152,7 @@ namespace SennenKazoku.Core.Orig
         /// <summary>사건 하나의 결과 스크립트를 실행한다 (personId = 사건 인물, record = 결과 기록). 실행한 해석기 명령 수를 돌려준다.</summary>
         /// <param name="shown">있으면 글 상자가 화면에 낼 글 바이트를 차례대로 담는다(글자, 줄·장 바꿈 1A 01/02/09, 이름 1A 06 → 1A 86 족보 번호, 숫자 1A 05).
         /// 원작 글자표로 푸는 것은 OrigText.Decode.</param>
-        public static int Run(OrigVm vm, uint personId, uint record, System.Collections.Generic.List<byte> shown = null)
+        public static int Run(OrigVm vm, uint personId, uint record, System.Collections.Generic.List<byte> shown = null, Func<uint, bool> textOverride = null)
         {
             var m = vm.Mem;
             for (uint i = 0; i < TSize; i += 4) m.W32(T + i, 0);
@@ -160,21 +160,30 @@ namespace SennenKazoku.Core.Orig
             int ops = 1; var hist = new System.Collections.Generic.List<string>();
             var trEnv = Environment.GetEnvironmentVariable("SK_RS_TRACE"); bool trace = trEnv != null && (trEnv == "1" || trEnv == record.ToString("X8")); uint lastN = 1;
             var marks = NameMarks(m, personId);
-            try { return RunFrames(vm, personId, record, shown, ops, hist, trace, lastN); }
+            try { return RunFrames(vm, personId, record, shown, textOverride, ops, hist, trace, lastN); }
             finally { foreach (var mk in marks) for (uint i = 0; i < 5; i++) m.W8(mk.addr + i, mk.old[i]); }
         }
 
-        static int RunFrames(OrigVm vm, uint personId, uint record, System.Collections.Generic.List<byte> shown, int ops, System.Collections.Generic.List<string> hist, bool trace, uint lastN)
+        static int RunFrames(OrigVm vm, uint personId, uint record, System.Collections.Generic.List<byte> shown, Func<uint, bool> textOverride, int ops, System.Collections.Generic.List<string> hist, bool trace, uint lastN)
         {
             var m = vm.Mem;
             vm.Call("080ABBDC", T);   // 명령 0: 프레임 0 = 결과 기록 +0x10 의 결과 스크립트
             if (trace) { uint pr = vm.Call("08110B2C", personId & 0xFFFF); Console.WriteLine("    [RS] 시작 인물 " + personId + " 레코드 " + pr.ToString("X8") + " +0x69=" + m.R8(pr + 0x69) + " +0x60=" + m.R8(pr + 0x60) + " 감사의 마음 " + m.R32(0x0202C670)); }
+            uint quiet = 0;   // 0 이 아니면 이 깊이 이상의 프레임 글은 shown 에 넣지 않는다(앱 번역으로 바꿔 끼운 글)
+            var shownAll = shown;
             for (int guard = 0; guard < 20000; guard++)
             {
+                shown = quiet != 0 ? null : shownAll;
                 uint n = m.R8(T + 0x10);
+                if (quiet != 0 && n < quiet) quiet = 0;   // 바꿔 끼운 글 프레임이 닫힘
                 if (n == 0) { if (trace) Console.WriteLine("    [RS] 끝: 감사의 마음 " + m.R32(0x0202C670) + " 랭크 " + m.R16(0x0202C66E)); return ops; }
                 uint fr = T + 0x74 + 0xA0 * (n - 1);
                 uint p = m.R32(fr), ix = m.R32(fr + 4), a = p + ix;
+                if (quiet == 0 && ix == 0 && shownAll != null && textOverride != null && textOverride(p))
+                {   // 번역 패치가 옮기지 않은 원문 글(OrigText.Overrides): 명령은 원작 바이트대로 돌리고, 화면 글은 표지 1A 87 (주소 4바이트)로 바꿔 끼운다
+                    shownAll.Add(0x1A); shownAll.Add(0x87); for (int q = 0; q < 4; q++) shownAll.Add((byte)(p >> (8 * q)));
+                    quiet = n; shown = null;
+                }
                 if (trace && n != lastN)
                 {
                     var sb = new System.Text.StringBuilder(); for (uint q = 0; q < 24; q++) sb.Append(m.R8(a + q).ToString("X2")).Append(' ');
