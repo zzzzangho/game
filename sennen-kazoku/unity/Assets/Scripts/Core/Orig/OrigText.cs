@@ -171,7 +171,7 @@ namespace SennenKazoku.Core.Orig
         public static List<string> Pages(string script, Func<int, string> name) { return ScenePages(script, name, null, null); }
 
         /// <summary>장면 인물: Slot = 슬롯표 칸(1A 0E 01 의 첫 인자, 가족), −1 = 가족이 아닌 사람(1A 0E 04). Anim = 동작 번호.</summary>
-        public sealed class StageActor { public int Slot = -1; public int Anim = -1; public int NpcKind = -1, NpcAge = -1, Outfit = 0xFF; public string NpcKey = ""; public bool Mirror, Back; }
+        public sealed class StageActor { public int Slot = -1; public int Anim = -1; public int NpcKind = -1, NpcAge = -1, Outfit = 0xFF; public string NpcKey = ""; public bool Mirror, Back, Zoom; }
 
         /// <summary>
         /// 대사를 장으로 나누면서 장마다 액자 안 인물 상태를 같이 낸다(stages[k] = k 번째 장을 보일 때의 상태).
@@ -184,7 +184,7 @@ namespace SennenKazoku.Core.Orig
         {
             var pages = new List<string>(); var sb = new StringBuilder();
             var actors = new List<StageActor>(); var pageStart = new List<StageActor>();
-            List<StageActor> Snap() { var l = new List<StageActor>(); foreach (var a in actors) l.Add(new StageActor { Slot = a.Slot, Anim = a.Anim, NpcKind = a.NpcKind, NpcAge = a.NpcAge, Outfit = a.Outfit, NpcKey = a.NpcKey, Mirror = a.Mirror, Back = a.Back }); return l; }
+            List<StageActor> Snap() { var l = new List<StageActor>(); foreach (var a in actors) l.Add(new StageActor { Slot = a.Slot, Anim = a.Anim, NpcKind = a.NpcKind, NpcAge = a.NpcAge, Outfit = a.Outfit, NpcKey = a.NpcKey, Mirror = a.Mirror, Back = a.Back, Zoom = a.Zoom }); return l; }
             void Flush() { var s = FixJosa(sb.ToString()).Trim(); if (s.Length > 0) { pages.Add(s); if (stages != null) stages.Add(pageStart); } sb.Clear(); pageStart = Snap(); }
             var bytes = new List<byte>();
             void Bytes()
@@ -209,6 +209,14 @@ namespace SennenKazoku.Core.Orig
                         else if (sub == 4) actors.Add(new StageActor { Slot = -1, NpcKind = Arg(3), NpcAge = Arg(4), Outfit = Arg(7),
                             NpcKey = Arg(3).ToString("X2") + Arg(4).ToString("X2") + Arg(5).ToString("X2") + Arg(6).ToString("X2") + Arg(7).ToString("X2") });
                         else if (sub == 2 && Arg(4) < actors.Count) actors[Arg(4)].Anim = Arg(3);
+                        if (fresh) pageStart = Snap();
+                    }
+                    else if (op == 0x0F)
+                    {
+                        // 장면 명령 0xF (0x080AAD50): 1A 0F 칸 02 = 그 칸 인물 확대(2배, SceneAnim.ZoomPlace) · 01 = 원래대로.
+                        // ROM 대사는 거의 모두 마지막 대사 뒤 "00 02"(사건 인물의 한마디) → 결과 문구 앞 "00 01" 로 쓴다(실기 캡처 확인).
+                        bool fresh = sb.ToString().Trim().Length == 0;
+                        foreach (var a in actors) if (a.Slot == Arg(2)) { if (Arg(3) == 2) a.Zoom = true; else if (Arg(3) == 1) a.Zoom = false; }
                         if (fresh) pageStart = Snap();
                     }
                     k += len;

@@ -32,8 +32,8 @@ namespace SennenKazoku.Core
     /// 가족이 아닌 사람은 NpcKind(1A 0E 04 첫 인자: 0·2 남 · 1·3 여) · NpcAge(둘째: 01 아기 · 02 어린이 · 06 노인 · 04/05/07 청년~어른) — 실기 스윕으로 확인.
     /// Outfit = 옷차림 인자(FF 기본, 00~06 다른 옷) — 앱 그림은 아직 옷을 바꾸지 않는다. NpcKey = 1A 0E 04 인자 5바이트(원작 그림 ev_npc_ 이름).
     /// </summary>
-    /// <summary>장면 인물. Look = 이 장면에서 그릴 외형(사건 옷차림까지 반영, null = 인물 외형 그대로). Mirror 좌우 반전 · Back 뒷모습.</summary>
-    public sealed class SceneActor { public int PersonId = -1; public int Anim = -1; public int NpcKind = -1, NpcAge = -1, Outfit = 0xFF; public string NpcKey = ""; public bool Mirror, Back; public CharacterLook Look; }
+    /// <summary>장면 인물. Look = 이 장면에서 그릴 외형(사건 옷차림까지 반영, null = 인물 외형 그대로). Mirror 좌우 반전 · Back 뒷모습 · Zoom 확대(1A 0F).</summary>
+    public sealed class SceneActor { public int PersonId = -1; public int Anim = -1; public int NpcKind = -1, NpcAge = -1, Outfit = 0xFF; public string NpcKey = ""; public bool Mirror, Back, Zoom; public CharacterLook Look; }
 
     /// <summary>한국어 조사 처리: {self:은는} 형태.</summary>
     public static class Template

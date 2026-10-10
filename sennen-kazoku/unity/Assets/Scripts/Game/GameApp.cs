@@ -956,6 +956,7 @@ namespace SennenKazoku.Game
             if (titleHouse != null && titleRoot.gameObject.activeSelf) { var u = titleHouse.uvRect; u.x += Time.deltaTime * 0.01f; titleHouse.uvRect = u; }
             if (!playing || session == null) return;
             UpdateActors();
+            UpdateStageAnim();
             UpdateGauge();
             UpdateTip();
             if (popupOpen || session.Paused) return;
@@ -1109,34 +1110,82 @@ namespace SennenKazoku.Game
                 UiKit.SetPx(bt.rectTransform, 24 * k, 3 * k, (LW - 48) * k, 18 * k);
             }
             Raw("cupid", "ev_cupid", 8, 64, 32, 40, new Rect(0, 0, 1, 1));   // 원작 큐피트 자리 (OBJ 14~32, 70~100)
+            // 인물·말풍선 (원작 자리·움직임 — Core.SceneAnim). 움직임은 UpdateStageAnim 이 매 프레임 바꾼다.
+            stageK = k; stageBubbles.Clear(); zoomImg = null;
+            if (bubbleEvent != v.EventId) { bubbleEvent = v.EventId; bubbleStart.Clear(); zoomKey = ""; }
+            if (emoTable == null) emoTable = SceneAnim.EmotionTable.Parse(art.Text("ev_emo_anim.json"));
             int n = v.Scene.Actors.Count;
             for (int i = 0; i < n; i++)
             {
-                // 실기 캡처(기록 0x08923648): 두 사람은 액자 가운데(64) ±16, 발 y≈58, 말풍선 아래 끝 y≈19 → 발에서 39 위.
-                // 자리는 인원수로만 정해진다(옷·나이 인자를 바꿔도 자리는 그대로) — 셋 이상은 같은 간격 32 로 둔 앱 배치.
-                var a = v.Scene.Actors[i]; float cx = 56 + 64 + 32f * (i - (n - 1) / 2f), foot = 40 + 58, headY = foot - 39;
+                var a = v.Scene.Actors[i]; float cx = SceneAnim.ActorCenterX(i, n), foot = SceneAnim.ActorFoot;
                 var p = a.PersonId >= 0 ? session.Family.Get(a.PersonId) : null;
                 var npcTex = p == null && a.NpcKey.Length > 0 ? art.Texture("ev_npc_" + a.NpcKey) : null;
-                if (npcTex != null)   // 원작 그림 (32×48, 발이 아래에서 6줄 위 — event_art.py 의 npc 단계)
-                    Raw("npc" + i, "ev_npc_" + a.NpcKey, cx - 16, foot - 42, 32, 48, new Rect(0, 0, 1, 1));
+                if (npcTex != null)   // 원작 그림 (32×48 = OBJ 아래 48줄, event_art.py 의 npc 단계)
+                    Raw("npc" + i, "ev_npc_" + a.NpcKey, cx - 16, foot - 44, 32, 48, new Rect(0, 0, 1, 1));
                 // 가족 인물: 장면 외형(사건 옷차림 반영)·뒷모습·좌우 반전 — 장면 토큰 1A 0E 01 (칸, 반전, 뒷모습, 옷)
                 Sprite sp = p != null ? (a.Look != null && art.Parts.Available
                         ? art.LookSprite(a.Look, AgeSlots.ForAge(p.Age(session.Family.Today)), a.Back ? CharacterComposer.Pose.BackA : CharacterComposer.Pose.FrontA, 0, a.Mirror)
                         : Figure(p, a.Back, 0))
                     : npcTex != null ? null : NpcFigure(a, v.EventId, i);
+                if (sp != null)
                 {
-                    if (sp != null)
+                    float fw = sp.rect.width, fh = sp.rect.height;
+                    if (a.Zoom)
                     {
-                        float fw = sp.rect.width, fh = sp.rect.height;
+                        // 확대(1A 0F 칸 02): 액자 안으로 잘라 그린다
+                        var clip = UiKit.Node(evStage, "zoomClip"); UiKit.SetPx(clip, 56 * k, 40 * k, 128 * k, 64 * k);
+                        clip.gameObject.AddComponent<RectMask2D>();
+                        zoomImg = UiKit.Box(clip, "actor" + i, Color.white, sp); zoomImg.raycastTarget = false;
+                        zoomCx = cx; zoomW = fw; zoomH = fh;
+                        string zk = v.EventId + "|" + i;
+                        if (zoomKey != zk) { zoomKey = zk; zoomStart = Time.time; }
+                    }
+                    else
+                    {
                         var im = UiKit.Box(evStage, "actor" + i, Color.white, sp); im.preserveAspect = true; im.raycastTarget = false;
                         UiKit.SetPx(im.rectTransform, (cx - fw / 2f) * k, (foot - fh) * k, fw * k, fh * k);
                     }
                 }
-                if (a.Anim >= 0 && a.Anim <= 0x14)
+                if (a.Anim >= 0 && a.Anim <= 0x14 && !a.Zoom)
                 {
-                    var t = art.Texture("ev_emo_" + a.Anim.ToString("X2"));
-                    if (t != null) Raw("emo" + i, "ev_emo_" + a.Anim.ToString("X2"), cx - 16, headY - 19, 32, 19, new Rect(0, 0, 1, 1));
+                    string key = i + "|" + a.Anim; float t0;
+                    if (!bubbleStart.TryGetValue(key, out t0)) { t0 = Time.time; bubbleStart[key] = t0; }
+                    if (emoTable.Frame(a.Anim, 0) != -2)
+                    {
+                        var ri = Raw("emo" + i, "ev_emo_" + a.Anim.ToString("X2"), cx - 16 + emoTable.CropX, emoTable.CropY, emoTable.CropW, emoTable.CropH, new Rect(0, 0, 1, 1));
+                        if (ri != null) stageBubbles.Add(new StageBubble { Img = ri, Emo = a.Anim, Start = t0 });
+                    }
+                    else if (art.Texture("ev_emo_" + a.Anim.ToString("X2")) != null)   // 옛 그림 팩(움직임 표 없음): 정지 그림 32×19
+                        Raw("emo" + i, "ev_emo_" + a.Anim.ToString("X2"), cx - 16, 40, 32, 19, new Rect(0, 0, 1, 1));
                 }
+            }
+            UpdateStageAnim();
+        }
+
+        sealed class StageBubble { public RawImage Img; public int Emo; public float Start; }
+        readonly List<StageBubble> stageBubbles = new List<StageBubble>();
+        readonly Dictionary<string, float> bubbleStart = new Dictionary<string, float>();   // 같은 사건·같은 동작이면 장이 바뀌어도 움직임을 이어 간다
+        string bubbleEvent = "", zoomKey = "";
+        SceneAnim.EmotionTable emoTable;
+        Image zoomImg; float zoomStart, zoomCx, zoomW, zoomH, stageK = 1;
+
+        /// <summary>사건 장면 움직임: 말풍선 그림 순서(원작 프레임 표)와 확대 진행(60프레임/초).</summary>
+        void UpdateStageAnim()
+        {
+            if (evStage == null) return;
+            foreach (var b in stageBubbles)
+            {
+                if (b.Img == null) continue;
+                int f = emoTable.Frame(b.Emo, (int)((Time.time - b.Start) * 60f));
+                var t = f >= 0 ? art.Texture("ev_emo_" + b.Emo.ToString("X2") + "_" + f) : null;
+                b.Img.enabled = t != null;
+                if (t != null) b.Img.texture = t;
+            }
+            if (zoomImg != null)
+            {
+                SceneAnim.ZoomPlace(zoomCx, (Time.time - zoomStart) * 60f, out float sc, out float zx, out float zy);
+                float w = zoomW * sc, h = zoomH * sc;
+                UiKit.SetPx(zoomImg.rectTransform, (zx - w / 2f - 56) * stageK, (zy - h / 2f - 40) * stageK, w * stageK, h * stageK);
             }
         }
 

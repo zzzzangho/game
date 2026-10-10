@@ -20,10 +20,63 @@ import json, os, shutil, struct, subprocess, sys
 from PIL import Image
 
 
+# 감정 말풍선 움직임 (실기 프레임 단위 캡처로 확인, 기록 0x08923648 의 ♪ 기준):
+# 작게 4 → 빈 풍선 4 → 내용 (C6·D8·C6·E8·C6·D8·C6·E8·C6·D8·C6) → 빈 풍선 4 → 작게 4 → 숨김 30, 122프레임마다 되풀이.
+# 감정마다 첫 인물만 말풍선을 띄우고(둘째 인물은 말풍선 없는 0x15) 한 주기 넘게 매 프레임 찍어, 숨김 프레임과 다른 픽셀만 남긴
+# 그림을 순서대로 모은다. 결과: ev_emo_<번호>_<k> (k = 처음 나온 순서) · ev_emo_anim.json
+# {"crop": [첫 인물 OBJ 왼쪽 기준 x, 화면 y, 폭, 높이], "<번호>": [[k, 프레임 수], ...] (k = −1 숨김)} · ev_emo_<번호> (내용 첫 그림, 정지 그림용).
+EMO_FRAMES = 260
+
+
+def emotions(shot, with_, base, toks, save, out):
+    import hashlib
+    actor_x = 89                                   # 기록 0x08923648 첫 인물 OBJ 왼쪽 (두 사람, 실기 OAM)
+    box = (actor_x - 8, 16, actor_x + 40, 72)     # 말풍선이 들어갈 만한 넓은 영역(화면 좌표)
+    runs, frames_all = {}, {}
+    for e in range(0x15):
+        raw = [(toks[0] + 3, bytes([e]))] + [(t + 3, b'\x15') for t in toks[1:]]
+        ims = shot(4, with_(0x28, base[3][1]), raw, extra=[1] * EMO_FRAMES)
+        crops = [im.crop(box) for im in ims]
+        keys = [hashlib.md5(c.tobytes()).hexdigest() for c in crops]
+        # 숨김 프레임 = 그림 픽셀(회색 바탕이 아닌 칸)이 가장 적은 프레임 (말풍선이 없고 인물 머리만 남은 때)
+        hid = keys[min(range(len(crops)), key=lambda i: sum(1 for q in crops[i].getdata() if q != (99, 99, 99)))]
+        hidden = crops[keys.index(hid)]
+        # 한 주기: 숨김이 끝난 첫 프레임부터 다음 숨김 끝까지
+        ends = [i for i in range(1, len(keys)) if keys[i - 1] == hid and keys[i] != hid]
+        if len(ends) < 2: print('말풍선 주기 못 찾음', e); continue
+        a, b = ends[0], ends[1]
+        order, seq = [], []
+        for i in range(a, b):
+            k = -1 if keys[i] == hid else (order.index(keys[i]) if keys[i] in order else (order.append(keys[i]) or len(order) - 1))
+            if seq and seq[-1][0] == k: seq[-1][1] += 1
+            else: seq.append([k, 1])
+        runs['%02X' % e] = seq
+        frames_all[e] = [crops[keys.index(h)] for h in order]
+        hp = list(hidden.getdata())
+        frames_all[e] = (frames_all[e], hp)
+    # 모든 감정의 말풍선 픽셀을 덮는 공통 자르기 영역
+    x0 = y0 = 10 ** 9; x1 = y1 = -1; W = box[2] - box[0]
+    for e, (fs, hp) in frames_all.items():
+        for f in fs:
+            for i, p in enumerate(f.getdata()):
+                if p != hp[i]: x, y = i % W, i // W; x0, y0, x1, y1 = min(x0, x), min(y0, y), max(x1, x), max(y1, y)
+    for e, (fs, hp) in frames_all.items():
+        for k, f in enumerate(fs):
+            im = Image.new('RGBA', f.size, (0, 0, 0, 0)); fp = list(f.getdata())
+            im.putdata([(0, 0, 0, 0) if fp[i] == hp[i] else fp[i] + (255,) for i in range(len(fp))])
+            im = im.crop((x0, y0, x1 + 1, y1 + 1))
+            im.save(os.path.join(out, 'ev_emo_%02X_%d.png.bytes' % (e, k)), 'PNG')
+            if k == 2: im.save(os.path.join(out, 'ev_emo_%02X.png.bytes' % e), 'PNG')   # 내용 첫 그림(작게·빈 풍선 다음)
+    json.dump({"crop": [box[0] + x0 - actor_x, box[1] + y0, x1 - x0 + 1, y1 - y0 + 1], **runs},
+              open(os.path.join(out, 'ev_emo_anim.json.bytes'), 'w'), separators=(',', ':'))
+    print('말풍선 움직임', len(runs), '가지, 자르기', [box[0] + x0 - actor_x, box[1] + y0, x1 - x0 + 1, y1 - y0 + 1])
+
+
 def main():
     if len(sys.argv) < 8:
         print(__doc__); return 2
     cap, rom_path, state, rec, frames, rules_path, out = sys.argv[1:8]
+    only_emo = len(sys.argv) > 8 and sys.argv[8] == 'emo'   # 말풍선만 다시 뽑기
     rec, frames = int(rec, 16), int(frames)
     os.makedirs(out, exist_ok=True)
     work = os.path.join(out, '_work'); os.makedirs(work, exist_ok=True)
@@ -59,18 +112,17 @@ def main():
     def ok(v): return 0x08880000 <= v < 0x08890000   # 그림 표(0x0888xxxx)를 가리키지 않는 값(특수 기록 몇 개)은 건너뛴다
     base = [(o, struct.unpack_from('<I', rom, R + o)[0]) for o in (0x0C, 0x20, 0x24, 0x28)]
     def with_(o, v): return [(a, (v if a == o else (empty if a == 0x0C else b))) for a, b in base]
-    save(shot(1, with_(0x28, base[3][1])), 'ev_frame')
-    for v in sorted(filter(ok, vals[0x28])): save(shot(3, with_(0x28, v)).crop((56, 40, 184, 104)), 'ev_pic_%08X' % v, False)
-    for v in sorted(filter(ok, vals[0x20])): save(shot(0, with_(0x20, v)).crop((0, 0, 240, 24)), 'ev_band_%08X' % v)
-    for v in sorted(filter(ok, vals[0x24])): save(shot(2, with_(0x24, v)), 'ev_back_%08X' % v)
-    save(shot(4, with_(0x28, base[3][1])).crop((8, 64, 40, 104)), 'ev_cupid')   # 큐피트 (OBJ, 화면 14~32, 70~100)
+    if not only_emo: save(shot(1, with_(0x28, base[3][1])), 'ev_frame')
+    if not only_emo:
+        for v in sorted(filter(ok, vals[0x28])): save(shot(3, with_(0x28, v)).crop((56, 40, 184, 104)), 'ev_pic_%08X' % v, False)
+        for v in sorted(filter(ok, vals[0x20])): save(shot(0, with_(0x20, v)).crop((0, 0, 240, 24)), 'ev_band_%08X' % v)
+        for v in sorted(filter(ok, vals[0x24])): save(shot(2, with_(0x24, v)), 'ev_back_%08X' % v)
+        save(shot(4, with_(0x28, base[3][1])).crop((8, 64, 40, 104)), 'ev_cupid')   # 큐피트 (OBJ, 화면 14~32, 70~100)
     dlg = struct.unpack_from('<I', rom, R + 0x14)[0] - 0x08000000
     toks, i = [], rom.find(b'\x1a\x0e\x02', dlg, dlg + 64)
     while i >= 0 and i < dlg + 64: toks.append(i); i = rom.find(b'\x1a\x0e\x02', i + 1, dlg + 64)
-    for e in range(0x15):   # 말풍선은 움직이므로 4프레임 간격으로 여러 번 찍어 가장 꽉 찬 순간을 쓴다
-        ims = shot(4, with_(0x28, base[3][1]), [(t + 3, bytes([e])) for t in toks], extra=[4] * 16)
-        crops = [im.crop((56 + 33, 40, 56 + 65, 40 + 19)) for im in ims]
-        save(max(crops, key=lambda c: sum(1 for q in c.getdata() if q != (99, 99, 99))), 'ev_emo_%02X' % e)
+    emotions(shot, with_, base, toks, save, out)
+    if only_emo: return 0
     # 가족이 아닌 사람(1A 0E 04 인자 5바이트): 원작 대사에 나오는 조합마다 R 의 첫 04 토큰 인자를 바꾸고, 동작을 말풍선 없는 0x15 로 두고
     # OBJ 층에서 왼쪽 인물(액자 안 32~64, 16~64 — 발은 아래에서 6줄 위)을 자른다. R 은 04 → 01 순서로 두 사람이 나오는 기록이어야 한다.
     combos = set()

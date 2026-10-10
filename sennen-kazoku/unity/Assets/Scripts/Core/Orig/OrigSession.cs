@@ -26,6 +26,7 @@ namespace SennenKazoku.Core.Orig
         readonly Queue<OrigGame.DayEvent> pending = new Queue<OrigGame.DayEvent>();
         OrigGame.DayEvent cur; List<string> pages; int page;
         List<List<OrigText.StageActor>> stages = new List<List<OrigText.StageActor>>();   // 장마다 액자 안 인물 상태 (사건 장면 그림)
+        List<OrigText.StageActor> endStage = new List<OrigText.StageActor>();                // 대사를 끝까지 읽은 뒤 상태 (결과 문구 장 — 1A 0F 00 01 로 확대가 풀린 뒤)
 
         public bool Paused { get { return cur != null; } }
 
@@ -486,10 +487,10 @@ namespace SennenKazoku.Core.Orig
 
         void StartNext()
         {
-            cur = pending.Dequeue(); page = 0; stages = new List<List<OrigText.StageActor>>();
+            cur = pending.Dequeue(); page = 0; stages = new List<List<OrigText.StageActor>>(); endStage = new List<OrigText.StageActor>();
             OrigText.Rec rec;
             if (Text.Records.TryGetValue(cur.Data, out rec) && !string.IsNullOrEmpty(rec.Script))
-                pages = OrigText.ScenePages(rec.Script, SlotName, stages, null);
+                pages = OrigText.ScenePages(rec.Script, SlotName, stages, endStage);
             else if (Text.HasCharset)   // 참고 대사가 없으면 ROM 대사(결과 기록 +0x14)를 글자표로 직접 푼다
                 pages = Text.Decode(OrigText.ReadRaw(Game.Mem, Game.Mem.R32(cur.Data + 0x14)), SlotName, MarkName);
             else pages = new List<string>();
@@ -583,7 +584,7 @@ namespace SennenKazoku.Core.Orig
 
         /// <summary>
         /// 장면 그림: 결과 기록 +0x20/+0x24/+0x28 (그림 표 0x0888xxxx 안이 아니면 특수 기록 — 그림 없음) + 이 장의 인물 상태.
-        /// 결과 문구 장(대사 뒤)은 마지막 대사 장의 상태를 이어 쓴다. 인물 칸 → 장면 시작 때 슬롯표(cur.Slots)의 족보 번호.
+        /// 결과 문구 장(대사 뒤)은 대사를 끝까지 읽은 뒤 상태를 쓴다(원작은 결과 앞 1A 0F 00 01 로 확대를 푼다). 인물 칸 → 장면 시작 때 슬롯표(cur.Slots)의 족보 번호.
         /// </summary>
         SceneView SceneOf(int k)
         {
@@ -592,12 +593,12 @@ namespace SennenKazoku.Core.Orig
             if (!Ok(pic)) return null;
             var sv = new SceneView { Band = Ok(band) ? "ev_band_" + band.ToString("X8") : "", Back = Ok(back) ? "ev_back_" + back.ToString("X8") : "", Pic = "ev_pic_" + pic.ToString("X8") };
             if (stages != null && stages.Count > 0)
-                foreach (var a in stages[Math.Min(k, stages.Count - 1)])
+                foreach (var a in k < stages.Count ? stages[k] : endStage.Count > 0 ? endStage : stages[stages.Count - 1])
                 {
                     int id = -1;
                     if (a.Slot >= 0 && a.Slot < 28 && cur.Slots[a.Slot] != 0xFFFF) id = (int)cur.Slots[a.Slot];
                     sv.Actors.Add(new SceneActor { PersonId = id, Anim = a.Anim, NpcKind = a.NpcKind, NpcAge = a.NpcAge, Outfit = a.Outfit, NpcKey = a.NpcKey,
-                        Mirror = a.Mirror, Back = a.Back, Look = SceneLook(id, a.Outfit) });
+                        Mirror = a.Mirror, Back = a.Back, Zoom = a.Zoom, Look = SceneLook(id, a.Outfit) });
                 }
             return sv;
         }

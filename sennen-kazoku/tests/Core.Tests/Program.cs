@@ -289,6 +289,15 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       6세 이하 그림(" + years + "세, 성별 " + gen + (back ? ", 뒷모습" : "") + "): 실기 그림과 색까지 같은 픽셀 " + bo / 10.0 + "%");
                     T.True(bo >= 980, "6세 이하 그림이 실기와 다름");
                 }
+                // 말풍선 움직임 표(event_art.py, 로컬): ♪(02) 한 주기 = 실기 매 프레임 추적 작게4·빈4·C6·D8·C6·E8·C6·D8·C6·E8·C6·D8·C6·빈4·작게4·숨김30
+                if (File.Exists(Path.Combine(dir, "ev_emo_anim.json.bytes")))
+                {
+                    var et = SennenKazoku.Core.SceneAnim.EmotionTable.Parse(File.ReadAllText(Path.Combine(dir, "ev_emo_anim.json.bytes")));
+                    var sb2 = new System.Text.StringBuilder(); int prevF = -9;
+                    for (int fr = 0; fr < 122; fr++) { int f2 = et.Frame(2, fr); if (f2 != prevF) { sb2.Append(f2).Append(' '); prevF = f2; } }
+                    Console.WriteLine("       말풍선 ♪ 그림 순서: " + sb2 + "(감정 " + et.Runs.Count + "가지)");
+                    T.True(sb2.ToString() == "0 1 2 3 2 4 2 3 2 4 2 3 2 1 0 -1 " && et.Frame(2, 122) == 0 && et.Frame(2, 121) == -1 && et.Runs.Count == 21, "말풍선 움직임 표");
+                }
                 Console.WriteLine("       원작 외형 조합(인물 3, 얼굴 " + look.Face + " 머리 " + look.Hair + " 눈 " + look.Eyes + " 코 " + look.Nose + " 입 " + look.Mouth + " 몸통 " + look.Body + "): 실기 그림과 색까지 같은 픽셀 " + best / 10.0 + "%");
                 T.True(best >= 980, "원작 외형 조합이 실기 그림과 다름");
             }
@@ -600,6 +609,20 @@ namespace SennenKazoku.Tests
                 T.True(s.LastChanges.Exists(c => c.Key == "mood" && c.Delta == 12), "사건 결과: 무드 +12");
                 T.True(s.LastChanges.Exists(c => c.Key == "hearts" && c.PersonId == f.Members[0].Id && c.Delta == 24), "사건 결과: 하트 +24");
                 T.True(f.History[0].Changes.Contains("무드↑") && f.History[0].Changes.Contains("하트↑"), "기록에 변화 요약: " + f.History[0].Changes);
+            });
+            T.Run("원작 사건 장면 자리·확대 (실기 OAM 값)", () => {
+                // 인물 OBJ 왼쪽 x (기록 0x08923648 에 인물 등장 토큰을 더한 ROM 사본): 1명 104 · 2명 89,119 · 3명 76,104,132 · 4명 74..134 · 8명 34..174
+                var want = new Dictionary<int, int[]> { { 1, new[] { 104 } }, { 2, new[] { 89, 119 } }, { 3, new[] { 76, 104, 132 } }, { 4, new[] { 74, 94, 114, 134 } },
+                    { 5, new[] { 64, 84, 104, 124, 144 } }, { 8, new[] { 34, 54, 74, 94, 114, 134, 154, 174 } } };
+                foreach (var kv in want) for (int i = 0; i < kv.Value.Length; i++) T.Eq((int)(SceneAnim.ActorCenterX(i, kv.Key) - 16), kv.Value[i]);
+                // 확대(1A 0F 00 02): 2프레임 간격 OAM — 역배율 244·196·148·128, 두 배 크기 OBJ 가운데 (133,67)·(127,64)·(121,60)·(120,60)
+                int[] pa = { 244, 196, 148, 128 }; int[,] ctr = { { 133, 67 }, { 127, 64 }, { 121, 60 }, { 120, 60 } };
+                for (int j = 0; j < 4; j++)
+                {
+                    T.Eq((int)SceneAnim.ZoomInverse(2 * j), pa[j]);
+                    SceneAnim.ZoomPlace(135, 2 * j, out float sc, out float zx, out float zy);
+                    T.True(Math.Abs(zx - ctr[j, 0]) <= 1.5f && Math.Abs(zy - ctr[j, 1]) <= 1.5f, "확대 가운데 " + j + ": " + zx + "," + zy);
+                }
             });
             T.Run("원작 난수기: seed×0x6D+0x3FD (ROM 0x08000614)", () => {
                 var r = new Rng(1); T.Eq(r.NextU32(), 1u * 0x6Du + 0x3FDu); T.Eq(r.NextU32(), unchecked((1u * 0x6Du + 0x3FDu) * 0x6Du + 0x3FDu));
@@ -1108,10 +1131,16 @@ namespace SennenKazoku.Tests
                         if (s.Text.Records.TryGetValue(0x08923648, out r0))
                         {
                             var st = new List<List<SennenKazoku.Core.Orig.OrigText.StageActor>>();
-                            var pg = SennenKazoku.Core.Orig.OrigText.ScenePages(r0.Script, a => "○", st, null);
+                            var endSt = new List<SennenKazoku.Core.Orig.OrigText.StageActor>();
+                            var pg = SennenKazoku.Core.Orig.OrigText.ScenePages(r0.Script, a => "○", st, endSt);
                             string first = string.Join(",", st[0].ConvertAll(a => a.Slot + "/" + a.Anim));
                             Console.WriteLine("       장면 토큰(0x08923648): 장 " + pg.Count + ", 첫 장 인물 " + first + ", 마지막 장 " + string.Join(",", st[st.Count - 1].ConvertAll(a => a.Slot + "/" + a.Anim)));
                             T.True(st.Count == pg.Count && first == "-1/2,0/2", "장면 토큰 해석 (실기: 왼쪽 친구·오른쪽 사건 인물, ♪)");
+                            // 1A 0F 00 02 → 사건 인물 확대(실기: 마지막 대사 뒤 "잇세이「헤헤♪」" 장), 00 01 → 결과 문구 앞에서 원래대로
+                            var zoomed = new List<int>(); for (int z = 0; z < st.Count; z++) if (st[z].Exists(a => a.Zoom)) zoomed.Add(z);
+                            Console.WriteLine("       확대 장: " + string.Join(",", zoomed) + " / " + pg.Count + " — " + (zoomed.Count > 0 ? pg[zoomed[0]].Replace("\n", " ") : "없음"));
+                            T.True(zoomed.Count == 1 && st[zoomed[0]].Find(a => a.Zoom).Slot == 0 && zoomed[0] == pg.Count - 1 && !endSt.Exists(a => a.Zoom), "1A 0F 확대 장(마지막 대사 장), 결과 문구 앞에서 풀림");
+
                         }
                     }
                     Console.WriteLine("       장면 그림이 있는 장 " + sceneN + " / " + pagesTotal + ", 예: " + (sceneSample ?? "없음"));

@@ -55,6 +55,13 @@ namespace SennenKazoku.Game
             return t;
         }
 
+        /// <summary>LocalArt 의 글 파일(이름.bytes, 예: "ev_emo_anim.json") — 없으면 null.</summary>
+        public string Text(string name)
+        {
+            var ta = Resources.Load<TextAsset>("LocalArt/" + name);
+            return ta == null ? null : ta.text;
+        }
+
         public Texture2D HouseTexture()
         {
             var t = Texture(J.Str(J.Child(Manifest, "house"), "file"));
