@@ -45,6 +45,32 @@ namespace SennenKazoku.Core
         public const float OutroEnd = 102f;
 
         /// <summary>
+        /// 제목 띠 세로 위치(다 내려온 자리 기준, 화면 줄): 화면이 검게 된 때부터 68프레임째에 위에서 내려오기 시작해 두 번 출렁이고 98프레임째 멈춘다
+        /// (실기 매 프레임: 띠 각 줄이 다 내려온 띠의 몇째 줄인지 대응시켜 잼). 그 전에는 화면 밖(−28 이하).
+        /// </summary>
+        public static int BandOffset(float t)
+        {
+            int i = (int)Math.Floor(t) - 68;
+            if (i < 0) return -30;
+            return i < BandRuns.Length ? BandRuns[i] : 0;
+        }
+        static readonly int[] BandRuns = { -28, -26, -23, -20, -17, -13, -8, -3, 1, -2, -4, -6, -8, -9, -10, -10, -10, -9, -8, -6, -3, -1, 1, 0, -1, -2, -2, -2, -1, 0 };
+
+        /// <summary>
+        /// 큐피트 세로 위치(정지 그림 ev_cupid 기준): 148프레임째 8줄 아래에서 나타나 프레임마다 2줄씩 올라오고(152프레임째 제자리),
+        /// 그 뒤 8프레임마다 0·+1·+2·+1 로 떠다닌다(실기). 반환 false = 아직 안 보임.
+        /// </summary>
+        public static bool CupidOffset(float t, out int dy)
+        {
+            dy = 0;
+            if (t < 148) return false;
+            if (t < 152) { dy = 8 - 2 * ((int)Math.Floor(t) - 148); return true; }
+            int[] bob = { 0, 1, 2, 1 };
+            dy = bob[((int)Math.Floor((t - 152) / 8f)) % 4];
+            return true;
+        }
+
+        /// <summary>
         /// 뒤 무늬(BG2) 색 돌기 표 (event_art.py 의 ev_back_anim.json, 로컬): 무늬 포인터(16진 8자리) → [그림 번호, 프레임 수] 반복.
         /// 실기: 21가지 무늬 모두 움직인다(예: 0x08887F94 햇살 = 6장 × 16프레임). 다른 층(띠·테두리·액자 배경)은 움직이지 않는다.
         /// </summary>

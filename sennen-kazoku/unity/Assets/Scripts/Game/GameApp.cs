@@ -1092,6 +1092,7 @@ namespace SennenKazoku.Game
             {
                 if (outroStart >= 0) return;   // 이미 끝 연출 중
                 outroStart = Time.time; stageBubbles.Clear(); zoomImg = null;
+                if (stageCupid != null) stageCupid.enabled = false;   // 원작: 끝 연출에서 큐피트·대사 상자가 먼저 사라진다
                 stageFade = UiKit.Box(evStage, "fadeOut", Color.black); stageFade.raycastTarget = false;
                 UiKit.SetPx(stageFade.rectTransform, 0, 0, evStage.sizeDelta.x, evStage.sizeDelta.y);
                 stageFade.color = new Color(0, 0, 0, 0); stageFade.transform.SetAsLastSibling();
@@ -1116,13 +1117,17 @@ namespace SennenKazoku.Game
             stageBack = v.Scene.Back.Length > 0 ? Raw("back", v.Scene.Back, 0, 0, LW, LH, top) : null; stageBackKey = v.Scene.Back;
             Raw("pic", v.Scene.Pic, 56, 40, 128, 64, new Rect(0, 0, 1, 1));
             Raw("frame", "ev_frame", 0, 0, LW, LH, top);
+            evStage.gameObject.AddComponent<RectMask2D>();   // 내려오는 띠 등 장면 밖은 잘라 낸다
+            stageBand = null; stageBandText = null;
             if (v.Scene.Band.Length > 0)
             {
-                Raw("band", v.Scene.Band, 0, 0, LW, 24, new Rect(0, 0, 1, 1));
-                var bt = UiKit.Label(evStage, "bandText", v.Title, Mathf.RoundToInt(10 * k), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
-                UiKit.SetPx(bt.rectTransform, 24 * k, 3 * k, (LW - 48) * k, 18 * k);
+                // 띠 그림은 240×30 (다 내려온 띠가 1~28줄). 옛 그림 팩(240×24)도 그대로 그린다.
+                var btex = art.Texture(v.Scene.Band); float bh = btex != null && btex.height >= 30 ? 30 : 24;
+                stageBand = Raw("band", v.Scene.Band, 0, 0, LW, bh, new Rect(0, 0, 1, 1));
+                stageBandText = UiKit.Label(evStage, "bandText", v.Title, Mathf.RoundToInt(10 * k), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
+                UiKit.SetPx(stageBandText.rectTransform, 24 * k, 5 * k, (LW - 48) * k, 18 * k);
             }
-            Raw("cupid", "ev_cupid", 8, 64, 32, 40, new Rect(0, 0, 1, 1));   // 원작 큐피트 자리 (OBJ 14~32, 70~100)
+            stageCupid = Raw("cupid", "ev_cupid", 8, 64, 32, 40, new Rect(0, 0, 1, 1));   // 원작 큐피트 자리 (OBJ 14~32, 70~100)
             // 인물·말풍선 (원작 자리·움직임 — Core.SceneAnim). 움직임은 UpdateStageAnim 이 매 프레임 바꾼다.
             stageK = k; stageBubbles.Clear(); zoomImg = null;
             if (bubbleEvent != v.EventId) { bubbleEvent = v.EventId; bubbleStart.Clear(); zoomKey = ""; stageStart = Time.time; }
@@ -1132,6 +1137,7 @@ namespace SennenKazoku.Game
             stageFade = UiKit.Box(evStage, "fade", Color.black); stageFade.raycastTarget = false;
             UiKit.SetPx(stageFade.rectTransform, 0, 0, LW * k, LH * k);
             int n = v.Scene.Actors.Count;
+            bool anyZoom = v.Scene.Actors.Exists(x => x.Zoom);
             for (int i = 0; i < n; i++)
             {
                 var a = v.Scene.Actors[i]; float cx = SceneAnim.ActorCenterX(i, n), foot = SceneAnim.ActorFoot;
@@ -1163,14 +1169,15 @@ namespace SennenKazoku.Game
                         UiKit.SetPx(im.rectTransform, (cx - fw / 2f) * k, (foot - fh) * k, fw * k, fh * k);
                     }
                 }
-                if (a.Anim >= 0 && a.Anim <= 0x14 && !a.Zoom)
+                // 확대 중(실기 OAM): 확대된 인물의 말풍선만 남아 확대 가운데와 함께 옮겨 가고(크기는 그대로), 다른 인물 말풍선은 숨는다
+                if (a.Anim >= 0 && a.Anim <= 0x14 && (!anyZoom || a.Zoom))
                 {
                     string key = i + "|" + a.Anim; float t0;
                     if (!bubbleStart.TryGetValue(key, out t0)) { t0 = Time.time; bubbleStart[key] = t0; }
                     if (emoTable.Frame(a.Anim, 0) != -2)
                     {
                         var ri = Raw("emo" + i, "ev_emo_" + a.Anim.ToString("X2"), cx - 16 + emoTable.CropX, emoTable.CropY, emoTable.CropW, emoTable.CropH, new Rect(0, 0, 1, 1));
-                        if (ri != null) stageBubbles.Add(new StageBubble { Img = ri, Emo = a.Anim, Start = t0 });
+                        if (ri != null) stageBubbles.Add(new StageBubble { Img = ri, Emo = a.Anim, Start = t0, Follow = a.Zoom, X = cx - 16 + emoTable.CropX, Cx = cx });
                     }
                     else if (art.Texture("ev_emo_" + a.Anim.ToString("X2")) != null)   // 옛 그림 팩(움직임 표 없음): 정지 그림 32×19
                         Raw("emo" + i, "ev_emo_" + a.Anim.ToString("X2"), cx - 16, 40, 32, 19, new Rect(0, 0, 1, 1));
@@ -1180,13 +1187,13 @@ namespace SennenKazoku.Game
             UpdateStageAnim();
         }
 
-        sealed class StageBubble { public RawImage Img; public int Emo; public float Start; }
+        sealed class StageBubble { public RawImage Img; public int Emo; public float Start, X, Cx; public bool Follow; }
         readonly List<StageBubble> stageBubbles = new List<StageBubble>();
         readonly Dictionary<string, float> bubbleStart = new Dictionary<string, float>();   // 같은 사건·같은 동작이면 장이 바뀌어도 움직임을 이어 간다
         string bubbleEvent = "", zoomKey = "";
         SceneAnim.EmotionTable emoTable;
         Image zoomImg, stageFade; float zoomStart, zoomCx, zoomW, zoomH, stageK = 1, stageStart;
-        RawImage stageBack; string stageBackKey = ""; SceneAnim.BackTable backTable; float outroStart = -1;
+        RawImage stageBack, stageBand, stageCupid; Text stageBandText; string stageBackKey = ""; SceneAnim.BackTable backTable; float outroStart = -1;
 
         /// <summary>사건 장면 움직임: 말풍선 그림 순서(원작 프레임 표)와 확대 진행(60프레임/초).</summary>
         void UpdateStageAnim()
@@ -1199,6 +1206,11 @@ namespace SennenKazoku.Game
                 var t = f >= 0 ? art.Texture("ev_emo_" + b.Emo.ToString("X2") + "_" + f) : null;
                 b.Img.enabled = t != null;
                 if (t != null) b.Img.texture = t;
+                if (b.Follow)
+                {
+                    SceneAnim.ZoomPlace(b.Cx, (Time.time - zoomStart) * 60f, out float _, out float zx, out float zy);
+                    b.Img.rectTransform.anchoredPosition = new Vector2((b.X + zx - b.Cx) * stageK, -(emoTable.CropY + zy - 68f) * stageK);
+                }
             }
             if (outroStart >= 0)
             {
@@ -1214,6 +1226,19 @@ namespace SennenKazoku.Game
                 int bf = backTable.Frame(key, (int)fr);
                 var bt = bf >= 0 ? art.Texture(stageBackKey + "_" + bf) : null;
                 if (bt != null) stageBack.texture = bt;
+            }
+            // 제목 띠 내려오기·큐피트 올라오기와 떠다니기 (SceneAnim.BandOffset·CupidOffset)
+            if (stageBand != null)
+            {
+                int by = SceneAnim.BandOffset(fr);
+                stageBand.rectTransform.anchoredPosition = new Vector2(0, -by * stageK);
+                if (stageBandText != null) stageBandText.rectTransform.anchoredPosition = new Vector2(24 * stageK, -(5 + by) * stageK);
+            }
+            if (stageCupid != null)
+            {
+                bool on = SceneAnim.CupidOffset(fr, out int cy);
+                stageCupid.enabled = on;
+                stageCupid.rectTransform.anchoredPosition = new Vector2(8 * stageK, -(64 + cy) * stageK);
             }
             if (stageFade != null)
             {

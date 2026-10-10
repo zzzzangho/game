@@ -664,6 +664,12 @@ namespace SennenKazoku.Tests
                 int[] ot = { 20, 24, 26, 30, 32, 36, 38, 42, 44, 48, 50, 54, 56, 60, 62, 66 };
                 for (int j = 0; j < ot.Length; j++) T.Eq(SceneAnim.FadeStep(ot[j]), j + 1);
                 T.Eq(SceneAnim.FadeStep(18), 0);
+                // 제목 띠(실기 매 프레임, 화면이 검게 된 3020프레임 기준): 3088 −28 · 3096 +1 · 3102~3104 −10 · 3110 +1 · 3117 0(멈춤)
+                T.Eq(SceneAnim.BandOffset(68), -28); T.Eq(SceneAnim.BandOffset(76), 1); T.Eq(SceneAnim.BandOffset(83), -10); T.Eq(SceneAnim.BandOffset(90), 1);
+                T.Eq(SceneAnim.BandOffset(97), 0); T.Eq(SceneAnim.BandOffset(300), 0); T.True(SceneAnim.BandOffset(60) <= -28);
+                // 큐피트: 3168 위 끝 13 · 3170 9 · 3172 5 · 3180 6 · 3188 7 · 3196 6 · 3204 5 (정지 그림은 5)
+                int cdy; T.True(!SceneAnim.CupidOffset(147, out cdy));
+                foreach (var (ct, cw) in new[] { (148, 8), (150, 4), (152, 0), (160, 1), (168, 2), (176, 1), (184, 0) }) { T.True(SceneAnim.CupidOffset(ct, out cdy)); T.Eq(cdy, cw); }
                 // 확대(1A 0F 00 02): 2프레임 간격 OAM — 역배율 244·196·148·128, 두 배 크기 OBJ 가운데 (133,67)·(127,64)·(121,60)·(120,60)
                 int[] pa = { 244, 196, 148, 128 }; int[,] ctr = { { 133, 67 }, { 127, 64 }, { 121, 60 }, { 120, 60 } };
                 for (int j = 0; j < 4; j++)

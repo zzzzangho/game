@@ -10,7 +10,7 @@ BG3 액자 안 배경 그림(56,40 에서 128×64) · OBJ 인물·큐피트·감
 헤드리스 캡처(capture.c)로 층 하나만 켜서 찍는다. 제목 글은 R 의 +0x0C 를 빈 글로 돌려 띠만 남긴다.
 
   python3 event_art.py <capture 실행 파일> <ROM> <세이브상태(.state, 확장자 빼고)> <기록 R 주소> <사건 시작 뒤 프레임> <orig_rules.json> <출력 디렉터리>
-출력(앱 LocalArt 이름, .png.bytes): ev_pic_<포인터> (128×64, BG3) · ev_band_<포인터> (240×24, BG0 위쪽, 글 없음) ·
+출력(앱 LocalArt 이름, .png.bytes): ev_pic_<포인터> (128×64, BG3) · ev_band_<포인터> (240×30, BG0 위쪽, 글 없음) ·
       ev_back_<포인터> (240×160, BG2) · ev_frame (BG1) · ev_cupid (32×40, OBJ) · ev_emo_<번호> (감정 말풍선 32×19, OBJ) ·
       ev_npc_<인자 5바이트> (가족이 아닌 사람 32×48, OBJ) — 회색 바탕(99,99,99)은 투명.
 감정 말풍선: 기록 R 대사 머리의 "1A 0E 02 (동작) (인물)" 의 동작 번호를 0~0x14 로 바꿔 OBJ 층을 찍고 첫 인물 머리 위
@@ -102,11 +102,16 @@ def backs(shot, with_, values, out):
     print('뒤 무늬 움직임', sum(1 for c in table.values() if len(c) > 1), '/', len(table))
 
 
+def bands(shot, with_, values, save):
+    """제목 띠(BG0 위쪽): 다 내려온 띠는 화면 1~28줄을 차지한다(실기 — 예전 24줄 자르기는 아래가 잘렸다). 240×30 으로 자른다."""
+    for v in values: save(shot(0, with_(0x20, v)).crop((0, 0, 240, 30)), 'ev_band_%08X' % v)
+
+
 def main():
     if len(sys.argv) < 8:
         print(__doc__); return 2
     cap, rom_path, state, rec, frames, rules_path, out = sys.argv[1:8]
-    only_emo = len(sys.argv) > 8 and sys.argv[8] in ('emo', 'back')   # 말풍선만(emo) · 뒤 무늬 움직임만(back) 다시 뽑기
+    only_emo = len(sys.argv) > 8 and sys.argv[8] in ('emo', 'back', 'band')   # 말풍선만(emo) · 뒤 무늬 움직임만(back) · 제목 띠만(band) 다시 뽑기
     only_back = len(sys.argv) > 8 and sys.argv[8] == 'back'
     rec, frames = int(rec, 16), int(frames)
     os.makedirs(out, exist_ok=True)
@@ -146,12 +151,14 @@ def main():
     if not only_emo: save(shot(1, with_(0x28, base[3][1])), 'ev_frame')
     if not only_emo:
         for v in sorted(filter(ok, vals[0x28])): save(shot(3, with_(0x28, v)).crop((56, 40, 184, 104)), 'ev_pic_%08X' % v, False)
-        for v in sorted(filter(ok, vals[0x20])): save(shot(0, with_(0x20, v)).crop((0, 0, 240, 24)), 'ev_band_%08X' % v)
+        bands(shot, with_, sorted(filter(ok, vals[0x20])), save)
         backs(shot, with_, sorted(filter(ok, vals[0x24])), out)
         save(shot(4, with_(0x28, base[3][1])).crop((8, 64, 40, 104)), 'ev_cupid')   # 큐피트 (OBJ, 화면 14~32, 70~100)
     dlg = struct.unpack_from('<I', rom, R + 0x14)[0] - 0x08000000
     toks, i = [], rom.find(b'\x1a\x0e\x02', dlg, dlg + 64)
     while i >= 0 and i < dlg + 64: toks.append(i); i = rom.find(b'\x1a\x0e\x02', i + 1, dlg + 64)
+    if len(sys.argv) > 8 and sys.argv[8] == 'band':
+        bands(shot, with_, sorted(filter(ok, vals[0x20])), save); return 0
     if only_back:
         backs(shot, with_, sorted(filter(ok, vals[0x24])), out); return 0
     emotions(shot, with_, base, toks, save, out)
