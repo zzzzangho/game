@@ -714,6 +714,7 @@ namespace SennenKazoku.Core.Orig
         {
             var m = Game.Mem; var f = Family;
             var old = new Dictionary<int, Person>(); foreach (var p in f.Members) old[p.Id] = p;
+            f.BodySet = Math.Min(3, (int)m.R8(0x0202C692));   // 집 화면 몸통 세트 (Family.BodySet)
             f.Members.Clear();
             for (int n = 0; n < 8; n++)
             {
@@ -722,7 +723,7 @@ namespace SennenKazoku.Core.Orig
                 int id = (int)m.R16(a + 0x3C);
                 Person p; if (!old.TryGetValue(id, out p)) p = new Person { Id = id };
                 // 외형: 앱에서 고른 외형(내가 아는 가족 입력)이 없으면 원작 레코드 외형을 쓴다(날마다 다시 — 나이에 따라 칸·색이 바뀐다)
-                if (p.Look == null || p.Look.Preset == "orig") p.Look = OrigLook(n);
+                if (p.Look == null || p.Look.Preset == "orig") p.Look = OrigLook(n, 0xFF, f.BodySet);
                 p.Gender = (int)m.R8(a + 0x31) == 0 ? 0 : 1;
                 OrigDate.Get(m, a + 0x2E, out int by, out int bm, out int bd);
                 p.BirthDay = SafeDay(by, bm, bd);

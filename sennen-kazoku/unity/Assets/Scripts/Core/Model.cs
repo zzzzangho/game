@@ -203,6 +203,11 @@ namespace SennenKazoku.Core
         public int Gratitude;                                  // 신님에게 감사 (개수) — 원작 세션: 감사의 마음 0x0202C670
         public int GodRank = -1;                               // 원작 세션: 신님 랭크 0x0202C66E (투영 전용, 저장하지 않음)
         public int HeadId = -1;                                // 세대주
+        /// <summary>
+        /// 몸통 세트(원작 가족 +0x682 = 0x0202C692): 집 화면 인물 그리기(0x0801239A 등)가 몸통 자원 세트(0x080973F4 셋째 인자)·색 표로 넘기는 값.
+        /// 원작은 시작부터 100·400·700년이 지날 때 하나씩 올린다(0x080A113C). 사건 장면은 늘 0 을 쓴다. 투영 전용(원작 세션), 저장하지 않음.
+        /// </summary>
+        public int BodySet;
         public Dictionary<string, int> Items = new Dictionary<string, int>();   // 화살·아이템 보유 수
         public int YearsAsFamily { get { return GameDate.AgeYears(StartDay, Today); } }
         public List<Person> Members = new List<Person>();

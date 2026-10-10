@@ -838,7 +838,7 @@ namespace SennenKazoku.Game
                 var ages = AgeSlots.ForAge(p.Age(session.Family.Today));
                 var pose = back ? (frame % 2 == 0 ? CharacterComposer.Pose.BackA : CharacterComposer.Pose.BackB)
                                 : (frame % 2 == 0 ? CharacterComposer.Pose.FrontA : CharacterComposer.Pose.FrontB);
-                var s = art.LookSprite(p.Look, ages, pose, 0);
+                var s = art.LookSprite(p.Look, ages, pose, session.Family.BodySet);   // 집 화면 몸통 세트 (원작 가족 +0x682)
                 if (s != null) return s;
             }
             return art.Frame(p.Character, back ? "back" : "front", frame);
