@@ -771,6 +771,15 @@ namespace SennenKazoku.Tests
                         Console.WriteLine("       예고 " + p.Name + " 255: " + (hi == null ? "-" : hi.Title + " " + EffectChange.Format(s.Family, hi.Changes)) + " / 0: " + (lo == null ? "-" : lo.Title + " " + EffectChange.Format(s.Family, lo.Changes)));
                     }
                     T.True(mem0 == Convert.ToBase64String(s.Game.Mem.SaveBlock()) && seed0 == s.Game.Mem.R32(0x02000000), "결과 예고가 원작 메모리를 바꿨다");
+                    // 화면 개입(화살·고리)이 원작 메모리에 들어가 다음 날에도 남는지
+                    var who = s.Family.Members[0]; int s0 = who.Stats[0];
+                    T.True(Interventions.Count(s.Family, "arrow.encourage") == 5, "시작 화살 5개");
+                    s.Family.Items["item.ring.int"] = 1; T.True(Interventions.Use(s.Family, who, "item.ring.int") == null, "고리 사용");
+                    who.ArrowFlags = 0; T.True(Interventions.Use(s.Family, who, "arrow.encourage") == null, "화살 사용");
+                    s.StepDay(); while (s.Paused) s.Advance();
+                    var who2 = s.Family.Get(who.Id);
+                    Console.WriteLine("       개입: 지력 " + s0 + " → 고리 → 다음 날 " + who2.Stats[0] + ", 힘내라 화살 남은 수 " + Interventions.Count(s.Family, "arrow.encourage") + ", 화살 표시 " + who2.ArrowFlags);
+                    T.True(who2.Stats[0] >= Math.Min(Stat.Max, s0 + 800) - 50 && Interventions.Count(s.Family, "arrow.encourage") == 4, "개입이 원작 메모리에 남지 않음");
                     int shown = 0, withText = 0, pagesTotal = 0; string sample = null;
                     void Drain(SennenKazoku.Core.Orig.OrigSession ss)
                     {

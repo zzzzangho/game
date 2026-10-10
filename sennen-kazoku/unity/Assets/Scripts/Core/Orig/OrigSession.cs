@@ -51,6 +51,7 @@ namespace SennenKazoku.Core.Orig
             OrigNewGame.Recommended(vm, year, month, day);
             if (string.IsNullOrEmpty(surname)) surname = Surnames[(int)(seed % (uint)Surnames.Length)];
             var f = new Family { Name = surname };
+            GiveStartingArrows(m);
             var s = new OrigSession(rules, text, f, m);
             s.PrepareSave();
             return s;
@@ -92,6 +93,7 @@ namespace SennenKazoku.Core.Orig
             OrigNewGame.Custom(vm, GameDate.Year(setup.StartDay), GameDate.Month(setup.StartDay), GameDate.Day(setup.StartDay), cms);
             string surname = string.IsNullOrEmpty(setup.Surname) ? Surnames[(int)(seed % (uint)Surnames.Length)] : setup.Surname;
             var f = new Family { Name = surname };
+            GiveStartingArrows(m);
             // 원작 가족 레코드 만들기는 설정 블록 순서대로 레코드를 만든다 → n 번째 레코드 = n 번째 구성원
             for (int n = 0; n < ordered.Count && n < 8; n++)
                 if (OrigGame.Present(m, n) && !string.IsNullOrEmpty(ordered[n].Name)) f.OrigNames[(int)m.R16(OrigMem.PersonAddr(n) + 0x3C)] = ordered[n].Name;
@@ -104,6 +106,9 @@ namespace SennenKazoku.Core.Orig
             s.PrepareSave();
             return s;
         }
+
+        /// <summary>시작 화살: 원작 큐피트 튜토리얼이 힘내라·진정해 화살을 각 5개 준다(원작 화면). 튜토리얼 화면은 옮기지 않아 보유 수(0x0202C640)만 넣는다.</summary>
+        static void GiveStartingArrows(OrigMem m) { m.W8(0x0202C640, 5); m.W8(0x0202C641, 5); }
 
         static readonly byte[] DefaultLookM = { 0x00, 0x43, 0x22, 0x00, 0x00, 0x05, 0x43, 0x01, 0x00, 0x02, 0x03, 0, 0, 0, 0, 0 };
         static readonly byte[] DefaultLookF = { 0x0E, 0x12, 0x12, 0x00, 0x12, 0x22, 0x12, 0x0F, 0x00, 0x02, 0x03, 0, 0, 0, 0, 0 };
@@ -126,6 +131,7 @@ namespace SennenKazoku.Core.Orig
         /// <summary>원작 메모리(세이브 영역 + 난수 seed + 장면이 날을 끝냈는지)를 Family.OrigState 에 적는다.</summary>
         public void PrepareSave()
         {
+            SyncIn(); Project();
             var blk = Game.Mem.SaveBlock();
             var b = new byte[blk.Length + 5];
             Array.Copy(blk, b, blk.Length);
@@ -141,7 +147,7 @@ namespace SennenKazoku.Core.Orig
         {
             if (cur != null) return false;
             if (pending.Count > 0) { StartNext(); return true; }
-            SyncArrows();
+            SyncIn();
             Game.NextDate();
             foreach (var e in Game.TickDay()) pending.Enqueue(e);
             Project();
@@ -149,17 +155,35 @@ namespace SennenKazoku.Core.Orig
             return false;
         }
 
-        /// <summary>화면에서 쏜 화살(Interventions — 원작 0x080244A0 과 같은 비트 규칙)을 원작 레코드 +0x69 에 옮긴다.</summary>
-        void SyncArrows()
+        /// <summary>
+        /// 화면에서 바꾼 값(화살·아이템 — Interventions)을 원작 메모리에 옮긴다. 마지막 투영 값과 다른 것만 쓴다.
+        ///  - 화살 표시 → 레코드 +0x69 (원작 0x080244A0 과 같은 비트 규칙), 화살 보유 수 → 0x0202C640 [0 힘내라, 1 진정해] (실기에서 확인)
+        ///  - 고리(능력치) → +0x50~, 하트 열매·독 하트 열매 → +0x5B, 행복 상자 → 무드 0x0202C6AE
+        /// 아이템 효과 값은 참고 자료(item-effects.json)의 확인된 규칙이고, 원작 아이템 함수를 그대로 부른 것은 아니다(원작 아이템 번호·함수 미확인).
+        /// </summary>
+        void SyncIn()
         {
+            var m = Game.Mem;
             for (int n = 0; n < 8; n++)
             {
-                if (!OrigGame.Present(Game.Mem, n)) continue;
+                if (!OrigGame.Present(m, n)) continue;
                 uint p = OrigMem.PersonAddr(n);
-                var q = Family.Get((int)Game.Mem.R16(p + 0x3C));
-                if (q != null && Game.Mem.R8(p + 0x69) != (uint)q.ArrowFlags) Game.Mem.W8(p + 0x69, (uint)q.ArrowFlags & 0xFF);
+                var q = Family.Get((int)m.R16(p + 0x3C)); Snap sn;
+                if (q == null || !snaps.TryGetValue(q.Id, out sn)) continue;
+                if (q.ArrowFlags != sn.Arrow) m.W8(p + 0x69, (uint)q.ArrowFlags & 0xFF);
+                for (int i = 0; i < 4; i++) if (q.Stats[i] != sn.Stats[i]) m.W16(p + 0x50 + 2 * (uint)i, (uint)Math.Max(0, Math.Min(Stat.Max, q.Stats[i])));
+                if (q.Hearts != sn.Hearts) m.W8(p + 0x5B, (uint)Math.Max(0, Math.Min(255, q.Hearts * 255 / Person.HeartMax)));
             }
+            if (Family.Mood != famSnap.Mood) m.W8(0x0202C6AE, (uint)Math.Max(0, Math.Min(255, Family.Mood)));
+            for (int k = 0; k < 2; k++)
+                if (Interventions.Count(Family, ArrowItems[k]) != famSnap.Arrows[k]) m.W8(0x0202C640 + (uint)k, (uint)Math.Max(0, Math.Min(255, Interventions.Count(Family, ArrowItems[k]))));
         }
+
+        static readonly string[] ArrowItems = { "arrow.encourage", "arrow.calm" };
+        sealed class Snap { public int Arrow, Hearts; public int[] Stats = new int[4]; }
+        readonly Dictionary<int, Snap> snaps = new Dictionary<int, Snap>();
+        sealed class FamSnap { public int Mood; public int[] Arrows = new int[2]; }
+        readonly FamSnap famSnap = new FamSnap();
 
         void StartNext()
         {
@@ -229,6 +253,7 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         public Prediction Predict(int personId, bool max)
         {
+            SyncIn();   // 화면에서 바꾼 값을 먼저 원작 메모리에 (가족 목록은 다시 만들지 않는다 — 화면이 목록을 도는 중일 수 있다)
             var m = Game.Mem; int n = -1;
             for (int k = 0; k < 8; k++) if (OrigGame.Present(m, k) && (int)m.R16(OrigMem.PersonAddr(k) + 0x3C) == personId) { n = k; break; }
             if (n < 0 || m.R16(OrigMem.PersonAddr(n) + 0x80) == 0xFFFF) return null;
@@ -290,10 +315,13 @@ namespace SennenKazoku.Core.Orig
                 p.Alive = true;
                 p.Name = NameOf(id, p.Gender);
                 f.Members.Add(p);
+                snaps[id] = new Snap { Arrow = p.ArrowFlags, Hearts = p.Hearts, Stats = (int[])p.Stats.Clone() };
             }
             f.HeadId = (int)m.R16(0x0202C67C);
             // 가족 값 (가족 기준 0x0202C010: +0x69E 무드 · +0x69F 집 등급 · +0x6A8 자산 — 참고 자료 family-save-layout 과 0x08111D54)
             f.Mood = (int)m.R8(0x0202C6AE); f.HouseGrade = (int)m.R8(0x0202C6AF); f.Assets = m.R32(0x0202C6B8);
+            for (int k = 0; k < 2; k++) { f.Items[ArrowItems[k]] = (int)m.R8(0x0202C640 + (uint)k); famSnap.Arrows[k] = f.Items[ArrowItems[k]]; }
+            famSnap.Mood = f.Mood;
             OrigDate.Get(m, OrigMem.Date, out int y, out int mo, out int d);
             f.Today = SafeDay(y, mo, d);
             OrigDate.Get(m, 0x0202C688, out int sy, out int sm, out int sd);
