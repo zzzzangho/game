@@ -53,6 +53,8 @@ namespace SennenKazoku.Core.Orig
             // 장면 앞뒤의 신님 쪽 값 (결과 스크립트가 바꾼다): 감사의 마음 0x0202C670, 신님 랭크 0x0202C66E, 화살·아이템 보유 0x0202C640~0x0202C65F
             public uint Points0, Points1, Rank0, Rank1;
             public byte[] Inv0 = new byte[32], Inv1 = new byte[32];
+            /// <summary>효과 함수 결과 3단어 — 첫 단어가 장면 끝 종류(2 = 가문이 끊김, OrigEvents.RunScene 참고).</summary>
+            public uint[] Result = new uint[3];
         }
 
         public OrigGame(OrigMem mem, OrigRules rules) { Mem = mem; Rules = rules; Vm = rules.CreateVm(mem); }
@@ -233,7 +235,8 @@ namespace SennenKazoku.Core.Orig
                     PersonId = id, Date = date0 };
                 de.Points0 = Mem.R32(0x0202C670); de.Rank0 = Mem.R16(0x0202C66E);
                 for (uint i = 0; i < 32; i++) de.Inv0[i] = (byte)Mem.R8(0x0202C640 + i);
-                OrigEvents.RunScene(Vm, Rules, data, id, de.Slots);
+                OrigEvents.RunScene(Vm, Rules, data, id, de.Slots, de.Result);
+                if (de.Result[0] >= 1 && de.Result[0] <= 4) EndCodes.Add(de.Result[0] + "@" + data.ToString("X8"));
                 de.Points1 = Mem.R32(0x0202C670); de.Rank1 = Mem.R16(0x0202C66E);
                 for (uint i = 0; i < 32; i++) de.Inv1[i] = (byte)Mem.R8(0x0202C640 + i);
                 evs.Add(de);
@@ -264,6 +267,8 @@ namespace SennenKazoku.Core.Orig
 
         /// <summary>마지막 사건 장면 복귀(0x080111B8)가 그날을 끝내고 날짜를 다음 날 06:00 으로 넘겼는지. 다음 NextDate 는 날짜를 더하지 않는다.</summary>
         public bool SceneEndedDay { get; private set; }
+        /// <summary>시험용: 보통 복귀가 아닌 장면 끝 종류가 나온 사건 ("종류@결과 기록").</summary>
+        public readonly List<string> EndCodes = new List<string>();
         /// <summary>저장에서 이어 할 때: 마지막 장면이 날을 끝낸 상태였으면 다음 날을 06:00 부터.</summary>
         public void ResumeMorning() { SceneEndedDay = true; }
 

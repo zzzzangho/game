@@ -1020,6 +1020,7 @@ namespace SennenKazoku.Tests
                     }
                     Console.WriteLine("       " + days + "일, 사건 " + nev + " (종류별 " + string.Join(",", kinds.Select(kv => kv.Key + ":" + kv.Value)) + "), " + sw.ElapsedMilliseconds + "ms");
                     Console.WriteLine("       해마다 사건: " + string.Join(" ", perYear));
+                    Console.WriteLine("       보통 복귀가 아닌 장면 끝(종류@결과 기록): " + (g.EndCodes.Count == 0 ? "없음" : string.Join(" ", g.EndCodes.Take(30))) + ", 감사의 마음 " + m.R32(0x0202C670) + ", 신님 랭크 " + m.R16(0x0202C66E));
                 });
             var daysDir = Environment.GetEnvironmentVariable("SK_DAYS_DIR");
             if (!string.IsNullOrEmpty(origDir) && !string.IsNullOrEmpty(daysDir) && Directory.Exists(daysDir))

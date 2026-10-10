@@ -55,7 +55,11 @@ namespace SennenKazoku.Core.Orig
         public static uint RunScene(OrigVm vm, OrigRules rules, uint data, uint personId) { return RunScene(vm, rules, data, personId, null); }
 
         /// <param name="slotsOut">있으면 장면 시작 때 만든 슬롯표(28칸)를 담는다 — 대사의 인물 이름 자리(제어 토큰 1A 06)를 채울 때 쓴다.</param>
-        public static uint RunScene(OrigVm vm, OrigRules rules, uint data, uint personId, uint[] slotsOut)
+        public static uint RunScene(OrigVm vm, OrigRules rules, uint data, uint personId, uint[] slotsOut) { return RunScene(vm, rules, data, personId, slotsOut, null); }
+
+        /// <param name="resultOut">있으면 효과 함수의 결과 3단어(원작은 장면 +0x288 에 옮긴다). 첫 단어 = 장면 끝 종류 (0x0804DB9C~):
+        /// 1 메인 장면(종류 3), 2 가문이 끊긴 장면(0x0809AF60(5,2) → 0x0809EAAC), 3 장면 종류 4, 4 → 끝 종류 7, 그 밖 → 보통 복귀 0x080111B8.</param>
+        public static uint RunScene(OrigVm vm, OrigRules rules, uint data, uint personId, uint[] slotsOut, uint[] resultOut)
         {
             // 장면 시작 0x0804C66C 의 규칙 부분 (원작 실행 중단점으로 확인: 시작 함수 전에 0x0804C76C 에서 슬롯표를 다시 만든다):
             // 0x0800E57C — 인물 레코드 앞 0x38 바이트를 가계 표(0x0202EB9C + 60×번호)에 옮겨 적기,
@@ -74,7 +78,8 @@ namespace SennenKazoku.Core.Orig
             // 대사 끝의 1A 12 00 → 결과 스크립트(감사·신님 랭크·랭크 보상). 원작은 장면에서 대사를 보여 주며 실행하고,
             // 효과 함수는 그 뒤 장면 끝에서 돈다 — 실기 감시: 대사 끝(명령 0) 7811 → 감사 8051 → 랭크·보상 8241 → 화살 표시 해제(효과 쪽 0x0802886A) 9560 프레임.
             OrigResultScript.Run(vm, personId, data);
-            RunEffect(vm, rules, data, v);
+            var res = RunEffect(vm, rules, data, v);
+            if (resultOut != null) for (int k = 0; k < 3 && k < resultOut.Length; k++) resultOut[k] = res[k];
             if (tr) System.Console.WriteLine("    [SC] 효과 뒤 +0x69=" + vm.Mem.R8(pr0 + 0x69));
             vm.Call("080111B8", 0xFFFFFFFD, personId, 1, 0, v, 0, data);
             return v;
