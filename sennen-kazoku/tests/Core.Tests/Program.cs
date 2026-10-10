@@ -1016,7 +1016,7 @@ namespace SennenKazoku.Tests
                             Console.WriteLine("       " + ey + "-" + em + "-" + ed + " 멈춤: " + ex.Message); break;
                         }
                         var f = Fam();
-                        if (f != last) { SennenKazoku.Core.Orig.OrigDate.Get(m, SennenKazoku.Core.Orig.OrigMem.Date, out int ey, out int em, out int ed); Console.WriteLine("       " + ey + "-" + em + "-" + ed + " 가족: " + f); last = f; }
+                        if (f != last) { SennenKazoku.Core.Orig.OrigDate.Get(m, SennenKazoku.Core.Orig.OrigMem.Date, out int ey, out int em, out int ed); Console.WriteLine("       " + ey + "-" + em + "-" + ed + " 가족: " + f + " (가장 " + m.R16(0x0202C67C) + ")"); last = f; }
                     }
                     Console.WriteLine("       " + days + "일, 사건 " + nev + " (종류별 " + string.Join(",", kinds.Select(kv => kv.Key + ":" + kv.Value)) + "), " + sw.ElapsedMilliseconds + "ms");
                     Console.WriteLine("       해마다 사건: " + string.Join(" ", perYear));
