@@ -9,6 +9,12 @@ B = 0x08000000
 M32 = 0xFFFFFFFF
 
 
+
+# 지도에 없는 주소를 읽을 수 있는 원작 함수 — 여기의 메모리 읽기는 열린 버스 값을 함께 싣는다(실행기 OrigMem.Read)
+#   0x08118B9C 인물 스킬 합: 없는 인물(0)이면 BIOS 열린 버스(0xE3A02004)의 바이트 0xE3 이 스킬 번호가 되어
+#   스킬 표 0x088A309C 의 227칸(표 뒤 글자 데이터 0xFF1A0000)을 포인터로 읽는다
+OPENBUS = {0x08118B9C}
+
 class Unsupported(Exception):
     pass
 
@@ -205,7 +211,13 @@ class Lifter:
                 return v & M32
             v = ('ram', size, addr)
             return ('sext', v, 8 * size) if signed and size < 4 else v
-        v = ('load', size, addr)
+        if getattr(self, 'cur_fn', None) in OPENBUS:
+            # 원작이 표 밖 칸에서 얻은 엉뚱한 포인터를 읽는 함수: 지도에 없는 주소의 값은 열린 버스 —
+            # ROM 에서 도는 THUMB 코드면 지금 명령어 +4 의 반워드가 위아래로 겹친 값 (GBATEK "Unpredictable Things")
+            h = self.u(self.cur_pc + 4, 2)
+            v = ('load', size, addr, h | (h << 16))
+        else:
+            v = ('load', size, addr)
         return ('sext', v, 8 * size) if signed and size < 4 else v
 
     def store(self, s, addr, val, size):
@@ -532,8 +544,9 @@ class Lifter:
                 self.setreg(s, ops[0], v); s.flags = (v, 0)
             elif mn in ('ldr', 'ldrh', 'ldrb', 'ldrsh', 'ldrsb'):
                 size = {'ldr': 4, 'ldrh': 2, 'ldrb': 1, 'ldrsh': 2, 'ldrsb': 1}[mn]
-                addr = self.memaddr(s, ops[1])
+                addr = self.memaddr(s, ops[1]); self.cur_pc, self.cur_fn = pc, s.fns[-1]
                 self.setreg(s, ops[0], self.eager(self.load(s, addr, size, mn.startswith('ldrs')), pending))
+                self.cur_fn = None
             elif mn in ('str', 'strh', 'strb'):
                 size = {'str': 4, 'strh': 2, 'strb': 1}[mn]
                 addr = self.memaddr(s, ops[1])

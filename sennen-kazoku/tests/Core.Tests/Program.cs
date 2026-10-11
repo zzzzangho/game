@@ -11,6 +11,8 @@ namespace SennenKazoku.Tests
         public static int Pass, Fail;
         public static void Run(string name, Action a)
         {
+            var only = Environment.GetEnvironmentVariable("SK_ONLY");   // 이름에 이 글이 든 검사만 (빠른 반복용)
+            if (!string.IsNullOrEmpty(only) && !name.Contains(only)) return;
             try { a(); Pass++; Console.WriteLine("  ok   " + name); }
             catch (Exception e) { Fail++; Console.WriteLine("  FAIL " + name + "\n       " + e.Message.Replace("\n", "\n       ")); if (Environment.GetEnvironmentVariable("SK_TRACE") != null) Console.WriteLine(e.StackTrace); }
         }
@@ -522,6 +524,89 @@ namespace SennenKazoku.Tests
                 for (int dday = 0; dday < 60; dday++) { ev2 += g2.TickDay().Count; g2.NextDate(); }
                 Console.WriteLine("       새 가족 60일 진행: 사건 " + ev2 + "번");
             }
+        }
+
+        /// <summary>
+        /// 실기 덤프(사건 메모 장면의 하루 묶음 함수 0x080CB74C 에 들어가는 순간, c_NN_080cb74e.ram — 장면 객체 r0)에서 C# 으로 그 함수를 한 번 돌려
+        /// 다음 덤프와 세이브 영역·장면 객체를 비교한다. 두 덤프 사이에는 화면만 도는 프레임이 있다(난수는 이 함수와 그 아래에서만 쓴다고 보고 비교).
+        /// </summary>
+        static void OrigOffline(string dir, string offDir)
+        {
+            var rules = SennenKazoku.Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "orig_rules.json")))));
+            rules.TreesText = File.ReadAllBytes(Path.Combine(dir, rules.TreesFile));
+            var shared = new SennenKazoku.Core.Orig.OrigMem(); rules.CreateVm(shared);
+            var files = Directory.GetFiles(offDir, "c_*_080cb74e.ram").OrderBy(f => f).ToList();
+            const uint E = SennenKazoku.Core.Orig.OrigMem.EwramBase;
+            const uint obj = SennenKazoku.Core.Orig.OrigOffline.Obj;
+            SennenKazoku.Core.Orig.OrigMem Load(string f)
+            {
+                var d = File.ReadAllBytes(f); var mm = new SennenKazoku.Core.Orig.OrigMem(); mm.ShareRom(shared);
+                Array.Copy(d, mm.Ewram, SennenKazoku.Core.Orig.OrigMem.EwramSize);
+                Array.Copy(d, (int)SennenKazoku.Core.Orig.OrigMem.EwramSize, mm.Iwram, 0, mm.Iwram.Length); return mm;
+            }
+            int Diff(SennenKazoku.Core.Orig.OrigMem mm, byte[] want, byte[] was, List<string> runs)
+            {
+                int nd = 0;
+                for (uint x = E; x < E + SennenKazoku.Core.Orig.OrigMem.EwramSize; x++)
+                {
+                    if (!OfflineScope(x, obj) || mm.Ewram[x - E] == want[x - E]) continue;
+                    uint y = x; while (y + 1 < E + SennenKazoku.Core.Orig.OrigMem.EwramSize && mm.Ewram[y + 1 - E] != want[y + 1 - E]) y++;
+                    for (uint z = x; z <= y; z++) if (OfflineScope(z, obj)) nd++;
+                    if (runs.Count < 40) runs.Add((x >= obj && x < obj + 0x10000 ? "장면+" + (x - obj).ToString("X") : x.ToString("X8")) + (y > x ? "~" + (y - x + 1) : "") + ":" + mm.Ewram[x - E].ToString("X2") + "/" + want[x - E].ToString("X2") + "(" + was[x - E].ToString("X2") + ")");
+                    x = y;
+                }
+                return nd;
+            }
+            // ① 하루 묶음 하나씩: 덤프 k 에서 Step → 덤프 k+1
+            int same = 0;
+            for (int i = 0; i + 1 < files.Count; i++)
+            {
+                var m = Load(files[i]); var vm = rules.CreateVm(m);
+                uint r;
+                try { r = SennenKazoku.Core.Orig.OrigOffline.Attach(vm).Step(); }
+                catch (SennenKazoku.Core.Orig.OrigUnmodeled ex) { Console.WriteLine("       " + Path.GetFileName(files[i]) + " 옮기지 못함: " + ex.Message); continue; }
+                var runs = new List<string>(); int nd = Diff(m, File.ReadAllBytes(files[i + 1]), File.ReadAllBytes(files[i]), runs);
+                if (nd == 0) same++;
+                Console.WriteLine("       " + Path.GetFileName(files[i]) + " 돌려준 값 " + r + " 다른 바이트 " + nd + " " + string.Join(" ", runs));
+            }
+            Console.WriteLine("       하루 묶음 " + (files.Count - 1) + "번 중 원작과 같음 " + same);
+            // ② 장면 시작(0x080C9488 첫 호출 덤프) → C# Begin(일 수는 실기 값) → 첫 하루 묶음 호출 덤프, ③ 이어서 Step 만으로 끝 덤프까지
+            var init = Directory.GetFiles(offDir, "c_*_080c948a.ram").OrderBy(f => f).FirstOrDefault();
+            bool beginOk = true, chainOk = true;
+            if (init != null && files.Count > 0)
+            {
+                var m = Load(init); var vm = rules.CreateVm(m);
+                var b0 = File.ReadAllBytes(files[0]);
+                uint days = BitConverter.ToUInt32(b0, (int)(obj + 0x9944 - E));
+                var o = SennenKazoku.Core.Orig.OrigOffline.Begin(vm, days);
+                var runs = new List<string>(); int nd = Diff(m, b0, File.ReadAllBytes(init), runs);
+                beginOk = nd == 0;
+                Console.WriteLine("       장면 시작(일 수 " + days + "): 다른 바이트 " + nd + " " + string.Join(" ", runs));
+                for (int i = 1; i < files.Count; i++)
+                {
+                    try { o.Step(); } catch (SennenKazoku.Core.Orig.OrigUnmodeled ex) { Console.WriteLine("       이어 하기 " + i + " 옮기지 못함: " + ex.Message); chainOk = false; break; }
+                    var r2 = new List<string>(); int n2 = Diff(m, File.ReadAllBytes(files[i]), File.ReadAllBytes(files[i - 1]), r2);
+                    if (n2 != 0) { chainOk = false; Console.WriteLine("       시작부터 이어 하기 " + i + "번째 묶음 다른 바이트 " + n2 + " " + string.Join(" ", r2)); break; }
+                }
+                if (chainOk) Console.WriteLine("       시작부터 이어 하기: 묶음 " + (files.Count - 1) + "번 모두 원작과 같음");
+            }
+            T.True(beginOk, "사건 메모 장면 시작이 실기와 다름");
+            T.True(same == files.Count - 1, "하루 묶음이 실기와 다름");
+            T.True(chainOk, "시작부터 이어 한 진행이 실기와 다름");
+        }
+
+        /// <summary>사건 메모 비교 범위: 세이브 영역(화면 작업표 0x0203BD20~6F · 0x0203BE00~3F · 0x0203C140~2FF(0x0203C268 날짜 칸 빼고) · 관계 슬롯표 0x0203C3E0~ 제외 — 장면 화면 초기화가 채우고 규칙은 쓰기 전에 다시 만든다),
+        /// 장면 객체 규칙 칸(+0x5658~, 화면 프레임 수 +0x9948 제외), 난수 seed.</summary>
+        static bool OfflineScope(uint x, uint obj)
+        {
+            if (x < SennenKazoku.Core.Orig.OrigMem.EwramBase + 4) return true;
+            if (x >= obj + 0x5658 && x < obj + SennenKazoku.Core.Orig.OrigOffline.ObjSize) return x != obj + 0x9948 && x != obj + 0x9949;
+            if (x < SennenKazoku.Core.Orig.OrigMem.SaveStart || x >= SennenKazoku.Core.Orig.OrigMem.SaveEnd) return false;
+            if (x >= 0x0203BD20 && x < 0x0203BD70) return false;
+            if (x >= 0x0203BE00 && x < 0x0203BE40) return false;
+            if (x >= 0x0203C140 && x < 0x0203C300 && (x < 0x0203C268 || x >= 0x0203C26C)) return false;
+            if (x >= SennenKazoku.Core.Orig.OrigMem.Slots) return false;
+            return true;
         }
 
         static void OrigDays(string dir, string daysDir)
@@ -1554,6 +1639,9 @@ namespace SennenKazoku.Tests
             var daysDir = Environment.GetEnvironmentVariable("SK_DAYS_DIR");
             if (!string.IsNullOrEmpty(origDir) && !string.IsNullOrEmpty(daysDir) && Directory.Exists(daysDir))
                 T.Run("원작 하루 진행 비교: 날 바뀜 덤프 → C# 하루 → 다음 날 바뀜 덤프 (로컬 자료 있을 때만)", () => OrigDays(origDir, daysDir));
+            var offDir = Environment.GetEnvironmentVariable("SK_OFFLINE_DIR");
+            if (!string.IsNullOrEmpty(origDir) && !string.IsNullOrEmpty(offDir) && Directory.Exists(offDir))
+                T.Run("원작 전원 꺼진 동안 진행 비교: 사건 메모 하루 묶음(0x080CB74C) 덤프 → C# → 다음 덤프 (로컬 자료 있을 때만)", () => OrigOffline(origDir, offDir));
 
             Console.WriteLine("\n통과 " + T.Pass + " / 실패 " + T.Fail);
             return T.Fail == 0 ? 0 : 1;

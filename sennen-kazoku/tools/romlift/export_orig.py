@@ -62,7 +62,7 @@ def enc_e(e):
     if k == 'arg': return ['a', e[1]]
     if k == 'sarg': return ['a', 4 + e[1]]
     if k == 'ram': return ['m', e[1], e[2]]
-    if k == 'load': return ['m', e[1], enc_e(e[2])]
+    if k == 'load': return ['m', e[1], enc_e(e[2])] + ([e[3]] if len(e) > 3 else [])   # 넷째 = 열린 버스 값
     if k == 'sext': return ['x', e[2], enc_e(e[1])]
     if k == 'sp': return ['p', e[1]]
     if k in OPS: return [OPS[k], enc_e(e[1]), enc_e(e[2])]

@@ -10,7 +10,7 @@ namespace SennenKazoku.Core.Orig
     ///             ["f", 이유] 옮기지 못한 경로 ·
     ///             ["j", cc, a, b, 참, 거짓, 합류 후] 다시 만나는 분기(가지 끝 ["e", 대입]) ·
     ///             ["o", 꼬리표, 초기 대입, 본문, 반복 후] 반복문(본문 끝 ["c", 꼬리표, 대입] 다시 · ["b", 꼬리표, 대입] 빠져나감)
-    /// 식: 정수 · ["v", n] 변수 · ["a", k] 인자 · ["m", 크기, 주소] 메모리 · ["x", 비트, e] 부호 확장 · ["p", 오프셋] 지역 변수 주소 · [연산, a, b]
+    /// 식: 정수 · ["v", n] 변수 · ["a", k] 인자 · ["m", 크기, 주소(, 열린 버스 값)] 메모리 · ["x", 비트, e] 부호 확장 · ["p", 오프셋] 지역 변수 주소 · [연산, a, b]
     /// 대입 목록은 동시에 계산한 뒤 넣는다.
     /// 함수 이름이 "0x0812xxxx" 면 다른 트리, rand/umod/rel 이면 이 클래스의 손 이식 함수.
     /// </summary>
@@ -243,7 +243,7 @@ namespace SennenKazoku.Core.Orig
                 case Var v: return env.TryGetValue(v.N, out var x) ? x : throw new UndefValue("변수 " + v.N);
                 case Arg a: return a.K < args.Length ? args[a.K] : 0;
                 case Sp p: return unchecked(frame + (uint)p.Off);
-                case MemRead m: return Mem.Read(Ev(m.Addr, env, args, frame, undef), m.Size);
+                case MemRead m: return m.HasBus ? Mem.Read(Ev(m.Addr, env, args, frame, undef), m.Size, m.Bus) : Mem.Read(Ev(m.Addr, env, args, frame, undef), m.Size);
                 case Sext s:
                     {
                         uint v = Ev(s.E, env, args, frame, undef) & (uint)((1L << s.Bits) - 1);
@@ -317,7 +317,7 @@ namespace SennenKazoku.Core.Orig
         sealed class Const : Expr { public uint V; }
         sealed class Var : Expr { public int N; }
         sealed class Arg : Expr { public int K; }
-        sealed class MemRead : Expr { public int Size; public Expr Addr; }
+        sealed class MemRead : Expr { public int Size; public Expr Addr; public bool HasBus; public uint Bus; }   // Bus: 지도에 없는 주소일 때의 열린 버스 값
         sealed class Sext : Expr { public int Bits; public Expr E; }
         sealed class Bin : Expr { public string Op; public Expr A, B; }
         sealed class Undef : Expr { public string Why; }
@@ -366,7 +366,7 @@ namespace SennenKazoku.Core.Orig
             {
                 case "v": return new Var { N = I(l[1]) };
                 case "a": return new Arg { K = I(l[1]) };
-                case "m": return new MemRead { Size = I(l[1]), Addr = ParseExpr(l[2]) };
+                case "m": return l.Count > 3 ? new MemRead { Size = I(l[1]), Addr = ParseExpr(l[2]), HasBus = true, Bus = unchecked((uint)(long)l[3]) } : new MemRead { Size = I(l[1]), Addr = ParseExpr(l[2]) };
                 case "x": return new Sext { Bits = I(l[1]), E = ParseExpr(l[2]) };
                 case "u": return new Undef { Why = (string)l[1] };
                 case "p": return new Sp { Off = I(l[1]) };

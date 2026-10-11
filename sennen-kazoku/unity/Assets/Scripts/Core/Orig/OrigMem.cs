@@ -83,6 +83,18 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         public const uint BiosOpenBus = 0xE3A02004;
 
+        /// <summary>
+        /// 열린 버스 값을 아는 읽기(트리 ["m", 크기, 주소, 값] — 원작이 엉뚱한 포인터를 읽는 함수): 지도에 없는 주소(0x10000000 이상)면
+        /// 그 명령어의 열린 버스 값(ROM THUMB 코드: 명령어 +4 반워드를 위아래로 겹친 값)을 주소 하위 비트대로 돌려준다.
+        /// </summary>
+        public uint Read(uint a, int size, uint bus)
+        {
+            if (a < 0x10000000) return Read(a, size);
+            uint v = 0;
+            for (int i = size - 1; i >= 0; i--) v = (v << 8) | ((bus >> (int)(((a + (uint)i) & 3) * 8)) & 0xFF);
+            return v;
+        }
+
         public uint Read(uint a, int size)
         {
             if (a < 0x00004000)
