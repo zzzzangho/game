@@ -85,6 +85,7 @@ namespace SennenKazoku.Core.Orig
                     return r;
                 }
             }
+            TotalCalls++;
             if (++Calls > 2_000_000 || depth > 200) throw new OrigUnmodeled("호출이 너무 많음");
             depth++;
             try { return CallInner(fn, args); }
@@ -176,8 +177,7 @@ namespace SennenKazoku.Core.Orig
             var vals = new uint[pairs.Length]; var ok = new bool[pairs.Length];
             for (int i = 0; i < pairs.Length; i++)
             {
-                try { vals[i] = Ev(pairs[i].E, env, args, frame, undef); ok[i] = true; }
-                catch (UndefValue) { ok[i] = false; }   // 이후에 쓰지 않는 값
+                ok[i] = TryEv(pairs[i].E, env, args, frame, undef, out vals[i]);   // 거짓 = 이후에 쓰지 않는 값
             }
             for (int i = 0; i < pairs.Length; i++)
             {
@@ -198,13 +198,12 @@ namespace SennenKazoku.Core.Orig
                 switch (t)
                 {
                     case Ret r:
-                        try { return Ev(r.E, env, args, frame, undef); }
-                        catch (UndefValue) { return 0; }   // 돌려주는 값이 없는 함수
+                        { uint rv; return TryEv(r.E, env, args, frame, undef, out rv) ? rv : 0; }   // 거짓 = 돌려주는 값이 없는 함수
                     case If f:
-                        t = Cmp(f.Cc, Ev(f.A, env, args, frame, undef), Ev(f.B, env, args, frame, undef)) ? f.Then : f.Else; break;
+                        t = Cmp(f.Cc, EvStrict(f.A, env, args, frame, undef), EvStrict(f.B, env, args, frame, undef)) ? f.Then : f.Else; break;
                     case If2 f:
                         conts.Add(new Cont { Kind = 'k', A = f.After, Tag = f.Tag });
-                        t = Cmp(f.Cc, Ev(f.A, env, args, frame, undef), Ev(f.B, env, args, frame, undef)) ? f.Then : f.Else; break;
+                        t = Cmp(f.Cc, EvStrict(f.A, env, args, frame, undef), EvStrict(f.B, env, args, frame, undef)) ? f.Then : f.Else; break;
                     case End e:
                         Assign(e.Pairs, env, args, frame, undef);
                         // 번호가 있는 합류(경로 폭발 대응 변환)는 같은 번호의 if2 로, 없으면 가장 가까운 if2 로
@@ -224,19 +223,17 @@ namespace SennenKazoku.Core.Orig
                         var av = new uint[l.Args.Length];
                         for (int i = 0; i < av.Length; i++)
                         {
-                            try { av[i] = Ev(l.Args[i], env, args, frame, undef); }
-                            catch (UndefValue) { av[i] = 0; }   // 재귀 호출에서 쓰지 않는 인자
+                            if (!TryEv(l.Args[i], env, args, frame, undef, out av[i])) av[i] = 0;   // 재귀 호출에서 쓰지 않는 인자
                         }
                         env[l.Var] = Call(l.Fn, av); undef.Remove(l.Var);
                         t = l.Body; break;
                     case Store s:
                         uint sv;
-                        try { sv = Ev(s.Val, env, args, frame, undef); }
-                        catch (UndefValue) { sv = 0; }   // 호출한 쪽이 남긴 레지스터 값 (원작에서도 의미 없는 값)
-                        Mem.Write(Ev(s.Addr, env, args, frame, undef), s.Size, sv);
+                        if (!TryEv(s.Val, env, args, frame, undef, out sv)) sv = 0;   // 호출한 쪽이 남긴 레지스터 값 (원작에서도 의미 없는 값)
+                        Mem.Write(EvStrict(s.Addr, env, args, frame, undef), s.Size, sv);
                         t = s.Body; break;
                     case Bind bd:
-                        env[bd.Var] = Ev(bd.E, env, args, frame, undef); undef.Remove(bd.Var);
+                        env[bd.Var] = EvStrict(bd.E, env, args, frame, undef); undef.Remove(bd.Var);
                         t = bd.Body; break;
                     case Fail x: throw new OrigUnmodeled("옮기지 못한 원작 경로: " + x.Why);
                     default: throw new OrigUnmodeled("알 수 없는 노드");
@@ -244,17 +241,37 @@ namespace SennenKazoku.Core.Orig
             }
         }
 
-        sealed class UndefValue : Exception { public UndefValue(string m) : base(m) { } }
+        sealed class UndefValue : Exception { public UndefValue(string m) : base(m) { UndefThrows++; } }
+        public static long UndefThrows, TotalCalls;
+
+        // 정의되지 않은 값: 예외 대신 표시(undefHit)로 알린다 — 예외는 호출마다 수 µs 라 사건 메모 진행 시간의 대부분이었다(결과는 같음)
+        bool undefHit;
+        bool TryEv(Expr e, Dictionary<int, uint> env, uint[] args, uint frame, HashSet<int> undef, out uint v)
+        {
+            undefHit = false; v = Ev(e, env, args, frame, undef);
+            return !undefHit;
+        }
+        uint EvStrict(Expr e, Dictionary<int, uint> env, uint[] args, uint frame, HashSet<int> undef)
+        {
+            undefHit = false; uint v = Ev(e, env, args, frame, undef);
+            if (undefHit) throw new UndefValue("정의되지 않은 값");
+            return v;
+        }
 
         uint Ev(Expr e, Dictionary<int, uint> env, uint[] args, uint frame, HashSet<int> undef)
         {
             switch (e)
             {
                 case Const c: return c.V;
-                case Var v: return env.TryGetValue(v.N, out var x) ? x : throw new UndefValue("변수 " + v.N);
+                case Var v: if (env.TryGetValue(v.N, out var x)) return x; undefHit = true; return 0;
                 case Arg a: return a.K < args.Length ? args[a.K] : 0;
                 case Sp p: return unchecked(frame + (uint)p.Off);
-                case MemRead m: return m.HasBus ? Mem.Read(Ev(m.Addr, env, args, frame, undef), m.Size, m.Bus) : Mem.Read(Ev(m.Addr, env, args, frame, undef), m.Size);
+                case MemRead m:
+                    {
+                        uint ad = Ev(m.Addr, env, args, frame, undef);
+                        if (undefHit) return 0;   // 주소가 정의되지 않음 — 위에서 버리거나 오류로 낸다
+                        return m.HasBus ? Mem.Read(ad, m.Size, m.Bus) : Mem.Read(ad, m.Size);
+                    }
                 case Sext s:
                     {
                         uint v = Ev(s.E, env, args, frame, undef) & (uint)((1L << s.Bits) - 1);
@@ -264,7 +281,7 @@ namespace SennenKazoku.Core.Orig
                 case Bin b: return Op(b.Op, Ev(b.A, env, args, frame, undef), Ev(b.B, env, args, frame, undef));
                 case Undef u:
                     if (u.Why == "stack") return 0;   // 원작이 초기화하지 않은 스택 바이트 (보통 쓰지 않는 상위 바이트)
-                    throw new UndefValue(u.Why);
+                    undefHit = true; return 0;
             }
             throw new OrigUnmodeled("알 수 없는 식");
         }

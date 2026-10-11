@@ -1262,6 +1262,12 @@ namespace SennenKazoku.Tests
                     var s = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, s0.Family);
                     int d0 = s.Family.Today;
                     double hours = double.TryParse(Environment.GetEnvironmentVariable("SK_OFF_HOURS"), out var hh) ? hh : 1;
+                    var prof = new Dictionary<string, long[]>(); long t1 = 0;
+                    if (Environment.GetEnvironmentVariable("SK_OFF_PROF") != null)
+                    {
+                        s.Game.Vm.BeforeTop = (fn, a) => t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                        s.Game.Vm.AfterTop = (fn, a, r) => { if (!prof.TryGetValue(fn, out var v)) prof[fn] = v = new long[2]; v[0] += System.Diagnostics.Stopwatch.GetTimestamp() - t1; v[1]++; };
+                    }
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     T.True(s.StartOffline(t0.AddHours(hours)), "이어 하기 시작 안 됨");
                     var seen = new List<string>(); int steps = 0, progress = 0, heaven = 0, replayPages = 0; bool askedNo = false, viewed = false, closed = false;
@@ -1280,6 +1286,8 @@ namespace SennenKazoku.Tests
                         }
                         else s.Advance();
                     }
+                    if (prof.Count > 0) Console.WriteLine("       VM 호출 " + SennenKazoku.Core.Orig.OrigVm.TotalCalls + ", 정의 안 된 값 예외 " + SennenKazoku.Core.Orig.OrigVm.UndefThrows);
+                    foreach (var kv in prof.OrderByDescending(kv => kv.Value[0]).Take(12)) Console.WriteLine("       시간 " + kv.Key + " " + (kv.Value[0] * 1000 / System.Diagnostics.Stopwatch.Frequency) + "ms × " + kv.Value[1]);
                     Console.WriteLine("       메모 보기: 아니 " + askedNo + ", 사건 다시 보기 장 " + replayPages + ", 닫기 " + closed);
                     if (hours == 1) T.True(askedNo && closed && (replayPages > 0 || !viewed), "메모 보기 흐름");
                     T.True(!s.Paused, "사건 메모 흐름이 끝나지 않음");
