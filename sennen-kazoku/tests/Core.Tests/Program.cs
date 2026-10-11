@@ -347,6 +347,14 @@ namespace SennenKazoku.Tests
                 Console.WriteLine("       종합 진단: main " + string.Join("·", d1) + ", custom_create " + d2s + "  (원작 ROM: 3·3·3·3, 3·1·4·2)");
                 T.True(string.Join("·", d1) == "3·3·3·3" && (d2s == "" || d2s == "3·1·4·2"), "종합 진단이 원작과 다름");
             }
+            // 사건 메모 목록 START 가족 보기의 관계 글(0x080F9F1C, 실기 RAM — 관계 함수 진입 순간): 인물 2·0·1·3 → 화면 "아들·아버지·어머니·아들"
+            if (File.Exists(Path.Combine(dir, "memo_family.ram")))
+            {
+                var fvm = rules.CreateVm(Fresh("memo_family.ram"));
+                var rel = new[] { 2u, 0u, 1u, 3u }.Select(id => (int)fvm.Call("080F9F1C", id)).ToArray();
+                Console.WriteLine("       가족 보기 관계 글 번호: " + string.Join(" ", rel) + "  (실기 화면: 아들 아버지 어머니 아들)");
+                T.True(rel.SequenceEqual(new[] { 411, 409, 416, 411 }) || rel.SequenceEqual(new[] { 66, 64, 65, 66 }), "가족 보기 관계가 실기와 다름");
+            }
             // 자기 방(0x08017EF0 → 장면+0x184, 0x080171FC): 실기 집 화면 RAM(house_r2.ram) 의 장면+0x184 = 00 00 01 02 FF…  → 집 2(방 종류 0,1,4,4,4…) 방 칸 2·2·3·4
             if (File.Exists(Path.Combine(dir, "house_r2.ram")))
             {
@@ -1287,7 +1295,7 @@ namespace SennenKazoku.Tests
                     }
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     T.True(s.StartOffline(t0.AddHours(hours)), "이어 하기 시작 안 됨");
-                    var seen = new List<string>(); int steps = 0, progress = 0, heaven = 0, replayPages = 0; bool askedNo = false, viewed = false, closed = false;
+                    var seen = new List<string>(); int steps = 0, progress = 0, heaven = 0, replayPages = 0; bool askedNo = false, viewed = false, closed = false; string familyText = null;
                     while (s.Paused && steps++ < 50000)
                     {
                         var v = s.View();
@@ -1297,7 +1305,9 @@ namespace SennenKazoku.Tests
                         else if (seen.Count < 400) seen.Add(v.Text.Replace("\n", " "));
                         if (v.NeedsChoice)
                         {   // 첫 물음은 "아니" → 메모 보기 → 첫 사건 다시 보기 → 닫기 → 다시 물음에 "응"
-                            if (v.Choices.Exists(c => c.Id == "close")) { if (!viewed && v.Choices.Exists(c => c.Id == "view:0")) { viewed = true; s.Choose("view:0"); } else { closed = true; s.Choose("close"); } }
+                            if (v.Choices.Exists(c => c.Id == "back")) { familyText = v.Text; s.Choose("back"); }
+                            else if (v.Choices.Exists(c => c.Id == "close") && familyText == null && v.Choices.Exists(c => c.Id == "family")) s.Choose("family");
+                            else if (v.Choices.Exists(c => c.Id == "close")) { if (!viewed && v.Choices.Exists(c => c.Id == "view:0")) { viewed = true; s.Choose("view:0"); } else { closed = true; s.Choose("close"); } }
                             else if (!askedNo) { askedNo = true; s.Choose("no"); }
                             else s.Choose("yes");
                         }
@@ -1306,6 +1316,8 @@ namespace SennenKazoku.Tests
                     if (prof.Count > 0) Console.WriteLine("       VM 호출 " + SennenKazoku.Core.Orig.OrigVm.TotalCalls + ", 정의 안 된 값 예외 " + SennenKazoku.Core.Orig.OrigVm.UndefThrows);
                     foreach (var kv in prof.OrderByDescending(kv => kv.Value[0]).Take(12)) Console.WriteLine("       시간 " + kv.Key + " " + (kv.Value[0] * 1000 / System.Diagnostics.Stopwatch.Frequency) + "ms × " + kv.Value[1]);
                     Console.WriteLine("       메모 보기: 아니 " + askedNo + ", 사건 다시 보기 장 " + replayPages + ", 닫기 " + closed);
+                    Console.WriteLine("       가족 보기(START): " + (familyText ?? "없음").Replace("\n", " / "));
+                    T.True(familyText != null && familyText.Contains("현재의") && familyText.Contains("대째  세대주") && !familyText.Contains(" ?  "), "메모 목록 가족 보기");
                     if (hours == 1) T.True(askedNo && closed && (replayPages > 0 || !viewed), "메모 보기 흐름");
                     T.True(!s.Paused, "사건 메모 흐름이 끝나지 않음");
                     int days = s.Family.Today - d0;

@@ -23,6 +23,9 @@ namespace SennenKazoku.Core.Orig
         Phase phase; readonly List<string> pages = new List<string>(); int page;
         int answerMsg, lastReport = -1, memoPage;
         const int MemoPer = 3;
+        /// <summary>메모 목록 START "가족 보기" 글 (세션이 지금 원작 메모리로 만든다). 없으면 그 선택지를 내지 않는다.</summary>
+        public Func<string> FamilyView;
+        bool familyShown;
         /// <summary>메모 보기에서 고른 항목 — 세션이 그 사건 장면을 효과 없이 다시 보여 준 뒤 지운다.</summary>
         public Entry ReplayRequest;
         /// <summary>마지막 보고에서 고른 글 번호 (검사용).</summary>
@@ -51,6 +54,12 @@ namespace SennenKazoku.Core.Orig
             var v = new EventView { EventId = phase == Phase.Progress ? "memo-progress" : "memo", Title = "사건 메모", Speaker = phase == Phase.Progress ? "" : "큐피트",
                 Phase = phase == Phase.Question ? "choices" : "pages", Origin = "original", Certainty = "rom", TextSource = "original-translation", PersonId = -1 };
             if (phase == Phase.Progress) { v.Text = ProgressText(); v.TextSource = "app-summary"; return v; }
+            if (phase == Phase.Memo && familyShown && FamilyView != null)
+            {   // 원작 가족 보기(실기): 날짜·가문 머리글, 구성원 칸(관계·이름·나이·직업, 세대주 표시), "N대째 세대주", B 뒤로
+                v.Text = FamilyView(); v.Phase = "choices"; v.TextSource = "original-data"; v.Speaker = ""; v.Title = "가족 보기";
+                v.Choices.Add(new ChoiceView { Id = "back", Text = "뒤로 (B)" });
+                return v;
+            }
             if (phase == Phase.Memo)
             {
                 var es = Entries(); int pagesN = Math.Max(1, (es.Count + MemoPer - 1) / MemoPer);
@@ -66,6 +75,7 @@ namespace SennenKazoku.Core.Orig
                 }
                 if (es.Count == 0) sb.Append("\n(메모 없음)");
                 if (pagesN > 1) { v.Choices.Add(new ChoiceView { Id = "prev", Text = "◀ 앞" }); v.Choices.Add(new ChoiceView { Id = "next", Text = "다음 ▶" }); }
+                if (FamilyView != null) v.Choices.Add(new ChoiceView { Id = "family", Text = "가족 보기 (START)" });
                 v.Choices.Add(new ChoiceView { Id = "close", Text = "닫기 (B)" });
                 v.Text = sb.ToString(); v.Phase = "choices"; v.TextSource = "original-data"; v.Speaker = "";
                 return v;
@@ -116,8 +126,10 @@ namespace SennenKazoku.Core.Orig
         {
             if (phase == Phase.Memo)
             {   // 메모 보기 (원작은 목록에서 고르면 그 사건 장면을 다시 보여 주고 B 로 닫는다)
+                if (familyShown) { if (id == "back") familyShown = false; return; }
                 var es = Entries(); int pagesN = Math.Max(1, (es.Count + MemoPer - 1) / MemoPer);
-                if (id == "prev") memoPage = (memoPage + pagesN - 1) % pagesN;
+                if (id == "family") familyShown = FamilyView != null;
+                else if (id == "prev") memoPage = (memoPage + pagesN - 1) % pagesN;
                 else if (id == "next") memoPage = (memoPage + 1) % pagesN;
                 else if (id == "close") Question();
                 else if (id.StartsWith("view:") && int.TryParse(id.Substring(5), out int k) && k >= 0 && k < es.Count) ReplayRequest = es[k];

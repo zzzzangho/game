@@ -53,8 +53,29 @@ namespace SennenKazoku.Core.Orig
             SyncIn();
             OrigOffline.Reseed(Game.Mem);
             uint days = OrigOffline.ElapsedDays(Game.Vm, now);
-            memo = new OrigMemoFlow(Game.Vm, Text, MarkName, () => PlayerName, AgeOf, days);
+            memo = new OrigMemoFlow(Game.Vm, Text, MarkName, () => PlayerName, AgeOf, days) { FamilyView = MemoFamilyText };
             return true;
+        }
+
+        /// <summary>
+        /// 사건 메모 목록 START "가족 보기" (실기): 머리글 "Y년M월D일 현재의 ○○가", 세대주부터 구성원 칸(관계 · 이름 · 나이 · 직업), 아래 "N대째 세대주: 이름".
+        /// 관계 글은 원작 0x080F9F1C(인물 번호)가 돌려준 화면 글 번호(실기 RAM 에서 아들·아버지·어머니·아들 — 시험). 칸 그림·배치는 앱 글로 대신한다.
+        /// </summary>
+        public string MemoFamilyText()
+        {
+            Project();
+            var m = Game.Mem; var f = Family;
+            OrigDate.Get(m, OrigMem.Date, out int y, out int mo, out int d);
+            var sb = new System.Text.StringBuilder(y + "년 " + mo + "월 " + d + "일 현재의 " + f.Name + "가");
+            var list = new List<Person>(f.Members); list.Sort((a, b) => (a.Id == f.HeadId ? 0 : 1).CompareTo(b.Id == f.HeadId ? 0 : 1));
+            foreach (var p in list)
+            {
+                string rel; try { rel = Text.UiText((int)Game.Vm.Call("080F9F1C", (uint)p.Id), "?"); } catch (OrigUnmodeled) { rel = "?"; }
+                sb.Append('\n').Append(p.Id == f.HeadId ? "♛ " : "· ").Append(rel).Append("  ").Append(p.Name).Append("  ").Append(p.Age(f.Today)).Append("세  ").Append(OrigJobs.Name(p.Job));
+            }
+            var head = f.Get(f.HeadId);
+            sb.Append("\n\n").Append(m.R8(OrigMem.Fam + 0x6A3)).Append("대째  세대주: ").Append(head != null ? head.Name : "?");
+            return sb.ToString();
         }
 
         int AgeOf(int id) { var p = Family.Get(id); return p == null ? -1 : p.Age(Family.Today); }
