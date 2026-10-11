@@ -532,6 +532,7 @@ namespace SennenKazoku.Tests
         /// </summary>
         static void OrigOffline(string dir, string offDir)
         {
+            SennenKazoku.Core.Orig.OrigVm.Trail = Environment.GetEnvironmentVariable("SK_TRACE") != null;
             var rules = SennenKazoku.Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "orig_rules.json")))));
             rules.TreesText = File.ReadAllBytes(Path.Combine(dir, rules.TreesFile));
             var shared = new SennenKazoku.Core.Orig.OrigMem(); rules.CreateVm(shared);
@@ -582,6 +583,13 @@ namespace SennenKazoku.Tests
                 var runs = new List<string>(); int nd = Diff(m, b0, File.ReadAllBytes(init), runs);
                 beginOk = nd == 0;
                 Console.WriteLine("       장면 시작(일 수 " + days + "): 다른 바이트 " + nd + " " + string.Join(" ", runs));
+                var bis = Environment.GetEnvironmentVariable("SK_OFF_COPY");   // 진단: "시작~끝" 16진 범위를 첫 묶음 덤프에서 복사
+                if (!string.IsNullOrEmpty(bis))
+                    foreach (var rg in bis.Split(','))
+                    {
+                        var ab = rg.Split('-'); uint lo = Convert.ToUInt32(ab[0], 16), hi = Convert.ToUInt32(ab[1], 16);
+                        for (uint x = lo; x < hi; x++) if (x >= 0x03000000) m.Iwram[x & 0x7FFF] = File.ReadAllBytes(files[0])[(int)SennenKazoku.Core.Orig.OrigMem.EwramSize + (int)(x & 0x7FFF)]; else m.Ewram[x - E] = b0[x - E];
+                    }
                 for (int i = 1; i < files.Count; i++)
                 {
                     try { o.Step(); } catch (SennenKazoku.Core.Orig.OrigUnmodeled ex) { Console.WriteLine("       이어 하기 " + i + " 옮기지 못함: " + ex.Message); chainOk = false; break; }
@@ -630,6 +638,8 @@ namespace SennenKazoku.Tests
         static bool OfflineScope(uint x, uint obj)
         {
             if (x < SennenKazoku.Core.Orig.OrigMem.EwramBase + 4) return true;
+            // 메모 칸 +9·+0xF 는 원작이 초기화하지 않은 지역 변수(0x080D75EC 등의 스택 구조체)에서 옮겨 적는 값이라 실기 스택 찌꺼기가 들어 있다 — 읽는 코드가 없다
+            if (x >= obj + 0x56D4 && x < obj + 0x56D4 + 24 * 700 && ((x - obj - 0x56D4) % 24 == 9 || (x - obj - 0x56D4) % 24 == 15)) return false;
             if (x >= obj + 0x5658 && x < obj + SennenKazoku.Core.Orig.OrigOffline.ObjSize) return x != obj + 0x9948 && x != obj + 0x9949;
             if (x < SennenKazoku.Core.Orig.OrigMem.SaveStart || x >= SennenKazoku.Core.Orig.OrigMem.SaveEnd) return false;
             if (x >= 0x0203BD20 && x < 0x0203BD70) return false;
@@ -1239,6 +1249,36 @@ namespace SennenKazoku.Tests
             var origDir = Environment.GetEnvironmentVariable("SK_ORIG_DIR");
             if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "vectors.json")))
                 T.Run("원작 규칙 재현: 판정 트리·관계 슬롯·관심사 선택 = 원작 ROM 실행 결과 (로컬 자료 있을 때만)", () => OrigVectors(origDir));
+            if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "orig_rules.json")) && File.Exists(Path.Combine(origDir, "orig_text.json")))
+                T.Run("원작 이어 하기: 기록 → 저장·불러오기 → 1시간 뒤 사건 메모(인사·진행·보고·물음·천계·남은 날) 끝까지 (로컬)", () =>
+                {
+                    var rules = SennenKazoku.Core.Orig.OrigRules.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(origDir, "orig_rules.json")))));
+                    rules.TreesText = File.ReadAllBytes(Path.Combine(origDir, rules.TreesFile));
+                    var text = SennenKazoku.Core.Orig.OrigText.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(origDir, "orig_text.json")))));
+                    SennenKazoku.Core.Orig.OrigVm.Trail = true;
+                    var s0 = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x2468);
+                    var t0 = new DateTime(2026, 10, 11, 5, 39, 30);
+                    s0.Record(t0); s0.PrepareSave();
+                    var s = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, s0.Family);
+                    int d0 = s.Family.Today;
+                    double hours = double.TryParse(Environment.GetEnvironmentVariable("SK_OFF_HOURS"), out var hh) ? hh : 1;
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    T.True(s.StartOffline(t0.AddHours(hours)), "이어 하기 시작 안 됨");
+                    var seen = new List<string>(); int steps = 0, progress = 0, heaven = 0;
+                    while (s.Paused && steps++ < 50000)
+                    {
+                        var v = s.View();
+                        if (v.EventId == "memo-progress") progress++;
+                        else if (v.EventId == "heaven") heaven++;
+                        else if (seen.Count < 400) seen.Add(v.Text.Replace("\n", " "));
+                        if (v.NeedsChoice) s.Choose("yes"); else s.Advance();
+                    }
+                    T.True(!s.Paused, "사건 메모 흐름이 끝나지 않음");
+                    int days = s.Family.Today - d0;
+                    Console.WriteLine("       " + hours + "시간(" + (int)(hours * 450) + "일) → " + days + "일 진행, 진행 장 " + progress + ", 천계 장 " + heaven + ", " + GameDate.Format(s.Family.Today) + ", " + sw.ElapsedMilliseconds + "ms" + (s.LineageEnded ? ", 가계 끊김" : ""));
+                    foreach (var t in seen.Take(hours == 1 ? 14 : 40)) Console.WriteLine("         " + (t.Length > 110 ? t.Substring(0, 110) + "…" : t));
+                    if (hours == 1) T.Eq(days, 450, "지난 날 수");
+                });
             if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "orig_rules.json")) && File.Exists(Path.Combine(origDir, "orig_text.json")))
                 T.Run("원작 세션(앱 연결): 추천 가족 → 2년 진행 → 사건 대사 → 저장·불러오기 후 같은 진행 (로컬)", () =>
                 {

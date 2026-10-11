@@ -1048,7 +1048,7 @@ namespace SennenKazoku.Game
             if (!popupOpen && session is Core.Orig.OrigSession pos && pos.Memo != null)
             {   // 사건 메모 "확인 중" 화면: 원작 장면이 프레임마다 하루 묶음(25일)을 돌리듯 자동으로 넘긴다
                 var mv = pos.View();
-                if (mv != null && mv.EventId == "memo-progress" && Time.unscaledTime >= memoNext) { memoNext = Time.unscaledTime + 0.5f; session.Advance(); AfterEventStep(); }
+                if (mv != null && mv.EventId == "memo-progress" && Time.unscaledTime >= memoNext) { memoNext = Time.unscaledTime; session.Advance(); AfterEventStep(); }   // 원작처럼 프레임마다 한 묶음(25일)
             }
             if (popupOpen || session.Paused) return;
             // 원작: 가장이 가장인 채로 죽으면 가문이 끊긴 장면 — 진행을 멈추고 책갈피 되돌리기를 묻는다

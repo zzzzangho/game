@@ -154,6 +154,8 @@ namespace SennenKazoku.Core.Orig
 
         public void Write(uint a, int size, uint v)
         {
+            // BIOS 영역(0x00000000~0x3FFF) 쓰기는 GBA 에서 무시된다 — 원작 사건 메모 목록 떼기(0x080D3BDC)가 마지막 칸의 다음(0)에 쓴다
+            if (a < 0x00004000) return;
             if (a >= 0x0F000000 && a < 0x0F100000)
             {
                 uint fo = a - 0x0F000000;

@@ -129,6 +129,12 @@ namespace SennenKazoku.Core.Orig
                         return 0;
                     }
                 case "noop": return 0;   // 소리·화면 함수 (규칙 상태를 바꾸지 않음)
+                case "pickvar":   // 사건 변형 고르기 0x08119CA0(사건): 변형 목록에서 판정이 처음 참인 것의 결과 기록 (없으면 목록 끝 칸) — OrigEvents.PickVariant 와 같은 순서
+                    {
+                        if (Rules == null || !Rules.Events.TryGetValue(args[0], out var ev)) throw new OrigUnmodeled("팩에 없는 사건 " + args[0].ToString("X8"));
+                        int k = OrigEvents.PickVariant(this, Rules, args[0]);
+                        return k < ev.Data.Length ? ev.Data[k] : 0;
+                    }
                 case "msg":   // 글상자 띄우기 0x080A60B0 — 인자(인물, 글 포인터, 숫자 칸, 창, 이름 인자 3개)를 기록만 한다 (OrigOffline.Report)
                     if (Messages != null) Messages.Add((uint[])args.Clone());
                     return 0;

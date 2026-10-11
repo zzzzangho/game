@@ -130,7 +130,7 @@ namespace SennenKazoku.Core.Orig
         void StartReport()
         {
             var l = new List<string>();
-            foreach (var a in ReportMessages()) l.AddRange(Msg(a.Id, a));
+            foreach (var a in ReportMessages()) l.AddRange(a.Pages);
             SetPages(Phase.Report, l);
         }
 
@@ -140,6 +140,8 @@ namespace SennenKazoku.Core.Orig
             public uint Person = 0xFFFF, NumBuf, DateArg, TitleStruct, Relation, Record;
             public uint[] Numbers;
             public int Id;
+            /// <summary>글을 고른 그 순간의 날짜·숫자·슬롯표로 푼 장 (보고 객체 칸은 다음 글에서 바뀐다).</summary>
+            public List<string> Pages;
         }
 
         /// <summary>보고 글(원작 함수가 고른 차례·인자 그대로). 시험이 실기 기록과 비교한다.</summary>
@@ -156,7 +158,8 @@ namespace SennenKazoku.Core.Orig
             uint gen = m.R8(Fam + 0x6A3);
             uint head = m.R16(Fam + 0x2538 + 28 * (gen - 2));
             vm.Call("slots", head, 0);
-            var list = new List<Args> { new Args { Id = first, Person = head, NumBuf = Rep + 0x1C, DateArg = Rep + 0x4D } };
+            var a0 = new Args { Id = first, Person = head, NumBuf = Rep + 0x1C, DateArg = Rep + 0x4D }; a0.Pages = Msg(first, a0);
+            var list = new List<Args> { a0 };
             for (int k = 0; k < 64; k++)
             {
                 vm.Messages = new List<uint[]>();
@@ -174,6 +177,7 @@ namespace SennenKazoku.Core.Orig
                         uint e = m.R32(Obj + 0x5684 + 4 * idx);
                         if (e != 0) a.Record = m.R32(e + 0x10);
                     }
+                    a.Pages = Msg(id, a);
                     list.Add(a);
                 }
             }
@@ -219,7 +223,7 @@ namespace SennenKazoku.Core.Orig
                 if (a.Record != 0 && text.Records.TryGetValue(a.Record, out var r) && r.Title.Length > 0) return r.Title;
                 return null;
             }
-            if (code == 0x2C) return a.Relation != 0 ? RamText(a.Relation) : null;
+            if (code == 0x2C) return text.UiText((int)a.Relation, null);   // 관계 이름 함수(0x080F95D4·0x080FA534·0x080F9F1C)가 돌려준 화면 글 번호 (409 아버지 · 410 남편 …)
             if (code < 0x1C)
             {
                 uint id = m.R16(OrigMem.Slots + 2 * (uint)code);
@@ -239,25 +243,6 @@ namespace SennenKazoku.Core.Orig
             return null;
         }
 
-        /// <summary>관계 이름 함수(0x080F95D4 등)가 만든 글 (원작 글 바이트, 0 또는 1A FF 에서 끝).</summary>
-        string RamText(uint p)
-        {
-            try
-            {
-                var b = new List<byte>();
-                for (uint i = 0; i < 64; i++)
-                {
-                    uint c = m.R8(p + i);
-                    if (c == 0) break;
-                    if (c == 0x1A && m.R8(p + i + 1) == 0xFF) break;
-                    b.Add((byte)c);
-                }
-                var l = text.Decode(b, null, null);
-                return l.Count > 0 ? string.Join("", l) : null;
-            }
-            catch (OrigUnmodeled) { return null; }
-        }
-
         // ---------------- 메모 ----------------
         public sealed class Entry { public int Date, PersonId; public uint Record; public string Title = ""; }
 
@@ -271,7 +256,8 @@ namespace SennenKazoku.Core.Orig
                 if (m.R8(p + 8) != 0)
                 {
                     uint dc = m.R32(p + 0x14);
-                    var e = new Entry { PersonId = (int)m.R16(p + 0xA), Record = m.R32(p + 0x10), Date = GameDate.Make((int)(dc >> 9), (int)((dc >> 5) & 15), (int)(dc & 31)) };
+                    int yy = (int)(dc >> 9), mm = (int)((dc >> 5) & 15), dd = (int)(dc & 31);
+                    var e = new Entry { PersonId = (int)m.R16(p + 0xA), Record = m.R32(p + 0x10), Date = yy >= 1 && yy <= 9999 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31 ? GameDate.Make(yy, mm, Math.Min(dd, DateTime.DaysInMonth(yy, mm))) : -1 };
                     if (text.Records.TryGetValue(e.Record, out var r)) e.Title = r.Title;
                     l.Add(e);
                 }
@@ -286,7 +272,8 @@ namespace SennenKazoku.Core.Orig
             foreach (var e in Entries())
             {
                 if (sb.Length > 0) sb.Append('\n');
-                sb.Append(GameDate.Year(e.Date)).Append('.').Append(GameDate.Month(e.Date)).Append('.').Append(GameDate.Day(e.Date)).Append(' ')
+                if (e.Date >= 0) sb.Append(GameDate.Year(e.Date)).Append('.').Append(GameDate.Month(e.Date)).Append('.').Append(GameDate.Day(e.Date)).Append(' ');
+                sb
                   .Append(personName(e.PersonId)).Append(" 『").Append(e.Title.Length > 0 ? e.Title : "?").Append("』");
                 if (++n % 3 == 0) { l.Add(sb.ToString()); sb.Clear(); }
             }

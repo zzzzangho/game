@@ -117,7 +117,7 @@ namespace SennenKazoku.Core.Orig
             while (i < b.Count)
             {
                 int c = b[i];
-                if (c == 0) { i++; continue; }
+                if (c == 0 || c == 0xFF) { i++; continue; }   // 0xFF: 이름 자리 0x2C(관계) 뒤 채움 바이트 (사건 메모 글 77~79) — 글자가 아님
                 if (c == 0x1A && i + 1 < b.Count)
                 {
                     int op = b[i + 1];

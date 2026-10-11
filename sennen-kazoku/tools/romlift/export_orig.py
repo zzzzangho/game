@@ -44,6 +44,8 @@ NATIVES.update({0x08025240: 2})
 NATIVE_NAMES.update({0x08025240: "ret1"})
 # 글상자 띄우기 0x080A60B0(인물, 글, 숫자 칸, 창, 이름 인자 3개) — 사건 메모 보고(0x080D5CE0)가 다음 글을 고른 뒤 부른다. 앱은 인자를 기록해 글을 따로 만든다.
 # 창 닫기 0x08042DA8 — 화면 함수.
+# 사건 변형 고르기 0x08119CA0(사건 정의) — 판정 함수를 포인터로 부르므로 앱의 사건 표(events)로 같은 순서를 돈다 (사건 메모 0x080D3140 이 부른다)
+NATIVES.update({0x08119CA0: 1}); NATIVE_NAMES.update({0x08119CA0: "pickvar"})
 NATIVES.update({0x080A60B0: 7, 0x08042DA8: 2})
 NATIVE_NAMES.update({0x080A60B0: "msg", 0x08042DA8: "noop"})
 STATE_TABLE, CAND_TABLE = 0x085BD4A0, 0x085BD4B4

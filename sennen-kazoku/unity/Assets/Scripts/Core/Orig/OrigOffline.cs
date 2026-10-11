@@ -70,8 +70,8 @@ namespace SennenKazoku.Core.Orig
             vm.Call("0800E430", Obj + 0x5658, OrigMem.Date);
             if (m.R32(Obj + 0x9944) > MaxDays) m.W32(Obj + 0x9944, MaxDays);
             vm.Call("08095DAC", Obj + 0x5658, Obj + 0x565C, m.R32(Obj + 0x9944));
-            vm.Call("080D448C", Scratch + 0x20, Scratch + 0x22, Obj + 0x5658, Obj + 0x565C);
-            if (m.R16(Scratch + 0x20) > 999)
+            vm.Call("080D448C", Scratch + 0x60, Scratch + 0x62, Obj + 0x5658, Obj + 0x565C);
+            if (m.R16(Scratch + 0x60) > 999)
             {
                 m.W16(Obj + 0x565C, m.R16(Obj + 0x5658) + 1000);
                 m.W8(Obj + 0x565E, m.R8(Obj + 0x565A)); m.W8(Obj + 0x565F, m.R8(Obj + 0x565B));
@@ -111,6 +111,7 @@ namespace SennenKazoku.Core.Orig
         /// <summary>두 방식 공통 앞부분 (0x080C9A1A~0x080C9C28).</summary>
         void Common()
         {
+            vm.Call("080288E0");   // 장면 만들 때(0x080C982C) 인물 표 0x0203BD40(4바이트×8)·0x0203BD20(2바이트×8)을 FFFF 로 — 하루 묶음이 읽는다
             for (uint k = 0; k < 8; k++) m.W16(Obj + 0x9952 + 2 * k, 0xFFFF);
             m.W32(Obj + 0x38, 0);
             for (uint k = 0; k < 20; k++) m.W32(Obj + 0x5684 + 4 * k, 0);
@@ -145,13 +146,16 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         public uint Step()
         {
-            uint idx = Scratch, buf = Scratch + 8;
+            // 0x080CB74C 의 지역 변수 자리 그대로(r7 기준): +8~ 사건 큐 꺼낸 값(24바이트, 메모 칸으로 그대로 복사된다) · +0x14 관심사 결과 · +0x18 큐 ·
+            // +0x20 그달 날 수 · +0x22 윤년 · +0x23 인물 칸 번호 · +0x25 꺼낸 수 · +0x27 메모 결과 — 큐 값 칸이 뒤 변수와 겹쳐 메모 칸 +0xC~ 에 그 값이 들어간다(실기 덤프와 같음)
+            uint F = Scratch, idx = F + 0x23, buf = F + 8;
+            m.W8(F + 0x27, 0); m.W8(F + 0x28, 0);
             for (;;)
             {
                 m.W32(0x0203C268, m.R32(Obj + 0x5660));
-                uint leap = vm.Call("08096010", m.R16(Obj + 0x5660)) & 0xFF;
-                uint dim = vm.Call("08096088", m.R8(Obj + 0x5662), leap) & 0xFFFF;
-                if (m.R8(Obj + 0x5663) == dim)
+                m.W8(F + 0x22, vm.Call("08096010", m.R16(Obj + 0x5660)) & 0xFF);
+                m.W16(F + 0x20, vm.Call("08096088", m.R8(Obj + 0x5662), m.R8(F + 0x22)) & 0xFFFF);
+                if (m.R8(Obj + 0x5663) == m.R16(F + 0x20))
                 {
                     for (uint k = 0; k < m.R8(Obj + 0x987C); k++)
                     {
@@ -170,8 +174,10 @@ namespace SennenKazoku.Core.Orig
                     uint k = m.R8(idx), rec = OrigMem.Person + OrigMem.PersonSize * k;
                     if (m.R16(rec + 0x3C) == 0xFFFF) { m.W8(idx, k + 1); continue; }
                     uint r = vm.Call("08027E78", rec, Obj + 0x9880 + 24 * k);
+                    m.W32(F + 0x14, r);
                     if (r == 0) { m.W8(idx, k + 1); continue; }
                     uint res = vm.Call("080D3140", Obj, r, rec, Obj + 0x5660, idx) & 0xFF;
+                    m.W8(F + 0x27, res);
                     if (res == 1)
                     {
                         uint t = m.R32(Obj + 0x38);
@@ -183,7 +189,9 @@ namespace SennenKazoku.Core.Orig
                 for (;;)
                 {
                     uint q = vm.Call("08027D0C", Obj + 0x5660);
+                    m.W32(F + 0x18, q);
                     uint n = vm.Call("08027BE4", q, buf) & 0xFF;
+                    m.W8(F + 0x25, n);
                     if (n == 0) break;
                     vm.Call("080D75EC", Obj, buf);
                 }
