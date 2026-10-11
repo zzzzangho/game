@@ -145,6 +145,7 @@ namespace SennenKazoku.Core.Orig
             if (b.Length >= n + 4) m.W32(OrigMem.Seed, BitConverter.ToUInt32(b, n));
             var s = new OrigSession(rules, text, f, m);
             if (b.Length >= n + 5 && b[n + 4] != 0) s.Game.ResumeMorning();
+            if (b.Length >= n + 5 + 32) for (int k = 0; k < 8; k++) s.Game.Schedule[k] = BitConverter.ToUInt32(b, n + 5 + 4 * k);
             return s;
         }
 
@@ -158,12 +159,14 @@ namespace SennenKazoku.Core.Orig
             var blk = new byte[n]; Array.Copy(b, blk, n); return blk;
         }
 
-        /// <summary>원작 메모리(세이브 영역 + 난수 seed + 장면이 날을 끝냈는지)를 Family.OrigState 에 적는다.</summary>
+        /// <summary>원작 메모리(세이브 영역 + 난수 seed + 장면이 날을 끝냈는지 + 인물 작업의 그날 일정 8개)를 Family.OrigState 에 적는다.
+        /// 일정(작업 +0xDB8)은 원작 세이브에 없는 작업 상태지만, 직업 1 이 가장 작업의 일정을 이어받으므로(가장이 뒤 칸이면 전날 것) 불러온 뒤에도 같은 진행이 되게 넣는다.</summary>
         public void PrepareSave()
         {
             SyncIn(); Project();
             var blk = Game.Mem.SaveBlock();
-            var b = new byte[blk.Length + 5];
+            var b = new byte[blk.Length + 5 + 32];
+            for (int k = 0; k < 8; k++) Array.Copy(BitConverter.GetBytes(Game.Schedule[k]), 0, b, blk.Length + 5 + 4 * k, 4);
             Array.Copy(blk, b, blk.Length);
             Array.Copy(BitConverter.GetBytes(Game.Mem.R32(OrigMem.Seed)), 0, b, blk.Length, 4);
             b[blk.Length + 4] = (byte)(Game.SceneEndedDay ? 1 : 0);
@@ -184,7 +187,26 @@ namespace SennenKazoku.Core.Orig
             foreach (var e in Game.TickDay()) { pending.Enqueue(e); if (e.Result[0] == 2) lineageEnded = true; if (e.Result[0] == 1) wedding = true; }
             if (wedding) HeavenReport();
             Project();
+            if (DeferEvents) return false;   // 앱: 사건은 그 시각에 ShowDue 로
             if (pending.Count > 0) { StartNext(); return true; }
+            return StartHeaven();
+        }
+
+        /// <summary>아직 보여 주지 않은 그날 사건·천계 보고가 있는가 (저장에는 들어가지 않는다 — 규칙 계산은 이미 끝났고 화면만 남은 것).</summary>
+        public bool HasPending { get { return pending.Count > 0 || (heavenWait != null && heavenWait.Count > 0); } }
+
+        /// <summary>참이면 StepDay 가 사건을 바로 띄우지 않고, 앱이 화면 시각에 맞춰 ShowDue 로 띄운다.</summary>
+        public bool DeferEvents;
+
+        /// <summary>
+        /// 화면 하루 시각(06:00 = 1800, 7200 단위 — 원작 0x0202C682 꼴)이 된 사건을 하나 띄운다(사건이 큐에서 꺼내진 시각 DayEvent.Time).
+        /// 사건이 다 지나면 천계 보고. 띄웠으면 참.
+        /// 하루의 규칙 계산(효과·다음 관심사 등)은 06:00 에 TickDay 가 그날 끝까지 원작 순서로 해 두므로, 화면만 원작 시각을 따른다.
+        /// </summary>
+        public bool ShowDue(int timeOfDay)
+        {
+            if (Paused) return false;
+            if (pending.Count > 0) { if (pending.Peek().Time > timeOfDay) return false; StartNext(); return true; }
             return StartHeaven();
         }
 
@@ -511,7 +533,7 @@ namespace SennenKazoku.Core.Orig
                 for (uint k = 0; k < 32; k++)
                 {
                     uint kind = m.R8(c + 4 * k); if (kind == 0xFF) break;
-                    int room = kind == 2 ? (int)m.R32(def + 0x10) : kind == 4 ? (int)m.R32(def + 0x14) : kind == 3 ? (int)m.R32(def + 0x18) : kind <= 1 ? own : 0;
+                    int room = OrigGame.ResolveRoom(m, kind, own);
                     int end = t + 300 * (int)m.R8(c + 4 * k + 1);
                     l.Add(new PlanStep { Start = t, End = end, Room = room, Kind = (int)kind });
                     t = end;

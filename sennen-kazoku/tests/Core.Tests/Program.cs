@@ -568,6 +568,22 @@ namespace SennenKazoku.Tests
                         if (me.Ewram[x - E] != want[x - E] && (x < 0x0203BC90 || x >= 0x0203BCB0) && x != 0x0203BCF0 && x != 0x0203BCF1 && x != 0x0203BAD0)
                         { nd++; if (diffs.Count < 12) diffs.Add(x.ToString("X8") + ":" + me.Ewram[x - E].ToString("X2") + "/" + want[x - E].ToString("X2")); }
                     nScenes++; if (nd == 0) sameScenes++;
+                    {   // 사건을 큐에 넣는 시각(일정 명령 8, OrigGame.PushTime): 실기 작업 버퍼의 일정·사건 시각·자기 방으로 계산 → 장면 시작 시각(0x0202C682)과 비교
+                        var pg2 = new SennenKazoku.Core.Orig.OrigGame(mp, rules); var own3 = new int[8]; int en = -1;
+                        foreach (uint task in new uint[] { 0x0200F124, 0x02011960, 0x0201419C, 0x020169D8 })
+                        {
+                            uint rec = mp.R32(task + 4); int pn2 = (int)((rec - SennenKazoku.Core.Orig.OrigMem.Person) / SennenKazoku.Core.Orig.OrigMem.PersonSize);
+                            if (pn2 < 0 || pn2 >= 8) continue;
+                            pg2.Schedule[pn2] = mp.R32(task + 0xDB8); pg2.EventTime[pn2] = (int)mp.R32(task + 0xDCC); pg2.TodayEvent[pn2] = mp.R32(task + 0xDBC); own3[pn2] = (int)mp.R8(task + 0xDD2);
+                            if (mp.R16(rec + 0x3C) == id) en = pn2;
+                        }
+                        int pt = en >= 0 ? pg2.PushTime(en, own3) : -1, tod = (int)mp.R16(0x0202C682);
+                        if (pt >= 0 || en >= 0)
+                        {
+                            Console.WriteLine("       사건 넣는 시각: 인물 칸 " + en + " 계산 " + (pt / 300) + ":" + (pt % 300 / 5).ToString("00") + " · 실기 장면 " + (tod / 300) + ":" + (tod % 300 / 5).ToString("00"));
+                            T.True(pt >= 0 && pt <= tod && tod - pt < 200, "사건 넣는 시각이 실기와 맞지 않음");
+                        }
+                    }
                     Console.WriteLine("       사건 장면 " + Path.GetFileName(sf[i]) + " 결과 " + data.ToString("X8") + " 인물 " + id + " 시작값 " + v + ": 다른 바이트 " + nd + " " + string.Join(" ", diffs));
                 }
                 Console.WriteLine("       사건 장면(효과+복귀) " + nScenes + "건 중 원작과 같음 " + sameScenes + " (작업 위치표 0x0203BC90~AF·0x0203BCF0·장면 핸들 0x0203BAD0 제외)");
@@ -1358,7 +1374,8 @@ namespace SennenKazoku.Tests
                         + " / 신님에게 감사 " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + " " + p.Gratitude))
                         + " / 감사의 마음 " + s.Game.Mem.R32(0x0202C670) + ", 신님 랭크 " + s.Game.Mem.R16(0x0202C66E));
                     T.True(shown > 100 && withText * 10 >= shown * 9, "사건 수·대사 비율");
-                    // 저장 → 불러오기 → 두 세션을 60일 같이 진행: 같은 사건이 나야 한다
+                    // 저장 → 불러오기 → 두 세션을 60일 같이 진행: 같은 사건이 나야 한다 (아직 안 보여 준 그날 사건은 다 보여 주고 저장)
+                    while (s.HasPending) { s.StepDay(); while (s.Paused) { s.View(); s.Advance(); } }
                     s.PrepareSave();
                     var json = MiniJson.Serialize(SaveSystem.ToJson(s.Family, null, SaveSystem.CurrentSchema));
                     var f2 = SaveSystem.FromJson(J.Obj(MiniJson.Parse(json)));
@@ -1369,7 +1386,8 @@ namespace SennenKazoku.Tests
                         s.StepDay(); while (s.Paused) { var v = s.View(); a.Add(GameDate.Format(s.Family.Today) + v.EventId); s.Advance(); }
                         s2.StepDay(); while (s2.Paused) { var v = s2.View(); b.Add(GameDate.Format(s2.Family.Today) + v.EventId); s2.Advance(); }
                     }
-                    T.True(a.Count > 0 && string.Join("|", a) == string.Join("|", b), "불러온 뒤 진행이 다름 " + a.Count + "/" + b.Count);
+                    int fd = 0; while (fd < a.Count && fd < b.Count && a[fd] == b[fd]) fd++;
+                    T.True(a.Count > 0 && string.Join("|", a) == string.Join("|", b), "불러온 뒤 진행이 다름 " + a.Count + "/" + b.Count + " — 처음 다른 곳 " + fd + ": " + (fd < a.Count ? a[fd] : "-") + " / " + (fd < b.Count ? b[fd] : "-"));
                     T.True(Convert.ToBase64String(s.Game.Mem.SaveBlock()) == Convert.ToBase64String(s2.Game.Mem.SaveBlock()), "60일 뒤 원작 메모리가 다름");
                     Console.WriteLine("       저장·불러오기 뒤 60일 사건 " + a.Count + "개 같음, 원작 메모리 같음");
                 });

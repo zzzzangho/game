@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace SennenKazoku.Core.Orig
@@ -26,11 +27,10 @@ namespace SennenKazoku.Core.Orig
     /// 원작 코드(변환 트리)로 하루를 진행한다. 원작 순서(실행 중단점으로 측정):
     /// 1) 날이 바뀌고 06:00(하루 시각 0x708) 이 되면 인물 작업(0x08011D30)마다 한 번:
     ///    생일이면 생일 사건을 사건 큐에 넣고 → 관심사 하루 처리 0x08027E78 → 결과 코드로 그날 사건 정하기(0x08014370).
-    ///    그날 사건이 있으면 하루 일정 명령 8(0x080153B0)이 큐에 "인물 사건"(종류 6)을 넣는다.
+    ///    그날 사건이 있으면 하루 일정 명령 8(0x080153B0)이 그 실행 시각(PushTime)에 큐에 "인물 사건"(종류 6)을 넣는다.
     /// 2) 메인 장면이 사건 큐(0x0203BBC0)를 앞에서부터 하나씩 꺼내 사건 장면을 띄운다.
     ///    종류 6 은 이때 관계 슬롯표를 만들고 변형을 고른다(0x080187B0~). 사건 장면 = 시작 함수 → 효과 함수 → 복귀 처리.
-    /// 하루 일정의 걷기·방 이동 명령은 화면 연출이라 옮기지 않는다. 하루 시각(0x0202C682)은 각 처리 때의 시각 문턱값으로 둔다. 일정 명령 8 의 시각은 옮기지 않았다:
-    /// 측정한 날들에서는 그날 사건이 정해진 인물 순서대로 큐에 들어갔다(그 순서로 처리).
+    /// 하루 일정의 걷기·방 이동 명령은 화면 연출이라 옮기지 않는다. 하루 시각(0x0202C682)은 각 처리 때의 시각(문턱값·명령 8 시각)으로 둔다.
     /// </summary>
     public sealed class OrigGame
     {
@@ -63,6 +63,8 @@ namespace SennenKazoku.Core.Orig
             public byte[] Shown = new byte[0];
             /// <summary>장면 뒤 메인 장면이 띄울 큐피트 도움말 번호 (0x0203BD30 에서 꺼낸 차례, OrigEvents.CupidHelp).</summary>
             public List<int> Help = new List<int>();
+            /// <summary>큐에서 꺼낸 하루 시각 (0x0202C682 꼴, 06:00 = 1800) — 앱은 이 시각에 보여 준다.</summary>
+            public int Time;
         }
 
         /// <summary>결과 문구에서 앱 번역으로 바꿔 끼울 원문 글 주소인가 (OrigSession 이 OrigText.Overrides 로 정한다).</summary>
@@ -103,6 +105,26 @@ namespace SennenKazoku.Core.Orig
             for (int n = 0; n < 8; n++) if (Present(Mem, n)) codes[n] = Morning(n);
             evs.AddRange(RunQueue(codes));
             if (SceneEndedDay) return evs;
+            // 그날 사건(종류 6): 원작은 인물 일정의 명령 8(0x080153B0)이 실행될 때 큐에 넣는다 — 시각은 PushTime.
+            // 시각 순 · 같은 시각은 인물 순(걷는 시간 차이는 옮기지 않음). 20:00·22:00 처리와도 시각 순으로 섞인다.
+            var todo = new List<int[]>(); var own = OrigSession.OwnRooms(Vm);
+            for (int n = 0; n < 8; n++) if (Present(Mem, n) && TodayEvent[n] != 0) { int pt = PushTime(n, own); if (pt >= 0) todo.Add(new[] { pt, n }); }
+            todo.Sort((a, b) => a[0] != b[0] ? a[0].CompareTo(b[0]) : a[1].CompareTo(b[1]));
+            int ti = 0;
+            Func<int, bool> until = limit =>
+            {
+                for (; ti < todo.Count && todo[ti][0] < limit; ti++)
+                {
+                    int n = todo[ti][1];
+                    if (!Present(Mem, n) || TodayEvent[n] == 0) continue;
+                    Mem.W16(TimeOfDay, (uint)todo[ti][0]);
+                    Push(0, 6, Mem.R16(OrigMem.PersonAddr(n) + 0x3C));   // 일정 명령 8
+                    evs.AddRange(RunQueue(codes));
+                    if (SceneEndedDay) return false;
+                }
+                return true;
+            };
+            if (!until(6000)) return evs;
             // 20:00 이후 (0x08019818~): 날이 된 가족 일정을 하나씩 큐에 (종류 3, 그 인물 슬롯표 → 변형)
             Mem.W16(TimeOfDay, 6000);
             uint doy = Vm.Call("08027D0C", DateArg());
@@ -116,11 +138,14 @@ namespace SennenKazoku.Core.Orig
             }
             evs.AddRange(RunQueue(codes));
             if (SceneEndedDay) return evs;
+            if (!until(6600)) return evs;
             // 22:00 이후 (0x08019600~): 그 달 마지막 날(0x08095CD0)이면 특별 사건 표 2 의 1 번 (종류 2, 가장)
             Mem.W16(TimeOfDay, 6600);
             uint last = DateArg(); Vm.Call("08095CD0", last);
             if (d == (int)Mem.R8(last + 3)) PushSpecial(2, 1, 2, Mem.R16(0x0202C67C));
             evs.AddRange(RunQueue(codes));
+            if (SceneEndedDay) return evs;
+            until(int.MaxValue);
             return evs;
         }
 
@@ -169,8 +194,7 @@ namespace SennenKazoku.Core.Orig
                 if (sched == 0) sched = Vm.Call("08119E34", job, Mem.R8(OrigMem.Fam + 0x682));
             }
             Schedule[n] = HeadSchedule(sched);
-            PlanDay(n);
-            if (TodayEvent[n] != 0) Push(0, 6, id);   // 일정 명령 8 (0x080153B0)
+            PlanDay(n);   // 그날 사건은 사건 시각에 큐로 (TickDay, 일정 명령 8 0x080153B0)
             // 블록 끝(0x08012178~): 아크마가 붙을지 (0x0802A6C4: 나이 단계·관심사·레코드 +0x4B 에 따라 1/4 또는 1/16) → +0x61 = 4
             if (Vm.Call("0802A6C4", id) != 0) Mem.W8(p + 0x61, 4);
             return code;
@@ -193,6 +217,43 @@ namespace SennenKazoku.Core.Orig
             OrigDate.Get(Mem, p + 0x2E, out _, out int bm, out int bd);
             if (bd == d && bm == mo) return true;
             return bd == 29 && bm == 2 && Vm.Call("08096010", (uint)y) == 0 && d == 1 && mo == 3;
+        }
+
+        /// <summary>지금 집의 정의 주소 (0x08581768 + 716·(등급 + 4·시대), 0x080171BC).</summary>
+        public static uint HouseDef(OrigMem m) { return 0x08581768 + 716 * ((m.R8(0x0202C6AF) & 0xF) + 4 * (uint)m.R8(0x0202C692)); }
+
+        /// <summary>일정 방 종류 → 방 칸 (0x080218E0): 0·1 자기 방, 2 → 집 머리 +0x10, 4 → +0x14, 3 → +0x18, 그 밖 → 0(현관).</summary>
+        public static int ResolveRoom(OrigMem m, uint kind, int own)
+        {
+            uint def = HouseDef(m);
+            return kind == 2 ? (int)m.R32(def + 0x10) : kind == 4 ? (int)m.R32(def + 0x14) : kind == 3 ? (int)m.R32(def + 0x18) : kind <= 1 ? own : 0;
+        }
+
+        /// <summary>
+        /// 그날 사건을 큐에 넣는 하루 시각 (일정 명령 8, 06:00 = 1800). 0x0802292C 는 일정 칸을 차례로 보며 칸 끝 T(06:00 부터 300·시간 누적)가
+        /// 사건 시각보다 큰(부호 없는 비교 — −1 은 끝내 안 됨) 첫 칸에 명령 8 을 넣는다(작업 +0xDD0 비트 4, 하루 한 번). 잠 칸(종류 0)은 이 확인을 건너뛴다.
+        /// 걷기 명령은 방이 바뀔 때만 생기므로, 명령 8 은 그 칸과 같은 방이 이어지는 묶음의 첫 칸에 도착한 뒤(외출 칸이면 집을 나설 때) 실행된다.
+        /// 돌려주는 값 = 1800 + 그 묶음 첫 칸의 시작(걷는 몇 분은 뺌). 넣을 칸이 없으면 −1(그날 사건이 뜨지 않는다).
+        /// 실기 사건 장면 덤프 5건(08:00·08:00·17:00·18:00·07:00 묶음 시작 → 장면 08:03·08:04·17:04·18:00·07:37)과 맞음.
+        /// </summary>
+        public int PushTime(int n, int[] own)
+        {
+            uint sched = Schedule[n]; int dcc = EventTime[n];
+            if (sched == 0 || sched == 0xFFFFFFFF || TodayEvent[n] == 0) return -1;
+            uint c = Mem.R32(sched); var kinds = new List<uint>(); var ends = new List<int>(); int t = 0;
+            for (uint k = 0; k < 32; k++) { uint kd = Mem.R8(c + 4 * k); if (kd == 0xFF) break; kinds.Add(kd); t += 300 * (int)Mem.R8(c + 4 * k + 1); ends.Add(t); }
+            for (int k = 0; k < kinds.Count; k++)
+            {
+                if (kinds[k] == 0 || (uint)dcc >= (uint)ends[k]) continue;
+                int start = k > 0 ? ends[k - 1] : 0;
+                if (kinds[k] != 5)
+                {
+                    int room = ResolveRoom(Mem, kinds[k], own[n]);
+                    for (int j = k - 1; j >= 1 && kinds[j] != 0 && kinds[j] != 5 && ResolveRoom(Mem, kinds[j], own[n]) == room; j--) start = ends[j - 1];
+                }
+                return 0x708 + start;
+            }
+            return -1;
         }
 
         /// <summary>0x0802292C 머리: 일정이 −1 이면 가장(가족 +0x66C) 작업의 일정(+0xDB8)을 그대로 쓴다(작업 +0xDB8 에도 적는다).</summary>
@@ -289,7 +350,7 @@ namespace SennenKazoku.Core.Orig
                 Mem.W16(Queue + 0xE, FamilyKey()); Mem.W16(Queue + 6, Vm.Call("08015BC4"));
                 uint date0 = Mem.R32(OrigMem.Date) & 0xFFFFFF;
                 var de = new DayEvent { Person = n, Data = data, Type = type, Code = n >= 0 && n < 8 ? codes[n] : 0, Max = n >= 0 && n < 8 && codes[n] == 1,
-                    PersonId = id, Date = date0 };
+                    PersonId = id, Date = date0, Time = (int)Mem.R16(TimeOfDay) };
                 de.Points0 = Mem.R32(0x0202C670); de.Rank0 = Mem.R16(0x0202C66E);
                 for (uint i = 0; i < 32; i++) de.Inv0[i] = (byte)Mem.R8(0x0202C640 + i);
                 var shown = new List<byte>();

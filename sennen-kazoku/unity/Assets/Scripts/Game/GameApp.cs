@@ -992,7 +992,14 @@ namespace SennenKazoku.Game
             if (session is Core.Orig.OrigSession eos && eos.LineageEnded) { OpenLineageEnd(eos); return; }
             if (EffectiveSpeed == 0) return;
             acc += Time.deltaTime * EffectiveSpeed;
-            bool started = false;
+            bool started = false, midDay = false;
+            // 원작 세션: 사건은 원작 사건 시각(큐에 들어간 하루 시각)에 띄운다 — 앱 하루는 06:00 에 시작한다
+            var dos = session as Core.Orig.OrigSession;
+            if (dos != null)
+            {
+                dos.DeferEvents = true;
+                started = midDay = dos.ShowDue(1800 + (int)(Mathf.Clamp01(acc / SecondsPerDay) * 7200f));
+            }
             while (acc >= SecondsPerDay && !started)
             {
                 acc -= SecondsPerDay;
@@ -1003,7 +1010,8 @@ namespace SennenKazoku.Game
             }
             if (started)
             {
-                acc = 0; SaveSlot("auto", true);
+                if (!midDay) acc = 0;
+                SaveSlot("auto", true);
                 int self; if (session.Family.Active != null && session.Family.Active.Cast.TryGetValue("self", out self)) { selectedId = self; follow = true; }
                 else { var vw = session.View(); if (vw != null && vw.PersonId >= 0 && session.Family.Get(vw.PersonId) != null) { selectedId = vw.PersonId; follow = true; } }
                 RefreshAll();
