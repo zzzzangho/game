@@ -497,6 +497,22 @@ namespace SennenKazoku.Core.Orig
             return r;
         }
 
+        /// <summary>
+        /// 방 안 자리 (원작 0x0801729C, 명령 1 이 부른다): x = 방 x·8 + 집 정의 [+0x210 + 0x20·역할(방 +0x18: 0~3, 그 밖은 +0x290)] 의 자리번째 u32,
+        /// 그림 위쪽 y = 방 y·8 + 방 +0xE − 60. 자리 번호는 방에 갈 때(명령 4, 0x08014F98) 0x08021980 이 그 방 8칸 비트(+0x1C)에서 비어 있는 가장 낮은 것을 잡는다.
+        /// </summary>
+        public bool RoomSpot(int room, int spot, out int x, out int top) { return RoomSpot(Game.Mem, room, spot, out x, out top); }
+        public static bool RoomSpot(OrigMem m, int room, int spot, out int x, out int top)
+        {
+            x = top = 0;
+            if (room < 0 || room > 15 || spot < 0 || spot > 7) return false;
+            uint def = OrigGame.HouseDef(m), e = def + 0x90 + 32 * (uint)room;
+            uint role = m.R8(e + 0x18); uint tab = def + 0x210 + 0x20 * (role <= 3 ? role : 4);
+            x = (short)m.R16(e) * 8 + (int)m.R32(tab + 4 * (uint)spot);
+            top = (short)m.R16(e + 2) * 8 + (short)m.R16(e + 0xE) - 60;
+            return true;
+        }
+
         /// <summary>하루 일정의 한 칸: 06:00 = 0 기준 하루 단위(1시간 300) [Start, End), 집 정의 방 칸, 일정 방 종류
         /// (0 = 자기 방에서 잠, 1 = 자기 방, 2·3·4 = 집 머리 +0x10·+0x18·+0x14 방, 5 = 외출 → 방 0).</summary>
         public sealed class PlanStep { public int Start, End, Room, Kind; }

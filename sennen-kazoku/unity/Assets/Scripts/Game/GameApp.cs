@@ -38,7 +38,7 @@ namespace SennenKazoku.Game
         const float SecondsPerDay = 5250f / 59.7275f, HoldSpeed = 5250f / 810f;
         bool playing, popupOpen, follow = true; int lastAutoDay; float toastUntil;
         int selectedId = -1; float scrollX, camY;                             // GBA px
-        sealed class Actor { public int Id; public float X, Target, Floor; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; public int Room = -1, Kind = -1; public bool Hidden; }
+        sealed class Actor { public int Id; public float X, Target, Floor; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; public int Room = -1, Kind = -1, Spot = -1; public bool Hidden; }
         readonly Dictionary<int, Actor> actors = new Dictionary<int, Actor>();
 
         // =============================================================== 시작
@@ -805,7 +805,7 @@ namespace SennenKazoku.Game
         void RebuildActors()
         {
             foreach (var a in actors.Values) if (a.Rt != null) Destroy(a.Rt.gameObject);
-            actors.Clear();
+            actors.Clear(); roomSpots.Clear();
             if (session == null) return;
             var ids = art.CharacterIds(); int k = 0;
             foreach (var p in session.Family.Members)
@@ -824,7 +824,7 @@ namespace SennenKazoku.Game
                 var bubT = UiKit.Label(bub.transform, "t", "", 14, Color.red, TextAnchor.MiddleCenter, FontStyle.Bold);
                 float x = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36));
                 actors[p.Id] = new Actor { Id = p.Id, X = x, Target = x, Floor = RoomFloor(room), Rt = img.rectTransform, Img = img, NextMove = Time.time + UnityEngine.Random.Range(2f, 6f), Bubble = bub, BubbleText = bubT,
-                                           Room = planned, Kind = kind0, Hidden = planned >= 0 && kind0 == 5 };
+                                           Room = -1, Kind = kind0, Hidden = planned >= 0 && kind0 == 5 };
             }
         }
 
@@ -878,13 +878,16 @@ namespace SennenKazoku.Game
                     var rooms = Rooms(); var room = rooms[want];
                     if (want != a.Room)
                     {
-                        if (a.Hidden) { var door = rooms[0]; a.Floor = RoomFloor(door); a.X = (door[0] + door[1]) / 2f - 16; a.Hidden = false; }   // 외출에서 돌아옴: 현관(방 0)에서
-                        a.Room = want; a.Target = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36)); a.NextMove = Time.time + UnityEngine.Random.Range(4f, 10f);
-                        if (RoomFloor(room) != (int)a.Floor) { a.Floor = RoomFloor(room); a.X = a.Target; }   // 다른 층 방: 바로 옮긴다(원작 계단 이동은 옮기지 않음)
-                    }
-                    else if (Time.time > a.NextMove && kind != 0 && kind != 5)   // 앱 연출: 같은 방 안에서 가끔 자리를 옮긴다
-                    {
-                        a.Target = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36)); a.NextMove = Time.time + UnityEngine.Random.Range(4f, 10f);
+                        if (a.Hidden) { var door = rooms[0]; a.Floor = RoomFloor(door); a.X = door[0]; a.Hidden = false; }   // 외출에서 돌아옴: 현관(방 0)에서
+                        // 원작 방 자리: 떠나는 방의 자리를 비우고, 가는 방에서 비어 있는 가장 낮은 자리(0x08021980) → 그 자리 x·위 y (0x0801729C)
+                        bool first = a.Room < 0;
+                        if (a.Room >= 0 && a.Spot >= 0) roomSpots[a.Room] = (roomSpots.TryGetValue(a.Room, out int om) ? om : 0) & ~(1 << a.Spot);
+                        int mask = roomSpots.TryGetValue(want, out int wm) ? wm : 0, spot = 0; while (spot < 7 && (mask & (1 << spot)) != 0) spot++;
+                        roomSpots[want] = mask | (1 << spot); a.Spot = spot; a.Room = want;
+                        float floor = RoomFloor(room);
+                        if (session is Core.Orig.OrigSession ros && ros.RoomSpot(want, spot, out int sx, out int stop)) { a.Target = sx; floor = stop + 61; }
+                        else a.Target = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36));
+                        if (first || (int)floor != (int)a.Floor) { a.Floor = floor; a.X = a.Target; }   // 처음 놓을 때·다른 층 방: 바로 옮긴다(원작 계단 이동은 옮기지 않음)
                     }
                     a.Kind = kind;
                     if (kind == 5 && want == 0 && Mathf.Abs(a.Target - a.X) < 0.5f) a.Hidden = true;   // 외출: 현관에 닿으면 집 밖
@@ -1046,6 +1049,8 @@ namespace SennenKazoku.Game
         /// <summary>방의 바닥(집 세계 y). 원작 집 정의의 방은 [x0, x1, 위, 아래, 종류], 옛 파노라마 방은 [x0, x1] (바닥 = FloorY).</summary>
         int RoomFloor(int[] room) { return room.Length >= 4 ? room[3] : art.FloorY; }
 
+        /// <summary>방마다 차지한 자리 비트 (원작 장면 방 표 +0x1C).</summary>
+        readonly Dictionary<int, int> roomSpots = new Dictionary<int, int>();
         readonly Dictionary<int, List<SennenKazoku.Core.Orig.OrigSession.PlanStep>> plans = new Dictionary<int, List<SennenKazoku.Core.Orig.OrigSession.PlanStep>>();
         int planDay = int.MinValue; string planHouse = "";
 

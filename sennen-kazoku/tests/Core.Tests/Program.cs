@@ -354,6 +354,13 @@ namespace SennenKazoku.Tests
                 Console.WriteLine("       자기 방: 표 " + tab + "→ 방 칸 " + string.Join(",", rooms) + "  (실기 00 00 01 02 FF FF FF FF)");
                 T.Eq(tab.Trim(), "00 00 01 02 FF FF FF FF", "자기 방 표가 실기와 다름");
                 T.Eq(string.Join(",", rooms), "2,2,3,4,-1,-1,-1,-1", "자기 방 칸이 실기와 다름");
+                // 방 자리(0x0801729C): 실기 작업 큐의 걷기 목표 x — 방 2 자리 0 = 424, 방 2 자리 2 = 448, 방 4 자리 0 = 216
+                {
+                    var sx = new List<string>();
+                    foreach (var rs in new[] { new[] { 2, 0 }, new[] { 2, 2 }, new[] { 4, 0 } }) { SennenKazoku.Core.Orig.OrigSession.RoomSpot(hm, rs[0], rs[1], out int x0, out int t0); sx.Add(x0.ToString()); }
+                    Console.WriteLine("       방 자리 x: " + string.Join(",", sx) + " (실기 424,448,216)");
+                    T.Eq(string.Join(",", sx), "424,448,216", "방 자리 x 가 실기와 다름");
+                }
                 // 하루 일정 고르기(0x08011FB4~0x080120B6): 실기 작업 버퍼 +0xDB8 이 규칙의 결과(직업 일정이면 0x08119E34 의 난수 3택 중 하나)와 맞는지
                 var hg = new SennenKazoku.Core.Orig.OrigGame(hm, rules); var hres = new List<string>();
                 foreach (uint task in new uint[] { 0x0200F124, 0x02011960, 0x0201419C, 0x020169D8 })
