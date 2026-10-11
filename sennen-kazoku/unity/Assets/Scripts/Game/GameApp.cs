@@ -762,7 +762,8 @@ namespace SennenKazoku.Game
                     session = Core.Orig.OrigSession.Load(origRules, origText, r.Family);
                 }
                 else session = new GameSession(r.Family, catalog);
-                EnterGame(); Toast(r.Warning.Length > 0 ? r.Warning : "불러왔습니다");
+                EnterGame();
+                if (session is Core.Orig.OrigSession los && los.StartOffline(DateTime.Now)) RefreshAll();   // 원작 이어 하기: 사건 메모 장면 Toast(r.Warning.Length > 0 ? r.Warning : "불러왔습니다");
             }
             catch (Exception e) { Toast("불러오기 실패: " + e.Message); }
         }
@@ -1044,6 +1045,11 @@ namespace SennenKazoku.Game
             UpdateStageAnim();
             UpdateGauge();
             UpdateTip();
+            if (!popupOpen && session is Core.Orig.OrigSession pos && pos.Memo != null)
+            {   // 사건 메모 "확인 중" 화면: 원작 장면이 프레임마다 하루 묶음(25일)을 돌리듯 자동으로 넘긴다
+                var mv = pos.View();
+                if (mv != null && mv.EventId == "memo-progress" && Time.unscaledTime >= memoNext) { memoNext = Time.unscaledTime + 0.5f; session.Advance(); AfterEventStep(); }
+            }
             if (popupOpen || session.Paused) return;
             // 원작: 가장이 가장인 채로 죽으면 가문이 끊긴 장면 — 진행을 멈추고 책갈피 되돌리기를 묻는다
             if (session is Core.Orig.OrigSession eos && eos.LineageEnded) { OpenLineageEnd(eos); return; }
@@ -1078,8 +1084,19 @@ namespace SennenKazoku.Game
 
         string MemberIds() { var sb = new StringBuilder(); foreach (var m in session.Family.Members) sb.Append(m.Id).Append(','); return sb.ToString(); }
 
-        void OnApplicationPause(bool paused) { if (paused && playing && session != null) SaveSlot("auto", true); }
-        void OnApplicationQuit() { if (playing && session != null) { try { session.PrepareSave(); saves.Save("auto", session.Family, catalog); } catch (Exception) { } } }
+        float memoNext;
+        /// <summary>
+        /// 앱이 멈추면(전원을 끄는 것과 같다) 원작 "사건 기록"(OrigSession.Record — 시각·다음 seed)을 하고 저장, 다시 켜지면 원작 이어 하기처럼
+        /// 기록 시각부터 지난 시간(8초에 하루)을 사건 메모 장면으로 진행한다(OrigSession.StartOffline).
+        /// </summary>
+        void OnApplicationPause(bool paused)
+        {
+            if (!playing || session == null) return;
+            if (paused) { RecordOrig(); SaveSlot("auto", true); }
+            else if (session is Core.Orig.OrigSession os && !os.Paused && os.StartOffline(DateTime.Now)) RefreshAll();
+        }
+        void OnApplicationQuit() { if (playing && session != null) { try { RecordOrig(); session.PrepareSave(); saves.Save("auto", session.Family, catalog); } catch (Exception) { } } }
+        void RecordOrig() { if (session is Core.Orig.OrigSession os && !os.Paused) os.Record(DateTime.Now); }
 
         // =============================================================== 표시 갱신
         void RefreshAll() { RefreshHouse(); RefreshHud(); RefreshBar(); RefreshDialog(); }
@@ -1719,7 +1736,7 @@ namespace SennenKazoku.Game
                 else desc += " — 비어 있음";
                 var lb = UiKit.Label(body, "l" + s, desc, Px(13), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(lb.rectTransform, 0, y, w, Px(24)); y += Px(24);
                 float half = (w - gap) / 2f; bool canSave = playing && s != "auto";
-                var sv = UiKit.Btn(body, "s" + s, "저장", Px(14), canSave ? new Color32(0x3A, 0x6E, 0xC8, 255) : (Color)Color.gray, Color.white, () => { if (canSave) { SaveSlot(s); OpenSaveSlots(); } });
+                var sv = UiKit.Btn(body, "s" + s, "저장", Px(14), canSave ? new Color32(0x3A, 0x6E, 0xC8, 255) : (Color)Color.gray, Color.white, () => { if (canSave) { RecordOrig(); SaveSlot(s); OpenSaveSlots(); } });
                 UiKit.SetPx(sv.GetComponent<RectTransform>(), 0, y, half, bh);
                 var ld = UiKit.Btn(body, "o" + s, "불러오기", Px(14), saves.Exists(s) ? new Color32(0x10, 0x4E, 0x6E, 255) : (Color)Color.gray, Color.white, () => { if (saves.Exists(s)) LoadSlot(s); });
                 UiKit.SetPx(ld.GetComponent<RectTransform>(), half + gap, y, half, bh); y += bh + gap * 2;
