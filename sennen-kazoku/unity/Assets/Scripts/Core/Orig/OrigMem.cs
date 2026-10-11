@@ -76,8 +76,21 @@ namespace SennenKazoku.Core.Orig
 
         static int DmaStep(uint mode, int w) { return mode == 1 ? -w : mode == 2 ? 0 : w; }   // 0 증가 · 1 감소 · 2 고정 · 3 증가(다시 불러오기)
 
+        /// <summary>
+        /// BIOS 영역(0x00000000~0x00003FFF) 읽기: GBA 는 게임 코드가 BIOS 를 읽으면 마지막으로 가져온 BIOS 명령어를 돌려준다(열린 버스).
+        /// 원작 메인 루프는 VBlankIntrWait(SWI) 에서 돌아온 뒤 돌므로 그 값은 0xE3A02004 — 실기 상태 파일(mGBA biosPrefetch) 5개 모두 이 값.
+        /// 원작이 없는 인물 레코드(0)의 +오프셋을 읽는 경로(예: 결과 스크립트 0x08118B9C)가 이 값을 받는다.
+        /// </summary>
+        public const uint BiosOpenBus = 0xE3A02004;
+
         public uint Read(uint a, int size)
         {
+            if (a < 0x00004000)
+            {
+                uint bv = 0;
+                for (int i = size - 1; i >= 0; i--) bv = (bv << 8) | ((BiosOpenBus >> (int)(((a + (uint)i) & 3) * 8)) & 0xFF);
+                return bv;
+            }
             if (a >= 0x04000000 && a < 0x04000400)
             {
                 uint o = a - 0x04000000, v = 0;
