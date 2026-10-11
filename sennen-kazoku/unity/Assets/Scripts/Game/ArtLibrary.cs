@@ -62,6 +62,20 @@ namespace SennenKazoku.Game
             return ta == null ? null : ta.text;
         }
 
+        /// <summary>
+        /// 원작 오프닝 데모 프레임 묶음(LocalArt/opening_frames.bin — tools/gba_capture/opening_frames.py 가 사용자 ROM 에서 뜬다). 없으면 null.
+        /// 원작은 엔딩 카드 뒤 다시 시작해 이 데모를 보여 준다(실기).
+        /// </summary>
+        public FrameReel OpeningReel()
+        {
+            if (openingLoaded) return opening;
+            openingLoaded = true;
+            var ta = Resources.Load<TextAsset>("LocalArt/opening_frames.bin");
+            opening = ta == null ? null : FrameReel.Parse(ta.bytes);
+            return opening;
+        }
+        FrameReel opening; bool openingLoaded;
+
         public Texture2D HouseTexture()
         {
             Texture2D t = null;

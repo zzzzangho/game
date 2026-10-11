@@ -1100,6 +1100,23 @@ namespace SennenKazoku.Tests
             });
 
             Console.WriteLine("[원작 화면 대조]");
+            T.Run("프레임 묶음(SKF1): 반복 수 · 시각 → 장 · 끝 · 잘못된 형식 거부", () => {
+                var ms = new MemoryStream(); var bw = new BinaryWriter(ms);
+                bw.Write(new byte[] { (byte)'S', (byte)'K', (byte)'F', (byte)'1' }); bw.Write((ushort)3); bw.Write((ushort)20);
+                foreach (var (rep, len) in new[] { (2, 3), (1, 5), (4, 1) }) { bw.Write((ushort)rep); bw.Write((uint)len); bw.Write(new byte[len]); }
+                var r = FrameReel.Parse(ms.ToArray());
+                T.True(r != null && r.Count == 3 && r.Fps == 20 && r.Ticks == 7, "머리");
+                T.Eq(r.FrameAt(0f), 0); T.Eq(r.FrameAt(0.099f), 0); T.Eq(r.FrameAt(0.1f), 1); T.Eq(r.FrameAt(0.16f), 2); T.Eq(r.FrameAt(0.34f), 2); T.Eq(r.FrameAt(0.35f), -1);
+                T.Eq(r.Png(1).Length, 5);
+                T.True(FrameReel.Parse(new byte[] { 1, 2, 3 }) == null && FrameReel.Parse(ms.ToArray().Take(20).ToArray()) == null, "잘못된 형식");
+                var local = Path.Combine(AppContext.BaseDirectory, "../../../../../unity/Assets/Resources/LocalArt/opening_frames.bin.bytes");
+                if (File.Exists(local))
+                {   // 로컬 추출본(원작 오프닝 데모 — 커밋하지 않음)
+                    var o = FrameReel.Parse(File.ReadAllBytes(local));
+                    Console.WriteLine("       로컬 오프닝 데모: " + o.Count + "장, " + o.Fps + "fps, " + o.Seconds.ToString("0.0") + "초");
+                    T.True(o.Count > 1000 && o.Fps == 20 && o.FrameAt(o.Seconds + 1) == -1, "로컬 오프닝 데모");
+                }
+            });
             T.Run("달력: 2005-01-01 은 토요일 (원작 HUD '2005년 1월 1일(토)'), 만 나이", () => {
                 int d = GameDate.Make(2005, 1, 1); T.Eq(GameDate.Format(d), "2005년 1월 1일(토)");
                 T.Eq(GameDate.AgeYears(GameDate.Make(1956, 6, 3), d), 48);      // 원작 상세: 카즈유키 48세
@@ -1382,9 +1399,9 @@ namespace SennenKazoku.Tests
                         var lines = heavenLines(s5);
                         Console.WriteLine("       가계 끊김 장면(햇수 " + yrs + ") " + lines.Count + "장: " + string.Join(" | ", lines).Substring(0, Math.Min(220, string.Join(" | ", lines).Length)));
                         T.True(lines.Exists(x => x.Contains("끊어지고")) && lines.Exists(x => x.Contains(yrs + "년 가족")), "끊김 대사(247/250)·햇수 숫자");
-                        var parade = lines.Find(x => x.Contains("하늘 행렬"));
-                        Console.WriteLine("       하늘 행렬: " + (parade ?? "없음"));
-                        T.True(parade != null && parade.Contains("1대째") && parade.Contains(yrs + "년가족"), "하늘 행렬 요약");
+                        var parade = s5.Parade();
+                        Console.WriteLine("       하늘 행렬: " + string.Join(" · ", parade.Select(g => g.Gen + "대째 세대주 " + g.HeadName + " " + g.TypeName + " " + g.Members.Count + "명")));
+                        T.True(parade.Count >= 1 && parade[0].Gen == 1 && parade[0].Members.Count > 0 && s5.GeneLook(parade[0].HeadId, parade[0].StartDay) != null, "하늘 행렬");
                         T.True(!s5.LineageReport(), "끊김 장면이 두 번 나옴");
                         T.Eq(s5.EndMenu, 5, "마지막 메뉴 대기 아님");
                         T.Eq((int)(mm.R32(0x0202C030) & 0x2044), 0x44, "장면 끝 표시(+0x20)");
@@ -1538,6 +1555,23 @@ namespace SennenKazoku.Tests
                             if (g != g0 || e != e0) { log.Add(GameDate.Format(ls.Family.Today) + " 세대기록 " + g + " 세트 " + e + " 책갈피 " + lm.R8(0x0202C65A)); g0 = g; e0 = e; }
                         }
                         Console.WriteLine("       300년: " + string.Join(" / ", log) + (ls.LineageEnded ? " (가문 끊김)" : ""));
+                        {   // 족보 +0x38 = 사망일(0xFF 면 살아 있음): 지금 가족에 없는 사람 중 사망일이 적힌 사람, 가족에 있는 사람은 모두 0xFF
+                            var gm = ls.Game.Mem; int dead = 0, liveBad = 0, total = 0;
+                            var present = new HashSet<int>(ls.Family.Members.ConvertAll(p => p.Id));
+                            for (uint id = 0; id < 400; id++)
+                            {
+                                uint ga = SennenKazoku.Core.Orig.OrigMem.GeneAddr(id);
+                                if (gm.R16(ga + 0x10) == 0xFFFF && gm.R16(ga + 0x12) == 0xFFFF && gm.R16(ga + 0x14) == 0xFFFF && gm.R8(ga) == 0xFF) continue;
+                                total++;
+                                int dd = ls.GeneDeath(id);
+                                if (present.Contains((int)id)) { if (dd >= 0) liveBad++; }
+                                else if (dd >= 0 && dd >= ls.GeneBirth(id) && dd <= ls.Family.Today) dead++;
+                            }
+                            var pg = ls.Parade();
+                            Console.WriteLine("       족보 " + total + "명: 사망일 있는 고인 " + dead + ", 가족인데 사망일 있음 " + liveBad + " / 하늘 행렬 " + pg.Count + "세대: " + string.Join(" · ", pg.Take(4).Select(g => g.Gen + "대째 " + g.HeadName + " " + g.Members.Count + "명")));
+                            T.True(dead > 0 && liveBad == 0, "족보 +0x38 이 사망일이 아님");
+                            T.True(pg.Count == (int)gm.R8(0x0202C6B3) && pg.TrueForAll(g => g.Members.Count > 0 && g.Members[0] == g.HeadId), "하늘 행렬 세대");
+                        }
                     }
                     // 결과 예고: 원작 메모리를 바꾸지 않아야 한다
                     var mem0 = Convert.ToBase64String(s.Game.Mem.SaveBlock()); var seed0 = s.Game.Mem.R32(0x02000000);

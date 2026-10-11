@@ -1047,6 +1047,8 @@ namespace SennenKazoku.Game
             if (lastScreen.x != Screen.width || lastScreen.y != Screen.height || lastSafe != Screen.safeArea) ApplyLayout();
             if (toastBox.gameObject.activeSelf && Time.unscaledTime > toastUntil) toastBox.gameObject.SetActive(false);
             if (titleHouse != null && titleRoot.gameObject.activeSelf) { var u = titleHouse.uvRect; u.x += Time.deltaTime * 0.01f; titleHouse.uvRect = u; }
+            if (reel != null) { UpdateOpening(); return; }
+            if (parade != null) { UpdateParade(); return; }
             if (!playing || session == null) return;
             UpdateActors();
             UpdateStageAnim();
@@ -1060,6 +1062,7 @@ namespace SennenKazoku.Game
             if (popupOpen || session.Paused) return;
             if (cardShown) { cardShown = false; ShowTitle(); return; }   // 원작: 엔딩 카드 뒤 제목 화면
             if (session is Core.Orig.OrigSession bos && bos.BookmarkAskPending) { OpenBookmarkAsk(bos); return; }   // 가계 끊김: 책갈피로 되돌리겠느냐(글 253)
+            if (session is Core.Orig.OrigSession pos2 && pos2.EndMenu == 5 && !pos2.ParadeShown) { ShowParade(pos2); return; }   // 가계 끊김: 마지막 메뉴 전 하늘 행렬
             if (session is Core.Orig.OrigSession mos && mos.EndMenu != 0) { OpenMillenniumEnd(mos); return; }   // 천년가족·가계 끊김 장면 뒤 마지막 메뉴
             if (session is Core.Orig.OrigSession nos && nos.ContinueKind == 7) { OpenNewFamilyRequest(nos); return; }   // 끝난 가문 — 새 가족을 맡는다
             // 원작: 가장이 가장인 채로 죽으면 가문이 끊긴 장면(천계 방식 5) — 신·큐피트 대사 뒤 책갈피 물음 또는 마지막 메뉴
@@ -1699,17 +1702,168 @@ namespace SennenKazoku.Game
 
         bool cardShown;
 
+        /// <summary>큐피트 마지막 인사(글 557) → 엔딩 카드.</summary>
         void OpenEndingCard(Core.Orig.OrigSession os, string bye)
         {
-            var body = Window("천년가족", 520); float w = BodyW(body);
+            var body = Window(os.EndMenu == 5 ? "가문의 끝" : "천년가족", 300); float w = BodyW(body);
             cardShown = true;
+            var a = UiKit.Label(body, "bye", "큐피트: " + bye, Px(15), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(a.rectTransform, 0, 0, w, Px(90));
+            NextBtn(body, Px(100), "다음", () => ShowEndingCard(os));
+        }
+
+        // 원작 엔딩 카드 배경(실기 화면 오른쪽 끝 세로 줄에서 뽑은 색: 위 → 아래, 240×160 기준 줄 번호)
+        static readonly int[] CardRows = { 0, 64, 80, 120, 159 };
+        static readonly Color32[] CardCols = { new Color32(15, 46, 147, 255), new Color32(15, 162, 201, 255), new Color32(15, 170, 185, 255), new Color32(100, 185, 224, 255), new Color32(193, 185, 255, 255) };
+        Texture2D cardSky;
+
+        Texture2D CardSky() { return cardSky ?? (cardSky = Gradient(CardRows, CardCols)); }
+
+        /// <summary>
+        /// 엔딩 카드 (원작 배치: 240×160 화면 왼쪽 위 "N성 신님" · "○○이 지켜본 ○○가문은…", 가운데 큰 글씨 "N년가족", 오른쪽 아래 "이었습니다…♪",
+        /// 왼쪽 아래 큐피트, 하늘색 세로 그라데이션 — 실기 화면). 누르면 원작처럼 다시 시작한 뒤의 오프닝 데모(로컬 추출 프레임) → 타이틀.
+        /// 글꼴은 앱 글꼴이다(원작 큰 숫자 그림은 옮기지 않음).
+        /// </summary>
+        void ShowEndingCard(Core.Orig.OrigSession os)
+        {
+            ClearPopup(); popupOpen = true; popupRoot.gameObject.SetActive(true); cardShown = true;
             var c = os.EndingCard();
-            var a = UiKit.Label(body, "bye", "큐피트: " + bye, Px(14), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(a.rectTransform, 0, 0, w, Px(70));
-            var l1 = UiKit.Label(body, "c1", c[0] + "\n" + c[1], Px(15), new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.UpperLeft); UiKit.SetPx(l1.rectTransform, 0, Px(80), w, Px(60));
-            var l2 = UiKit.Label(body, "c2", c[2], Px(40), new Color32(0xE8, 0x50, 0x70, 255), TextAnchor.MiddleCenter, FontStyle.Bold); UiKit.SetPx(l2.rectTransform, 0, Px(150), w, Px(90));
-            var l3 = UiKit.Label(body, "c3", c[3], Px(15), new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.MiddleRight); UiKit.SetPx(l3.rectTransform, 0, Px(244), w, Px(30));
-            var t = UiKit.Btn(body, "title", "타이틀로", Px(16), Color.white, UiKit.Ink, () => { ClosePopup(); ShowTitle(); });
-            UiKit.SetPx(t.GetComponent<RectTransform>(), 0, Px(290), w, Px(56));
+            var bg = new GameObject("cardSky", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>(); bg.transform.SetParent(popupRoot, false);
+            bg.texture = CardSky(); bg.raycastTarget = true; UiKit.Stretch(bg.rectTransform, 0, 0, 0, 0);
+            bg.gameObject.AddComponent<Button>().onClick.AddListener(() => PlayOpening(ShowTitle));
+            float w = lay.Safe.W, s = w / 240f, x0 = lay.Safe.X, y0 = lay.Safe.Y + (lay.Safe.H - 160 * s) / 2f;
+            var white = Color.white;
+            var l1 = UiKit.Label(popupRoot, "c1", c[0] + "\n" + c[1], Mathf.RoundToInt(11 * s), white, TextAnchor.UpperLeft); l1.raycastTarget = false;
+            UiKit.SetPx(l1.rectTransform, x0 + 30 * s, y0 + 12 * s, 205 * s, 36 * s);
+            var l2 = UiKit.Label(popupRoot, "c2", c[2], Mathf.RoundToInt(40 * s), white, TextAnchor.MiddleCenter, FontStyle.Bold); l2.raycastTarget = false;
+            var ol = l2.gameObject.AddComponent<Outline>(); ol.effectColor = new Color32(0x60, 0x90, 0xE0, 255); ol.effectDistance = new Vector2(2 * s, -2 * s);
+            UiKit.SetPx(l2.rectTransform, x0, y0 + 50 * s, w, 56 * s);
+            var l3 = UiKit.Label(popupRoot, "c3", c[3], Mathf.RoundToInt(10 * s), white, TextAnchor.MiddleRight); l3.raycastTarget = false;
+            UiKit.SetPx(l3.rectTransform, x0, y0 + 124 * s, 232 * s, 16 * s);
+            var cp = art.Cupid(0);
+            if (cp != null) { var ci = UiKit.Box(popupRoot, "cupid", Color.white, cp); ci.preserveAspect = true; ci.raycastTarget = false; UiKit.SetPx(ci.rectTransform, x0 + 8 * s, y0 + 116 * s, 32 * s, 32 * s); }
+        }
+
+        // ---------- 하늘 행렬 (가계 끊김 장면 끝, OrigSession.Parade) ----------
+        // 실기 화면 가운데 세로 줄에서 뽑은 하늘·구름 색 (240×160 기준 줄 번호, 위 0~15 는 날짜 띠)
+        static readonly int[] SkyRows = { 0, 60, 80, 100, 159 };
+        static readonly Color32[] SkyCols = { new Color32(49, 82, 206, 255), new Color32(165, 189, 255, 255), new Color32(140, 165, 247, 255), new Color32(107, 132, 247, 255), new Color32(74, 90, 239, 255) };
+        Texture2D paradeSky;
+        List<Core.Orig.OrigSession.ParadeGen> parade; int paradeIdx; float paradeNext; Core.Orig.OrigSession paradeOs;
+        const float ParadeSeconds = 3.2f;
+
+        Texture2D Gradient(int[] rows, Color32[] cols)
+        {
+            var t = new Texture2D(1, 160, TextureFormat.RGBA32, false);
+            var px = new Color32[160];
+            for (int y = 0; y < 160; y++)
+            {
+                int k = 0; while (k < rows.Length - 2 && y > rows[k + 1]) k++;
+                float f = Mathf.Clamp01((y - rows[k]) / (float)(rows[k + 1] - rows[k]));
+                px[159 - y] = Color32.Lerp(cols[k], cols[k + 1], f);   // 텍스처는 아래가 0번 줄
+            }
+            t.SetPixels32(px); t.filterMode = FilterMode.Bilinear; t.wrapMode = TextureWrapMode.Clamp; t.Apply();
+            return t;
+        }
+
+        /// <summary>
+        /// 원작 하늘 행렬(실기 배치): 위 검은 띠에 그 세대 시작 날짜, 날개 달린 띠 "N대째 ○○가 / 세대주 이름   가족 유형", 아래 가족 행렬(세대주 위 왕관),
+        /// 오른쪽 아래 "N년가족". 원작은 날짜를 따라 사람이 걸어 들어오고 나가는 애니메이션 — 앱은 세대마다 한 장면(누가 보이는가는 OrigSession.Parade 의 근사).
+        /// </summary>
+        void ShowParade(Core.Orig.OrigSession os)
+        {
+            var list = os.Parade();
+            os.ParadeShown = true;
+            if (list.Count == 0) return;
+            parade = list; paradeIdx = 0; paradeOs = os;
+            DrawParade();
+        }
+
+        void UpdateParade()
+        {
+            if (Time.unscaledTime >= paradeNext) NextParade();
+        }
+
+        void NextParade()
+        {
+            if (parade == null) return;
+            paradeIdx++;
+            if (paradeIdx >= parade.Count) { parade = null; paradeOs = null; ClearPopup(); return; }
+            DrawParade();
+        }
+
+        void DrawParade()
+        {
+            var os = paradeOs; var g = parade[paradeIdx];
+            ClearPopup(); popupOpen = true; popupRoot.gameObject.SetActive(true);
+            paradeNext = Time.unscaledTime + ParadeSeconds;
+            var black = UiKit.Box(popupRoot, "black", Color.black); black.raycastTarget = true; UiKit.Stretch(black.rectTransform, 0, 0, 0, 0);
+            black.gameObject.AddComponent<Button>().onClick.AddListener(NextParade);
+            float w = lay.Safe.W, s = w / 240f, x0 = lay.Safe.X, y0 = lay.Safe.Y + (lay.Safe.H - 160 * s) / 2f;
+            if (paradeSky == null) paradeSky = Gradient(SkyRows, SkyCols);
+            var sky = new GameObject("sky", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>(); sky.transform.SetParent(popupRoot, false);
+            sky.texture = paradeSky; sky.raycastTarget = false; UiKit.SetPx(sky.rectTransform, x0, y0 + 16 * s, w, 144 * s);
+            var date = UiKit.Label(popupRoot, "date", GameDate.Year(g.StartDay) + "년 " + GameDate.Month(g.StartDay) + "월 " + GameDate.Day(g.StartDay) + "일", Mathf.RoundToInt(10 * s), Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
+            date.raycastTarget = false; UiKit.SetPx(date.rectTransform, x0 + 2 * s, y0, 200 * s, 16 * s);
+            var band = UiKit.Box(popupRoot, "band", new Color32(0xFF, 0xFC, 0xE8, 255)); band.raycastTarget = false; UiKit.SetPx(band.rectTransform, x0 + 16 * s, y0 + 22 * s, 208 * s, 30 * s);
+            var bo = band.gameObject.AddComponent<Outline>(); bo.effectColor = new Color32(0xE8, 0xB8, 0x30, 255); bo.effectDistance = new Vector2(2 * s, -2 * s);
+            var bt = UiKit.Label(popupRoot, "bandText", g.Gen + "대째 " + os.Family.Name + "가\n세대주 " + g.HeadName + (g.TypeName.Length > 0 ? "     " + g.TypeName : ""), Mathf.RoundToInt(9 * s), UiKit.Ink, TextAnchor.MiddleLeft);
+            bt.raycastTarget = false; UiKit.SetPx(bt.rectTransform, x0 + 26 * s, y0 + 22 * s, 196 * s, 30 * s);
+            int n = g.Members.Count; float cw = 26 * s, total = n * cw, cx = x0 + (w - total) / 2f;
+            for (int i = 0; i < n; i++)
+            {
+                int id = g.Members[i];
+                var look = os.GeneLook(id, g.StartDay);
+                int age = Math.Max(0, GameDate.Year(g.StartDay) - GameDate.Year(os.GeneBirth((uint)id)));
+                var sp = look != null ? art.LookSprite(look, AgeSlots.ForAge(age), CharacterComposer.Pose.FrontA, 0) : null;
+                var im = UiKit.Box(popupRoot, "m" + i, Color.white, sp ?? UiKit.Circle); im.preserveAspect = true; im.raycastTarget = false;
+                UiKit.SetPx(im.rectTransform, cx + i * cw, y0 + 76 * s, cw, 40 * s);
+                if (id == g.HeadId)
+                {
+                    var cr = UiKit.Label(popupRoot, "crown", "♛", Mathf.RoundToInt(10 * s), new Color32(0xF8, 0xD0, 0x30, 255), TextAnchor.MiddleCenter); cr.raycastTarget = false;
+                    UiKit.SetPx(cr.rectTransform, cx + i * cw, y0 + 62 * s, cw, 14 * s);
+                }
+            }
+            var yrs = UiKit.Label(popupRoot, "years", os.FamilyYears() + "년가족", Mathf.RoundToInt(16 * s), new Color32(0xFF, 0xE0, 0x40, 255), TextAnchor.MiddleRight, FontStyle.Bold);
+            var yo = yrs.gameObject.AddComponent<Outline>(); yo.effectColor = new Color32(0x60, 0x40, 0x10, 255); yo.effectDistance = new Vector2(s, -s);
+            yrs.raycastTarget = false; UiKit.SetPx(yrs.rectTransform, x0, y0 + 136 * s, 236 * s, 22 * s);
+        }
+
+        // ---------- 원작 오프닝 데모 재생 (엔딩 카드 뒤) ----------
+        FrameReel reel; RawImage reelImg; Texture2D reelTex; float reelStart; int reelShown = -1; Action reelDone;
+
+        /// <summary>오프닝 데모 프레임(로컬 추출)을 화면 너비에 맞춰 재생한다. 없거나 누르면 바로 done.</summary>
+        void PlayOpening(Action done)
+        {
+            var r = art.OpeningReel();
+            if (r == null) { done(); return; }
+            ClearPopup(); popupOpen = true; popupRoot.gameObject.SetActive(true);
+            var black = UiKit.Box(popupRoot, "black", Color.black); black.raycastTarget = true; UiKit.Stretch(black.rectTransform, 0, 0, 0, 0);
+            black.gameObject.AddComponent<Button>().onClick.AddListener(StopOpening);
+            reelImg = new GameObject("reel", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>(); reelImg.transform.SetParent(popupRoot, false);
+            reelImg.raycastTarget = false;
+            float w = lay.Safe.W, h = w * 160f / 240f;
+            UiKit.SetPx(reelImg.rectTransform, lay.Safe.X, lay.Safe.Y + (lay.Safe.H - h) / 2f, w, h);
+            if (reelTex == null) { reelTex = new Texture2D(2, 2, TextureFormat.RGBA32, false); reelTex.filterMode = FilterMode.Point; reelTex.wrapMode = TextureWrapMode.Clamp; }
+            reelImg.texture = reelTex;
+            reel = r; reelStart = Time.unscaledTime; reelShown = -1; reelDone = done;
+            UpdateOpening();
+        }
+
+        void UpdateOpening()
+        {
+            if (reel == null) return;
+            int k = reel.FrameAt(Time.unscaledTime - reelStart);
+            if (k < 0) { StopOpening(); return; }
+            if (k != reelShown) { reelTex.LoadImage(reel.Png(k)); reelTex.filterMode = FilterMode.Point; reelShown = k; }
+        }
+
+        void StopOpening()
+        {
+            if (reel == null) return;
+            reel = null; reelImg = null;
+            var d = reelDone; reelDone = null;
+            ClearPopup();
+            if (d != null) d();
         }
 
         /// <summary>선대 마음의 결정: 원작처럼 선대의 마음 목록(0x0202C328)을 보여 주고 고른 마음을 이어받게 한다.</summary>

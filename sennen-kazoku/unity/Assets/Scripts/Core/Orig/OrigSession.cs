@@ -337,38 +337,81 @@ namespace SennenKazoku.Core.Orig
             h.Years = FamilyYears();
             bool bm = HasBookmark;
             h.RunLineageEnd(bm);
-            if (bm) bookmarkQueued = true; else { lineageQueued = true; h.Pages.Add(ParadePage()); }
+            if (bm) bookmarkQueued = true; else lineageQueued = true;
             if (h.Pages.Count > 0) { if (heavenWait == null) heavenWait = new List<OrigHeaven.Page>(); heavenWait.AddRange(h.Pages); }
             if (StartHeaven()) return true;
             FlushEndQueues(); return false;
         }
 
+        /// <summary>하늘 행렬 한 세대.</summary>
+        public sealed class ParadeGen
+        {
+            public int Gen, StartDay, EndDay = -1, HeadId = -1, Type = -1;
+            public string HeadName = "", TypeName = "";
+            /// <summary>그 세대에 보일 사람(족보 번호). 세대주가 맨 앞.</summary>
+            public readonly List<int> Members = new List<int>();
+        }
+
         /// <summary>
         /// 가계 끊김 장면 끝(0x0809ECC0 → 0x0809B1EC(…, 8))의 하늘 행렬 (실기): 세대마다 그 세대 시작 날짜, 띠 "N대째 ○○가 / 세대주 이름 / 가족 유형",
         /// 그 세대 가족 얼굴 행렬, 오른쪽 아래 "N년가족". 세대 기록 0x0202E528 + 28·k (0x0800F57C): +0 자산 · +4 세대주 · +6 가족 유형(끝난 세대만) · +7 집 등급 ·
-        /// +0x16 끝난 날 (실기 RAM: 1대째 +0 = 0x144B "5195만엔", +6 = 3 "북적북적 가족"). 앱은 그림 대신 이 값을 글로 보인다(얼굴 행렬은 옮기지 않음).
+        /// +0x16 끝난 날 (실기 RAM: 1대째 +0 = 0x144B "5195만엔", +6 = 3 "북적북적 가족").
+        /// 누가 보이는가: 원작 행렬 장면(0x080EF974 · 역할 0x080F13F0 — 세대주 0 · 배우자 1 · 그 밖은 관계 0x080F2270)은 날짜를 따라 사람이 들고 나는 애니메이션이다.
+        /// 앱은 그 대신 세대주 · 배우자 · 세대주의 부모(그 세대 시작에 살아 있으면) · 세대주의 자녀(그 세대 끝 전에 태어났으면)를 한 장면으로 보인다 — 근사
+        /// (실기 2세대 가족에서 1대째 4명 · 2대째 4명과 같은 수). 사망일은 족보 +0x38(0xFF 면 살아 있음)로 본다.
         /// </summary>
-        public OrigHeaven.Page ParadePage()
+        public List<ParadeGen> Parade()
         {
             var m = Game.Mem; int gen = (int)m.R8(OrigMem.Fam + 0x6A3);
-            var sb = new System.Text.StringBuilder("[원작 하늘 행렬 화면 — 앱 요약]");
+            var r = new List<ParadeGen>();
             OrigDate.Get(m, 0x0202C688, out int sy, out int smo, out int sd);
+            int start = SafeDay(sy, smo, sd);
             for (int k = 1; k <= gen && k < 64; k++)
             {
-                uint r = 0x0202E528 + 28u * (uint)k;
-                uint head = m.R16(r + 4), type = m.R8(r + 6);
-                sb.Append('\n').Append(sy).Append('.').Append(smo).Append('.').Append(sd).Append("  ").Append(k).Append("대째 ").Append(Family.Name).Append("가  세대주 ")
-                  .Append(head == 0xFFFF ? "?" : NameOf((int)head, -1));
-                if (type < 9) sb.Append("  ").Append(FamilyTypeName((int)type));
-                if (m.R8(r + 0x16) != 0xFF && m.R8(r + 0x18) != 0xFF)
-                {   // 다음 세대는 끝난 날 다음 날부터
-                    OrigDate.Get(m, r + 0x16, out int ey, out int em, out int ed);
-                    var next = SafeDay(ey, em, ed) + 1; sy = GameDate.Year(next); smo = GameDate.Month(next); sd = GameDate.Day(next);
+                uint rec = 0x0202E528 + 28u * (uint)k;
+                var g = new ParadeGen { Gen = k, StartDay = start };
+                uint head = m.R16(rec + 4), type = m.R8(rec + 6);
+                if (type < 9) { g.Type = (int)type; g.TypeName = FamilyTypeName((int)type); }
+                if (m.R8(rec + 0x16) != 0xFF && m.R8(rec + 0x18) != 0xFF)
+                {
+                    OrigDate.Get(m, rec + 0x16, out int ey, out int em, out int ed);
+                    g.EndDay = SafeDay(ey, em, ed); start = g.EndDay + 1;
                 }
+                if (head != 0xFFFF)
+                {
+                    g.HeadId = (int)head; g.HeadName = NameOf((int)head, -1);
+                    int end = g.EndDay >= 0 ? g.EndDay : Family.Today;
+                    uint ga = OrigMem.GeneAddr(head);
+                    g.Members.Add((int)head);
+                    Action<uint, bool> add = (id, isChild) =>
+                    {
+                        if (id == 0xFFFF || g.Members.Contains((int)id)) return;
+                        uint pa = OrigMem.GeneAddr(id);
+                        int died = GeneDeath(id);
+                        if (died >= 0 && died < g.StartDay) return;           // 세대 시작 전에 세상을 떠남
+                        if (isChild && GeneBirth(id) > end) return;            // 세대 끝 뒤에 태어남
+                        g.Members.Add((int)id);
+                    };
+                    add(m.R16(ga + 0x14), false);
+                    add(m.R16(ga + 0x10), false); add(m.R16(ga + 0x12), false);
+                    for (uint c = 0; c < 4; c++) add(m.R16(ga + 0x16 + 2 * c), true);
+                }
+                r.Add(g);
             }
-            sb.Append("\n\n").Append(FamilyYears()).Append("년가족");
-            return new OrigHeaven.Page { Speaker = 0, Screen = "하늘 행렬", Text = sb.ToString(), State = -1 };
+            return r;
         }
+
+        /// <summary>족보 생일(+0x2E) — 날짜 번호.</summary>
+        public int GeneBirth(uint id) { OrigDate.Get(Game.Mem, OrigMem.GeneAddr(id) + 0x2E, out int y, out int mo, out int d); return SafeDay(y, mo, d); }
+        /// <summary>족보 사망일(+0x38, 0xFF = 살아 있음) — 날짜 번호, 없으면 −1.</summary>
+        public int GeneDeath(uint id)
+        {
+            uint a = OrigMem.GeneAddr(id) + 0x38;
+            if (Game.Mem.R8(a) == 0xFF && Game.Mem.R8(a + 1) == 0xFF && Game.Mem.R8(a + 2) == 0xFF) return -1;
+            OrigDate.Get(Game.Mem, a, out int y, out int mo, out int d); return SafeDay(y, mo, d);
+        }
+        /// <summary>하늘 행렬을 앱이 이미 보여 주었는가 (마지막 메뉴 전에 한 번).</summary>
+        public bool ParadeShown;
 
         /// <summary>책갈피 물음 대답: 예 → 되돌리기(0x08010AB4) + 글 254~256 → 메인 장면으로, 아니오 → 글 257~259 → 장면 끝 → 마지막 메뉴.</summary>
         public void AnswerBookmark(bool yes)
@@ -378,7 +421,6 @@ namespace SennenKazoku.Core.Orig
             h.Years = FamilyYears();
             if (yes) { RestoreBookmark(); lineageShown = false; } else lineageQueued = true;
             h.RunBookmarkAnswer(yes);
-            if (!yes) h.Pages.Add(ParadePage());
             if (h.Pages.Count > 0) { if (heavenWait == null) heavenWait = new List<OrigHeaven.Page>(); heavenWait.AddRange(h.Pages); }
             if (!StartHeaven()) FlushEndQueues();
         }
@@ -1194,9 +1236,14 @@ namespace SennenKazoku.Core.Orig
         /// 그 보조표에서 옷 색 항목을 읽는다 — 레코드 사본의 +7 을 옷 몸통 번호로 바꿔 같은 함수를 부른다. 실기 캡처와 색까지 대조).
         /// </summary>
         /// <param name="set">몸통 자원 세트(원작 0x080973F4 의 셋째 인자 = 0x08099448 의 마지막 인자): 0~3 앞모습, 4~7 뒷모습 — 색 표도 그 세트 몸통 묶음 것을 쓴다.</param>
-        public CharacterLook OrigLook(int n, int outfit, int set)
+        public CharacterLook OrigLook(int n, int outfit, int set) { return RecordLook(OrigMem.PersonAddr(n), outfit, set, Family.Today); }
+
+        /// <summary>족보 기록의 외형 (족보 +0~+15 = 외형 레코드 사본 · +0x2E 생일 · +0x31 성별 — 실기 RAM 에서 가족 레코드와 같은 바이트). 세상을 떠난 사람도 그린다.</summary>
+        public CharacterLook GeneLook(int id, int day, int set = 0) { return RecordLook(OrigMem.GeneAddr((uint)id), 0xFF, set, day); }
+
+        CharacterLook RecordLook(uint a, int outfit, int set, int today)
         {
-            var m = Game.Mem; uint a = OrigMem.PersonAddr(n);
+            var m = Game.Mem;
             var l = new CharacterLook
             {
                 Face = (int)m.R8(a), Hair = (int)m.R8(a + 1), Mouth = (int)m.R8(a + 2), Nose = (int)m.R8(a + 4), Extra = m.R8(a + 3) == 0xFF ? -1 : (int)m.R8(a + 3),
@@ -1205,7 +1252,7 @@ namespace SennenKazoku.Core.Orig
             l.Outfit = CharacterComposer.OutfitOf(l);
             l.OutfitBody = CharacterComposer.EventOutfitBody(l.Body, outfit);
             OrigDate.Get(m, a + 0x2E, out int by, out int bm, out int bd);
-            int years = Family.Today >= 0 ? Math.Max(0, GameDate.Year(Family.Today) - by - ((GameDate.Month(Family.Today) * 100 + GameDate.Day(Family.Today)) < (bm * 100 + bd) ? 1 : 0)) : 20;
+            int years = today >= 0 ? Math.Max(0, GameDate.Year(today) - by - ((GameDate.Month(today) * 100 + GameDate.Day(today)) < (bm * 100 + bd) ? 1 : 0)) : 20;
             const uint buf = 0x0F03B400, rec = 0x0F03B440;
             try
             {

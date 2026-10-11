@@ -93,6 +93,7 @@ namespace UnityEngine
     {
         public byte r, g, b, a; public Color32(byte r, byte g, byte b, byte a) { this.r = r; this.g = g; this.b = b; this.a = a; }
         public static implicit operator Color32(Color c) { return new Color32(); }
+        public static Color32 Lerp(Color32 a, Color32 b, float t) { return a; }
     }
     public class Texture : Object { public int width, height; public FilterMode filterMode; public TextureWrapMode wrapMode; }
     public class Texture2D : Texture
