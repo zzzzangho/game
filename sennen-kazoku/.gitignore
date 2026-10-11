@@ -11,3 +11,8 @@ obj/
 /local_capture/
 *.ppm
 *.state
+
+# 테스트 빌드 결과(원작 자료가 들어 있음) — 커밋 금지
+/build/
+*.apk
+*.aab

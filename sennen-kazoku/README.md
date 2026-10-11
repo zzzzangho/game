@@ -29,6 +29,14 @@ dotnet run --project tools/PackLintCli -- unity/Assets/Resources/BundledPacks �
    `python3 -I tools/import_original_pack.py <guide 저장소> unity/Assets/Resources/LocalPacks/sk.original.local.json`
    (**대사 포함, git 무시됨. 공개 금지.** 현재 예정 상태 918개 중 282개, 결과 이벤트 697개 변환.)
 
+## 테스트 APK 빌드 (본인 테스트용 — 배포 금지)
+
+`UNITY_EMAIL=… UNITY_PASSWORD=… tools/build_android.sh [출력.apk]` — Docker 로 GameCI Unity 이미지(`unityci/editor:ubuntu-<ProjectVersion>-android-3`)를 받아
+`BuildScript.BuildAndroid` 를 돌린다. 원작 자료는 이 컴퓨터의 `unity/Assets/Resources/LocalArt · LocalOrig · LocalPacks`(git 제외)에 있는 것이 들어간다.
+- `LocalOrig/`: 원작 팩의 `orig_rules.json` · `orig_rules.json.trees` → `orig_trees.bytes` · `orig_text.json`
+- `LocalArt/opening_frames.bin.bytes`: `python3 -I tools/gba_capture/opening_frames.py <ROM>` (엔딩 카드 뒤 오프닝 데모)
+- 결과 `build/` 와 `*.apk` 는 git 에서 빠진다. Unity 계정은 2단계 인증이 꺼져 있어야 컨테이너 안에서 활성화된다(끝나면 반납).
+
 ## 원작 그래픽 사용 (로컬 전용)
 가지고 있는 ROM에서 직접 추출해 씁니다. 추출물은 git에서 제외되며 **배포하면 안 됩니다**.
 ```bash
