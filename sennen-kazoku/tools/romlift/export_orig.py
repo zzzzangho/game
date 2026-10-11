@@ -209,6 +209,16 @@ def sched_spans(rom, out):
         if 0x09400000 <= t < 0x09500000 and rom.ok(t):
             e = rom.b.find(b'\x1a\xff', t - B)
             if 0 <= e - (t - B) < 0x100: spans.append((t, e - (t - B) + 2))
+    # 스킬 표 0x088A309C[바이트] 256칸 전체와 가리키는 곳 2단계 — 원작이 가족에 없는 인물 레코드(BIOS 열린 버스 0xE3A02004)를
+    # 스킬 칸으로 읽는 경로(0x08118B9C → 0x081194D0(0xA0·0xE3·0x04))가 표 밖 칸을 읽는다(실기는 ROM 그대로 읽음)
+    spans.append((0x088A309C, 0x400))
+    for k in range(256):
+        v = ptr(0x088A309C + 4 * k)
+        if v:
+            spans.append((v, 0x40))
+            for o in range(0, 0x40, 4):
+                w = ptr(v + o)
+                if w: spans.append((w, 0x40))
     for k in range(0x80):
         ptrs.add(ptr(0x08887CE0 + 4 * k))
     for e in out.get('events', {}): ptrs.add(ptr(int(e, 16) + 0x20))
