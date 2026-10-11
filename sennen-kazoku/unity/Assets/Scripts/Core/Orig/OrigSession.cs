@@ -337,10 +337,37 @@ namespace SennenKazoku.Core.Orig
             h.Years = FamilyYears();
             bool bm = HasBookmark;
             h.RunLineageEnd(bm);
-            if (bm) bookmarkQueued = true; else lineageQueued = true;
+            if (bm) bookmarkQueued = true; else { lineageQueued = true; h.Pages.Add(ParadePage()); }
             if (h.Pages.Count > 0) { if (heavenWait == null) heavenWait = new List<OrigHeaven.Page>(); heavenWait.AddRange(h.Pages); }
             if (StartHeaven()) return true;
             FlushEndQueues(); return false;
+        }
+
+        /// <summary>
+        /// 가계 끊김 장면 끝(0x0809ECC0 → 0x0809B1EC(…, 8))의 하늘 행렬 (실기): 세대마다 그 세대 시작 날짜, 띠 "N대째 ○○가 / 세대주 이름 / 가족 유형",
+        /// 그 세대 가족 얼굴 행렬, 오른쪽 아래 "N년가족". 세대 기록 0x0202E528 + 28·k (0x0800F57C): +0 자산 · +4 세대주 · +6 가족 유형(끝난 세대만) · +7 집 등급 ·
+        /// +0x16 끝난 날 (실기 RAM: 1대째 +0 = 0x144B "5195만엔", +6 = 3 "북적북적 가족"). 앱은 그림 대신 이 값을 글로 보인다(얼굴 행렬은 옮기지 않음).
+        /// </summary>
+        public OrigHeaven.Page ParadePage()
+        {
+            var m = Game.Mem; int gen = (int)m.R8(OrigMem.Fam + 0x6A3);
+            var sb = new System.Text.StringBuilder("[원작 하늘 행렬 화면 — 앱 요약]");
+            OrigDate.Get(m, 0x0202C688, out int sy, out int smo, out int sd);
+            for (int k = 1; k <= gen && k < 64; k++)
+            {
+                uint r = 0x0202E528 + 28u * (uint)k;
+                uint head = m.R16(r + 4), type = m.R8(r + 6);
+                sb.Append('\n').Append(sy).Append('.').Append(smo).Append('.').Append(sd).Append("  ").Append(k).Append("대째 ").Append(Family.Name).Append("가  세대주 ")
+                  .Append(head == 0xFFFF ? "?" : NameOf((int)head, -1));
+                if (type < 9) sb.Append("  ").Append(FamilyTypeName((int)type));
+                if (m.R8(r + 0x16) != 0xFF && m.R8(r + 0x18) != 0xFF)
+                {   // 다음 세대는 끝난 날 다음 날부터
+                    OrigDate.Get(m, r + 0x16, out int ey, out int em, out int ed);
+                    var next = SafeDay(ey, em, ed) + 1; sy = GameDate.Year(next); smo = GameDate.Month(next); sd = GameDate.Day(next);
+                }
+            }
+            sb.Append("\n\n").Append(FamilyYears()).Append("년가족");
+            return new OrigHeaven.Page { Speaker = 0, Screen = "하늘 행렬", Text = sb.ToString(), State = -1 };
         }
 
         /// <summary>책갈피 물음 대답: 예 → 되돌리기(0x08010AB4) + 글 254~256 → 메인 장면으로, 아니오 → 글 257~259 → 장면 끝 → 마지막 메뉴.</summary>
@@ -351,6 +378,7 @@ namespace SennenKazoku.Core.Orig
             h.Years = FamilyYears();
             if (yes) { RestoreBookmark(); lineageShown = false; } else lineageQueued = true;
             h.RunBookmarkAnswer(yes);
+            if (!yes) h.Pages.Add(ParadePage());
             if (h.Pages.Count > 0) { if (heavenWait == null) heavenWait = new List<OrigHeaven.Page>(); heavenWait.AddRange(h.Pages); }
             if (!StartHeaven()) FlushEndQueues();
         }

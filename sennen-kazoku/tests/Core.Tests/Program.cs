@@ -1382,6 +1382,9 @@ namespace SennenKazoku.Tests
                         var lines = heavenLines(s5);
                         Console.WriteLine("       가계 끊김 장면(햇수 " + yrs + ") " + lines.Count + "장: " + string.Join(" | ", lines).Substring(0, Math.Min(220, string.Join(" | ", lines).Length)));
                         T.True(lines.Exists(x => x.Contains("끊어지고")) && lines.Exists(x => x.Contains(yrs + "년 가족")), "끊김 대사(247/250)·햇수 숫자");
+                        var parade = lines.Find(x => x.Contains("하늘 행렬"));
+                        Console.WriteLine("       하늘 행렬: " + (parade ?? "없음"));
+                        T.True(parade != null && parade.Contains("1대째") && parade.Contains(yrs + "년가족"), "하늘 행렬 요약");
                         T.True(!s5.LineageReport(), "끊김 장면이 두 번 나옴");
                         T.Eq(s5.EndMenu, 5, "마지막 메뉴 대기 아님");
                         T.Eq((int)(mm.R32(0x0202C030) & 0x2044), 0x44, "장면 끝 표시(+0x20)");
