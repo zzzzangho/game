@@ -911,7 +911,7 @@ namespace SennenKazoku.Game
                 var hos = session as Core.Orig.OrigSession;
                 if (hos != null && HouseEmoTable() != null)
                 {
-                    // 원작 감정 말풍선(OrigSession.HouseEmote, 그림·움직임 = 실기 house_emo): 걷는 동안은 없다(실기 화면). 앱 인물은 누운 그림이 없어 zzz 도 머리 위에 둔다.
+                    // 원작 감정 말풍선(OrigSession.HouseEmote, 그림·움직임 = 실기 house_emo): 걷는 동안은 없다(실기 화면).
                     if (moving) a.Emo = -1;
                     else if (Time.time >= a.EmoCheck)
                     {
@@ -922,7 +922,10 @@ namespace SennenKazoku.Game
                     int ef = a.Emo >= 0 ? houseEmoTable.Frame(a.Emo, (int)((Time.time - a.EmoStart) * 60f)) : -1;
                     var es = ef >= 0 ? art.Sprite("house_emo_" + a.Emo + "_" + ef) : null;
                     a.Bubble.gameObject.SetActive(es != null);
-                    if (es != null) { a.Bubble.sprite = es; a.Bubble.color = Color.white; a.BubbleText.text = ""; UiKit.SetPx(a.Bubble.rectTransform, 0, 0, 32 * hs, 32 * hs); }
+                    // 자는 사람(말풍선 5): 원작은 몸 OBJ 를 그리지 않고(침대 그림) 말풍선만 16줄 아래에 둔다(실기 OAM)
+                    bool asleep = a.Emo == 5;
+                    a.Img.enabled = !asleep;
+                    if (es != null) { a.Bubble.sprite = es; a.Bubble.color = Color.white; a.BubbleText.text = ""; UiKit.SetPx(a.Bubble.rectTransform, 0, (asleep ? 16 : 0) * hs, 32 * hs, 32 * hs); }
                     continue;
                 }
                 // (원작 세션이 아니거나 집 말풍선 그림이 없을 때 — 앱 임시 표시) 사건 직전엔 "!", 평소엔 가끔 감정 말풍선
