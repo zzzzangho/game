@@ -501,9 +501,10 @@ namespace SennenKazoku.Core.Orig
                     if (sched == 0 && ((1u << (int)Game.Weekday()) & vm.Call("0811A19C", job) & 0xFF) != 0) sched = vm.Call("08119E78", p + 0x80);
                     if (sched == 0) sched = vm.Call("08119E34", job, m.R8(OrigMem.Fam + 0x682));
                     m.W32(OrigMem.Seed, seed);
+                    sched = Game.HeadSchedule(sched);
                 }
                 else eventTime = Game.EventTime[n];
-                if (sched == 0) return l;
+                if (sched == 0 || sched == 0xFFFFFFFF) return l;   // 가장의 일정도 아직 없음
                 int own = OwnRooms(vm)[n];
                 uint def = 0x08581768 + 716 * ((m.R8(0x0202C6AF) & 0xF) + 4 * (uint)m.R8(0x0202C692)), c = m.R32(sched);
                 int t = 0;

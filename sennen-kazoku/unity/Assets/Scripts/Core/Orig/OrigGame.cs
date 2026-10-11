@@ -166,7 +166,7 @@ namespace SennenKazoku.Core.Orig
                 // 그래도 없으면 직업·시대 기본 일정 0x08119E34(직업, 가족 +0x682)
                 if (sched == 0) sched = Vm.Call("08119E34", job, Mem.R8(OrigMem.Fam + 0x682));
             }
-            Schedule[n] = sched;
+            Schedule[n] = HeadSchedule(sched);
             PlanDay(n);
             if (TodayEvent[n] != 0) Push(0, 6, id);   // 일정 명령 8 (0x080153B0)
             // 블록 끝(0x08012178~): 아크마가 붙을지 (0x0802A6C4: 나이 단계·관심사·레코드 +0x4B 에 따라 1/4 또는 1/16) → +0x61 = 4
@@ -193,6 +193,14 @@ namespace SennenKazoku.Core.Orig
             return bd == 29 && bm == 2 && Vm.Call("08096010", (uint)y) == 0 && d == 1 && mo == 3;
         }
 
+        /// <summary>0x0802292C 머리: 일정이 −1 이면 가장(가족 +0x66C) 작업의 일정(+0xDB8)을 그대로 쓴다(작업 +0xDB8 에도 적는다).</summary>
+        public uint HeadSchedule(uint sched)
+        {
+            if (sched != 0xFFFFFFFF) return sched;
+            uint h = Vm.Call("0800E524", Mem.R16(OrigMem.Fam + 0x66C));
+            return h < 8 ? Schedule[h] : 0;
+        }
+
         /// <summary>0x0802292C(작업, 일정, 0) 의 사건 시각 부분: 그날 사건이 있고 시각이 아직 없으면
         /// 사건 +0x20(사건 자체 일정)이 있으면 300·표[사건 +4] − 1790 (표 0x08584610), 없으면 일정의 후보 시각(사건 +2 가 2 면 +8, 아니면 +4: 개수 + 시)
         /// 중 난수 하나를 골라 300·시 − 1790. 시각은 06:00 = 0 기준 하루 단위(1시간 300).</summary>
@@ -201,7 +209,7 @@ namespace SennenKazoku.Core.Orig
             uint ev = TodayEvent[n], sched = Schedule[n];
             if (EventTime[n] != -1 || ev == 0) return;
             if (Mem.R32(ev + 0x20) != 0) { EventTime[n] = (int)(300 * Mem.R32(0x08584610 + 4 * Mem.R8(ev + 4))) - 1790; return; }
-            if (sched == 0) return;
+            if (sched == 0 || sched == 0xFFFFFFFF) return;
             uint c = Mem.R8(ev + 2) == 2 ? Mem.R32(sched + 8) : Mem.R32(sched + 4), cnt = Mem.R8(c);
             uint r = Mem.Rand();
             if (cnt == 0) return;
