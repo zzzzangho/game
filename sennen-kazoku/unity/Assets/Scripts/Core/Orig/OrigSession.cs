@@ -460,6 +460,66 @@ namespace SennenKazoku.Core.Orig
         }
 
         /// <summary>선대의 꿈 목록 (가족 +0x4A4 = 0x0202C4B4, 4바이트씩: u16 인물, u16 관심사(꿈), 끝 0xFFFF — 천계 보고 0x080A0BC0 → 0x0800F86C(0, …) 가 넣는다).</summary>
+        /// <summary>집 안 자기 방 — 원작 0x08017EF0 이 장면+0x184 에 인물 칸별 '방 종류 4 묶음 안 순번'을 채우고,
+        /// 0x080171FC 가 집 정의(0x08581768 + 716·집 번호)에서 첫 '종류 4' 방 칸에 그 순번을 더한다. 돌려주는 값 = 집 정의 방 칸 번호(없으면 −1).</summary>
+        public const uint RoomScene = 0x0F03B800;
+        public int[] OwnRooms() { return OwnRooms(Game.Vm); }
+        public static int[] OwnRooms(OrigVm vm)
+        {
+            var m = vm.Mem; var r = new int[8];
+            uint h = (m.R8(0x0202C6AF) & 0xF) + 4 * (uint)m.R8(0x0202C692);
+            m.W32(RoomScene + 0x180, 0x08581768 + 716 * h);
+            vm.Call("08017EF0", RoomScene + 0x184);
+            for (int n = 0; n < 8; n++)
+                r[n] = m.R8(RoomScene + 0x184 + (uint)n) == 0xFF ? -1 : (int)vm.Call("080171FC", RoomScene, (uint)n);
+            return r;
+        }
+
+        /// <summary>하루 일정의 한 칸: 06:00 = 0 기준 하루 단위(1시간 300) [Start, End), 집 정의 방 칸, 일정 방 종류
+        /// (0 = 자기 방에서 잠, 1 = 자기 방, 2·3·4 = 집 머리 +0x10·+0x18·+0x14 방, 5 = 외출 → 방 0).</summary>
+        public sealed class PlanStep { public int Start, End, Room, Kind; }
+
+        /// <summary>
+        /// 인물의 그날 일정 (원작 0x0802292C 가 읽는 명령 표 {방 종류, 시간, ·, ·} 4바이트 칸, 0xFF 끝). 시간을 06:00 부터 더해 칸마다 [시작, 끝) 을 만들고
+        /// 방 종류는 0x080218E0(종류, 자기 방) 으로 방 칸이 된다. 원작은 다음 방이 있으면 칸 끝 50 단위 전(명령 7)에 걷기 시작한다.
+        /// 06:00 블록을 아직 안 돈 날(불러온 직후)은 그날 사건 없이 06:00 블록과 같은 순서로 일정을 고르되 난수 상태는 되돌린다.
+        /// eventTime = 그날 사건 시각(−1 없음).
+        /// </summary>
+        public List<PlanStep> DayPlan(int personId, out int eventTime)
+        {
+            var l = new List<PlanStep>(); eventTime = -1;
+            var m = Game.Mem; var vm = Game.Vm;
+            int n = -1; for (int k = 0; k < 8; k++) if (OrigGame.Present(m, k) && m.R16(OrigMem.PersonAddr(k) + 0x3C) == (uint)personId) n = k;
+            if (n < 0) return l;
+            uint sched = Game.Schedule[n];
+            try
+            {
+                if (sched == 0)
+                {
+                    uint seed = m.R32(OrigMem.Seed), p = OrigMem.PersonAddr(n), job = m.R8(p + 0x58);
+                    if (m.R8(p + 0x5F) != 0) sched = vm.Call("08119E10", 0x6C);
+                    if (sched == 0 && ((1u << (int)Game.Weekday()) & vm.Call("0811A19C", job) & 0xFF) != 0) sched = vm.Call("08119E78", p + 0x80);
+                    if (sched == 0) sched = vm.Call("08119E34", job, m.R8(OrigMem.Fam + 0x682));
+                    m.W32(OrigMem.Seed, seed);
+                }
+                else eventTime = Game.EventTime[n];
+                if (sched == 0) return l;
+                int own = OwnRooms(vm)[n];
+                uint def = 0x08581768 + 716 * ((m.R8(0x0202C6AF) & 0xF) + 4 * (uint)m.R8(0x0202C692)), c = m.R32(sched);
+                int t = 0;
+                for (uint k = 0; k < 32; k++)
+                {
+                    uint kind = m.R8(c + 4 * k); if (kind == 0xFF) break;
+                    int room = kind == 2 ? (int)m.R32(def + 0x10) : kind == 4 ? (int)m.R32(def + 0x14) : kind == 3 ? (int)m.R32(def + 0x18) : kind <= 1 ? own : 0;
+                    int end = t + 300 * (int)m.R8(c + 4 * k + 1);
+                    l.Add(new PlanStep { Start = t, End = end, Room = room, Kind = (int)kind });
+                    t = end;
+                }
+            }
+            catch (OrigUnmodeled) { }
+            return l;
+        }
+
         public const uint DreamList = 0x0202C4B4;
 
         /// <summary>선대의 꿈 목록: [인물 번호, 관심사] 차례대로.</summary>

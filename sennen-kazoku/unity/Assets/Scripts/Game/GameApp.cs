@@ -38,7 +38,7 @@ namespace SennenKazoku.Game
         const float SecondsPerDay = 5250f / 59.7275f, HoldSpeed = 5250f / 810f;
         bool playing, popupOpen, follow = true; int lastAutoDay; float toastUntil;
         int selectedId = -1; float scrollX, camY;                             // GBA px
-        sealed class Actor { public int Id; public float X, Target, Floor; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; }
+        sealed class Actor { public int Id; public float X, Target, Floor; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; public int Room = -1, Kind = -1; public bool Hidden; }
         readonly Dictionary<int, Actor> actors = new Dictionary<int, Actor>();
 
         // =============================================================== 시작
@@ -813,7 +813,8 @@ namespace SennenKazoku.Game
                 if (!p.Alive) continue;
                 if (p.Look == null && art.Parts.Available) p.Look = DefaultLook(p);
                 if (p.Look == null && string.IsNullOrEmpty(p.Character) && ids.Count > 0) p.Character = ids[k++ % ids.Count];
-                var room = Rooms()[HomeRoom(p)];
+                int planned = PlanRoom(p, out int kind0);
+                var room = Rooms()[planned >= 0 ? planned : HomeRoom(p)];
                 var img = UiKit.Box(figures, "p" + p.Id, Color.white, Figure(p, false, 0));
                 img.raycastTarget = true; img.preserveAspect = true;
                 if (img.sprite == null) { img.sprite = UiKit.Circle; img.color = p.Gender == 0 ? new Color32(0x5B, 0x8F, 0xC9, 255) : new Color32(0xD9, 0x6A, 0x8A, 255); }
@@ -822,7 +823,8 @@ namespace SennenKazoku.Game
                 var bub = UiKit.Box(img.transform, "bubble", Color.white, null); bub.preserveAspect = true; bub.gameObject.SetActive(false);
                 var bubT = UiKit.Label(bub.transform, "t", "", 14, Color.red, TextAnchor.MiddleCenter, FontStyle.Bold);
                 float x = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36));
-                actors[p.Id] = new Actor { Id = p.Id, X = x, Target = x, Floor = RoomFloor(room), Rt = img.rectTransform, Img = img, NextMove = Time.time + UnityEngine.Random.Range(2f, 6f), Bubble = bub, BubbleText = bubT };
+                actors[p.Id] = new Actor { Id = p.Id, X = x, Target = x, Floor = RoomFloor(room), Rt = img.rectTransform, Img = img, NextMove = Time.time + UnityEngine.Random.Range(2f, 6f), Bubble = bub, BubbleText = bubT,
+                                           Room = planned, Kind = kind0, Hidden = planned >= 0 && kind0 == 5 };
             }
         }
 
@@ -869,12 +871,32 @@ namespace SennenKazoku.Game
             foreach (var a in actors.Values)
             {
                 var p = session.Family.Get(a.Id);
-                if (Time.time > a.NextMove)                                     // 임시 행동: 집 안을 오간다(원작 이동 규칙 미해명)
+                int want = PlanRoom(p, out int kind);
+                if (want >= 0)
+                {
+                    // 원작 하루 일정의 방 (OrigSession.DayPlan). 방 안 자리·걷는 속도는 앱 연출(원작 방 자리 0x0801729C·0x08017530 은 옮기지 않음)
+                    var rooms = Rooms(); var room = rooms[want];
+                    if (want != a.Room)
+                    {
+                        if (a.Hidden) { var door = rooms[0]; a.Floor = RoomFloor(door); a.X = (door[0] + door[1]) / 2f - 16; a.Hidden = false; }   // 외출에서 돌아옴: 현관(방 0)에서
+                        a.Room = want; a.Target = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36)); a.NextMove = Time.time + UnityEngine.Random.Range(4f, 10f);
+                        if (RoomFloor(room) != (int)a.Floor) { a.Floor = RoomFloor(room); a.X = a.Target; }   // 다른 층 방: 바로 옮긴다(원작 계단 이동은 옮기지 않음)
+                    }
+                    else if (Time.time > a.NextMove && kind != 0 && kind != 5)   // 앱 연출: 같은 방 안에서 가끔 자리를 옮긴다
+                    {
+                        a.Target = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36)); a.NextMove = Time.time + UnityEngine.Random.Range(4f, 10f);
+                    }
+                    a.Kind = kind;
+                    if (kind == 5 && want == 0 && Mathf.Abs(a.Target - a.X) < 0.5f) a.Hidden = true;   // 외출: 현관에 닿으면 집 밖
+                }
+                else if (Time.time > a.NextMove)                                // 임시 행동(원작 일정이 없는 세션): 집 안을 오간다
                 {
                     var rooms = Rooms(); var room = UnityEngine.Random.value < 0.7f ? rooms[HomeRoom(p)] : rooms[UnityEngine.Random.Range(Mathf.Min(1, rooms.Count - 1), rooms.Count)];
                     a.Target = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36)); a.NextMove = Time.time + UnityEngine.Random.Range(4f, 10f);
                     if (RoomFloor(room) != (int)a.Floor) { a.Floor = RoomFloor(room); a.X = a.Target; }   // 다른 층 방: 바로 옮긴다(원작 계단 이동은 옮기지 않음)
                 }
+                a.Img.enabled = !a.Hidden;
+                if (a.Hidden) { a.Bubble.gameObject.SetActive(false); continue; }
                 float d = a.Target - a.X; bool moving = Mathf.Abs(d) > 0.5f;
                 if (moving) a.X += Mathf.Sign(d) * Mathf.Min(Mathf.Abs(d), 18f * Time.deltaTime);
                 a.Anim += Time.deltaTime;
@@ -889,7 +911,7 @@ namespace SennenKazoku.Game
                 if (soon) { a.Bubble.sprite = null; a.Bubble.color = new Color(1, 1, 1, 0.95f); a.BubbleText.text = "!"; a.BubbleText.color = new Color32(0xE0, 0x30, 0x30, 255); }
                 else if (emote)
                 {
-                    var emo = EmoteFor(p, a.Id);
+                    var emo = EmoteFor(p, a.Id, a.Kind == 0);
                     a.Bubble.sprite = emo; a.Bubble.color = emo != null ? Color.white : new Color(1, 1, 1, 0.95f);
                     a.BubbleText.text = emo != null ? "" : (p.Hearts >= Person.HeartUnit * 2 ? "♥" : p.Hearts < Person.HeartUnit / 2 ? "💢" : "♪");
                     a.BubbleText.color = new Color32(0xE0, 0x50, 0x80, 255);
@@ -922,10 +944,10 @@ namespace SennenKazoku.Game
             }
         }
 
-        Sprite EmoteFor(Person p, int seed)
+        /// <summary>감정 말풍선. asleep = 원작 일정의 잠 칸(종류 0). 잠자는 사람에게 zzz 를 띄우는 것은 앱 연출(원작 말풍선 조건은 미해명).</summary>
+        Sprite EmoteFor(Person p, int seed, bool asleep)
         {
-            int hour = (int)(Time.time / 20f) % 4;
-            if (hour == 3 && art.Ui("zzz_a") != null) return art.Ui(new[] { "zzz_a", "zzz_b", "zzz_c", "zzz_d" }[(int)(Time.time * 3) % 4]);
+            if (asleep && art.Ui("zzz_a") != null) return art.Ui(new[] { "zzz_a", "zzz_b", "zzz_c", "zzz_d" }[(int)(Time.time * 3) % 4]);
             string[] notes = { "bubble_note_green", "bubble_note_pink", "bubble_note_green2", "bubble_note_pink2", "bubble_note_green3" };
             return art.Ui(notes[(seed + (int)(Time.time / 9f)) % notes.Length]);
         }
@@ -1015,6 +1037,31 @@ namespace SennenKazoku.Game
 
         /// <summary>방의 바닥(집 세계 y). 원작 집 정의의 방은 [x0, x1, 위, 아래, 종류], 옛 파노라마 방은 [x0, x1] (바닥 = FloorY).</summary>
         int RoomFloor(int[] room) { return room.Length >= 4 ? room[3] : art.FloorY; }
+
+        readonly Dictionary<int, List<SennenKazoku.Core.Orig.OrigSession.PlanStep>> plans = new Dictionary<int, List<SennenKazoku.Core.Orig.OrigSession.PlanStep>>();
+        int planDay = int.MinValue; string planHouse = "";
+
+        /// <summary>
+        /// 원작 하루 일정(OrigSession.DayPlan)으로 지금 있어야 할 방 칸. 앱 하루(acc)는 06:00 = 0 인 원작 하루 7200 단위에 대응한다.
+        /// 칸 [시작, 끝) 의 방, 다음 칸이 있으면 끝 50 단위 전부터 다음 방(원작 명령 7 = 걷기 시작). kind = 그 칸의 일정 방 종류.
+        /// 원작 집 정의 화면이 아니거나 일정이 없으면 −1.
+        /// </summary>
+        int PlanRoom(Person p, out int kind)
+        {
+            kind = -1;
+            var os = session as SennenKazoku.Core.Orig.OrigSession;
+            if (os == null || p == null || !art.HouseIsWorld) return -1;
+            if (planDay != session.Family.Today || planHouse != art.HouseKey) { plans.Clear(); planDay = session.Family.Today; planHouse = art.HouseKey; }
+            List<SennenKazoku.Core.Orig.OrigSession.PlanStep> pl;
+            if (!plans.TryGetValue(p.Id, out pl)) plans[p.Id] = pl = os.DayPlan(p.Id, out _);
+            if (pl.Count == 0) return -1;
+            float t = Mathf.Clamp01(acc / SecondsPerDay) * 7200f;
+            int i = 0; while (i < pl.Count - 1 && t >= pl[i].End) i++;
+            var st = i + 1 < pl.Count && t >= pl[i].End - 50 ? pl[i + 1] : pl[i];
+            kind = st.Kind;
+            int room = st.Room >= 0 ? st.Room : 1;   // 자기 방이 없는 사람(방 수보다 많은 가족): 앱은 거실(방 1)에 둔다 — 원작 처리 미확인
+            return room < Rooms().Count ? room : -1;
+        }
 
         float EffectiveSpeed { get { return speed == 0 ? 0f : holdingSpeed ? HoldSpeed : 1f; } }
 

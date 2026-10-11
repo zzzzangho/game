@@ -41,6 +41,10 @@ namespace SennenKazoku.Core.Orig
         public readonly uint[] TodayEvent = new uint[8];
         /// <summary>인물 작업 +0xDD0 의 0x2000 비트: 그날 새 관심사를 알린 인물 (06:00 에 꺼짐). 켜지면 그날 남은 이야기 사건은 띄우지 않는다.</summary>
         public readonly bool[] Announced = new bool[8];
+        /// <summary>인물 작업의 그날 일정 표(원작 작업 +0xDB8) — {명령 표, 사건 시각 후보, 다른 후보} 주소. 0 = 아직 06:00 블록을 안 돌았다(불러온 직후).</summary>
+        public readonly uint[] Schedule = new uint[8];
+        /// <summary>그날 사건 시각(원작 작업 +0xDCC, 06:00 을 0 으로 한 하루 단위 7200, −1 = 없음). 0x0802292C 가 정한다.</summary>
+        public readonly int[] EventTime = new int[8];
         /// <summary>호출에 넘기는 결과 버퍼 자리 (원작은 호출한 쪽 지역 변수).</summary>
         const uint OutBuf = 0x0F000800;
 
@@ -150,11 +154,32 @@ namespace SennenKazoku.Core.Orig
                 Push(Rules.Events[ev].Data[OrigEvents.PickVariant(Vm, Rules, ev)], 0, id);
             }
             int code = (int)Vm.Call("08027E78", p, 0);
-            if (code != 0) Dispatch(n, code);
+            // 0x08011FB4~: 레코드 +0x5F(일정 풀에서 받은 값) 가 있으면 특별 일정 0x08119E10(0x6C), 아니면 0 — 사건 시각은 −1 로
+            uint sched = Mem.R8(p + 0x5F) != 0 ? Vm.Call("08119E10", 0x6C) : 0;
+            EventTime[n] = -1;
+            if (code != 0) { uint se = Dispatch(n, code); if (se != 0) sched = Mem.R32(se + 0x20); }   // 0x08014370: 일정 = 그 사건 +0x20
+            if (sched == 0)
+            {
+                // 0x08012046~: 직업 요일 비트(0x0811A19C) 에 오늘 요일(0x08023F68) 이 있으면 관심사 일정 0x08119E78(레코드 +0x80)
+                uint job = Mem.R8(p + 0x58), mask = Vm.Call("0811A19C", job) & 0xFF, wd = Weekday();
+                if (((1u << (int)wd) & mask) != 0) sched = Vm.Call("08119E78", p + 0x80);
+                // 그래도 없으면 직업·시대 기본 일정 0x08119E34(직업, 가족 +0x682)
+                if (sched == 0) sched = Vm.Call("08119E34", job, Mem.R8(OrigMem.Fam + 0x682));
+            }
+            Schedule[n] = sched;
+            PlanDay(n);
             if (TodayEvent[n] != 0) Push(0, 6, id);   // 일정 명령 8 (0x080153B0)
             // 블록 끝(0x08012178~): 아크마가 붙을지 (0x0802A6C4: 나이 단계·관심사·레코드 +0x4B 에 따라 1/4 또는 1/16) → +0x61 = 4
             if (Vm.Call("0802A6C4", id) != 0) Mem.W8(p + 0x61, 4);
             return code;
+        }
+
+        /// <summary>오늘 요일 (0x08023F68 = 0x08095C18(메인 장면 +0x148 날짜 {u16 년, u8 월, u8 일})). 장면이 없으니 저장 날짜(0x0202C684)를 같은 꼴로 넘긴다.</summary>
+        public uint Weekday()
+        {
+            OrigDate.Get(Mem, OrigMem.Date, out int y, out int mo, out int d);
+            Mem.W16(OutBuf + 0x50, (uint)y); Mem.W8(OutBuf + 0x52, (uint)mo); Mem.W8(OutBuf + 0x53, (uint)d);
+            return Vm.Call("08095C18", OutBuf + 0x50);
         }
 
         uint Table(uint a, uint b) { Mem.W16(OutBuf + 0x40, a); Mem.W16(OutBuf + 0x42, b); return OutBuf + 0x40; }
@@ -168,35 +193,52 @@ namespace SennenKazoku.Core.Orig
             return bd == 29 && bm == 2 && Vm.Call("08096010", (uint)y) == 0 && d == 1 && mo == 3;
         }
 
-        /// <summary>0x08014370: 하루 처리 결과 코드 → 그날 사건(작업 +0xDBC).</summary>
-        void Dispatch(int n, int code)
+        /// <summary>0x0802292C(작업, 일정, 0) 의 사건 시각 부분: 그날 사건이 있고 시각이 아직 없으면
+        /// 사건 +0x20(사건 자체 일정)이 있으면 300·표[사건 +4] − 1790 (표 0x08584610), 없으면 일정의 후보 시각(사건 +2 가 2 면 +8, 아니면 +4: 개수 + 시)
+        /// 중 난수 하나를 골라 300·시 − 1790. 시각은 06:00 = 0 기준 하루 단위(1시간 300).</summary>
+        void PlanDay(int n)
+        {
+            uint ev = TodayEvent[n], sched = Schedule[n];
+            if (EventTime[n] != -1 || ev == 0) return;
+            if (Mem.R32(ev + 0x20) != 0) { EventTime[n] = (int)(300 * Mem.R32(0x08584610 + 4 * Mem.R8(ev + 4))) - 1790; return; }
+            if (sched == 0) return;
+            uint c = Mem.R8(ev + 2) == 2 ? Mem.R32(sched + 8) : Mem.R32(sched + 4), cnt = Mem.R8(c);
+            uint r = Mem.Rand();
+            if (cnt == 0) return;
+            EventTime[n] = (int)(300 * Mem.R8(c + 1 + r % cnt)) - 1790;
+        }
+
+        /// <summary>0x08014370: 하루 처리 결과 코드 → 그날 사건(작업 +0xDBC). 돌려주는 값 = 그날 일정(+0xDB8 = 이 사건 +0x20)을 정한 사건(없으면 0).
+        /// 종류 4 는 일정을 먼저 적고 나서 대상이 아니면 사건만 지운다.</summary>
+        uint Dispatch(int n, int code)
         {
             uint p = OrigMem.PersonAddr(n);
             switch (code)
             {
-                case 1: TodayEvent[n] = OrigEvents.EventOf(Mem, n, true); break;
-                case 2: TodayEvent[n] = OrigEvents.EventOf(Mem, n, false); break;
+                case 1: return TodayEvent[n] = OrigEvents.EventOf(Mem, n, true);
+                case 2: return TodayEvent[n] = OrigEvents.EventOf(Mem, n, false);
                 case 3:   // 그 사람의 일정 목록 0x08026D74(레코드, 결과, 0): 결과 +8 사건, +4 → 레코드 +0x5F
                     for (uint i = 0; i < 12; i += 4) Mem.W32(OutBuf + i, 0);
                     Vm.Call("08026D74", p, OutBuf, 0);
                     TodayEvent[n] = Mem.R32(OutBuf + 8); Mem.W8(p + 0x5F, Mem.R32(OutBuf + 4));
-                    break;
+                    return TodayEvent[n];
                 case 4:   // 가족 공용 일정 0x08027090(0, 결과, 0x08014398): 결과 +0 대상 작업 번호(-1 이면 0x0202C67C 인물)
                     {
                         for (uint i = 0; i < 12; i += 4) Mem.W32(OutBuf + i, 0);
                         Vm.Call("08027090", 0, OutBuf, 0x08014398);
-                        TodayEvent[n] = Mem.R32(OutBuf + 8);
+                        uint se = TodayEvent[n] = Mem.R32(OutBuf + 8);
                         uint who = Mem.R32(OutBuf);
                         bool mine = who != 0xFFFFFFFF ? who == (uint)n : Mem.R16(p + 0x3C) == Mem.R16(0x0202C67C);
-                        if (who != 0xFFFFFFFF && !mine) { TodayEvent[n] = 0; break; }
+                        if (who != 0xFFFFFFFF && !mine) { TodayEvent[n] = 0; return se; }
                         if (!mine) TodayEvent[n] = 0;
                         Mem.W8(p + 0x5F, Mem.R32(OutBuf + 4));
-                        break;
+                        return se;
                     }
-                case 6: TodayEvent[n] = Vm.Call("08119C5C", 4, Mem.R16(p + 0x4A)); break;
-                case 7: TodayEvent[n] = Vm.Call("08119C5C", 5, Mem.R16(p + 0x4C)); break;
-                case 8: TodayEvent[n] = Vm.Call("08119C5C", 3, Mem.R16(p + 0x4E)); break;
+                case 6: return TodayEvent[n] = Vm.Call("08119C5C", 4, Mem.R16(p + 0x4A));
+                case 7: return TodayEvent[n] = Vm.Call("08119C5C", 5, Mem.R16(p + 0x4C));
+                case 8: return TodayEvent[n] = Vm.Call("08119C5C", 3, Mem.R16(p + 0x4E));
             }
+            return 0;
         }
 
         /// <summary>0x080233AC: 사건 큐에 넣기 (24칸 원형, 쓰는 번호 0x0203BBC8).</summary>

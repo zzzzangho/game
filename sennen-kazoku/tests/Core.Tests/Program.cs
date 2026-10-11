@@ -345,6 +345,30 @@ namespace SennenKazoku.Tests
                 Console.WriteLine("       종합 진단: main " + string.Join("·", d1) + ", custom_create " + d2s + "  (원작 ROM: 3·3·3·3, 3·1·4·2)");
                 T.True(string.Join("·", d1) == "3·3·3·3" && (d2s == "" || d2s == "3·1·4·2"), "종합 진단이 원작과 다름");
             }
+            // 자기 방(0x08017EF0 → 장면+0x184, 0x080171FC): 실기 집 화면 RAM(house_r2.ram) 의 장면+0x184 = 00 00 01 02 FF…  → 집 2(방 종류 0,1,4,4,4…) 방 칸 2·2·3·4
+            if (File.Exists(Path.Combine(dir, "house_r2.ram")))
+            {
+                var hm = Fresh("house_r2.ram"); var hvm = rules.CreateVm(hm);
+                var rooms = SennenKazoku.Core.Orig.OrigSession.OwnRooms(hvm);
+                string tab = ""; for (uint n = 0; n < 8; n++) tab += hm.R8(SennenKazoku.Core.Orig.OrigSession.RoomScene + 0x184 + n).ToString("X2") + " ";
+                Console.WriteLine("       자기 방: 표 " + tab + "→ 방 칸 " + string.Join(",", rooms) + "  (실기 00 00 01 02 FF FF FF FF)");
+                T.Eq(tab.Trim(), "00 00 01 02 FF FF FF FF", "자기 방 표가 실기와 다름");
+                T.Eq(string.Join(",", rooms), "2,2,3,4,-1,-1,-1,-1", "자기 방 칸이 실기와 다름");
+                // 하루 일정 고르기(0x08011FB4~0x080120B6): 실기 작업 버퍼 +0xDB8 이 규칙의 결과(직업 일정이면 0x08119E34 의 난수 3택 중 하나)와 맞는지
+                var hg = new SennenKazoku.Core.Orig.OrigGame(hm, rules); var hres = new List<string>();
+                foreach (uint task in new uint[] { 0x0200F124, 0x02011960, 0x0201419C, 0x020169D8 })
+                {
+                    uint p = hm.R32(task + 4), job = hm.R8(p + 0x58), hw = hm.R32(task + 0xDB8);
+                    if (hm.R32(task + 0xDBC) != 0) { hres.Add("사건 있음"); continue; }
+                    var cand = new List<uint>(); string why;
+                    if (hm.R8(p + 0x5F) != 0) { cand.Add(hvm.Call("08119E10", 0x6C)); why = "특별"; }
+                    else if (((1u << (int)hg.Weekday()) & hvm.Call("0811A19C", job) & 0xFF) != 0 && hvm.Call("08119E78", p + 0x80) != 0) { cand.Add(hvm.Call("08119E78", p + 0x80)); why = "관심사"; }
+                    else { uint jr = hm.R32(0x0889D3B8 + 4 * job); for (uint k = 0; k < 3; k++) cand.Add(hm.R32(jr + 0x10 + 4 * k)); why = "직업 3택"; }
+                    hres.Add(why + (cand.Contains(hw) ? " 맞음" : " 다름 " + hw.ToString("X8")));
+                    T.True(cand.Contains(hw), "하루 일정 고르기가 실기와 다름 (작업 " + task.ToString("X8") + ")");
+                }
+                Console.WriteLine("       하루 일정 고르기(실기 작업 4개, 요일 " + hg.Weekday() + "): " + string.Join(", ", hres));
+            }
             // 세기 확인(0x080A113C, 자동 변환 — 점프 표 뒤 반복문 머리를 찾도록 lift.py 를 고친 뒤 변환됨): 시작일을 1·2·4·7세기 전으로 바꾼 RAM 에서
             // 원작 ROM 을 unicorn 으로 돌린 결과(century/c<세기>.out.ram)와 저장 영역 0x0202C010~0x0203C440·결과 8바이트가 같아야 한다.
             if (Directory.Exists(Path.Combine(dir, "century")))
@@ -1064,6 +1088,22 @@ namespace SennenKazoku.Tests
                     var s = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234);
                     T.True(s.Family.Members.Count >= 2, "가족 인원 " + s.Family.Members.Count);
                     Console.WriteLine("       시작 " + GameDate.Format(s.Family.Today) + " " + string.Join(", ", s.Family.Members.ConvertAll(p => p.Name + "(" + (p.Gender == 0 ? "남" : "여") + p.Age(s.Family.Today) + "세 " + p.PlannedTitle + ")")));
+                    {   // 하루 일정(0x0802292C 가 읽는 명령 표): 첫날 06:00 전(불러온 직후와 같은 경로)과 하루 진행 뒤, 칸 시간 합이 24시간(7200)·자기 방 배정
+                        var hs = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234);
+                        var own = hs.OwnRooms();
+                        for (int day = 0; day < 2; day++)
+                        {
+                            if (day == 1) hs.StepDay();
+                            foreach (var p in hs.Family.Members)
+                            {
+                                var plan = hs.DayPlan(p.Id, out int evt);
+                                int sum = 0; foreach (var st in plan) sum += st.End - st.Start;
+                                Console.WriteLine("       일정 " + (day == 0 ? "첫날 " : "다음날 ") + p.Name + ": " + string.Join(" ", plan.ConvertAll(st => st.Kind + "→방" + st.Room + "(" + (st.End - st.Start) / 300 + "h)")) + (evt >= 0 ? "  사건 " + (evt + 1800) % 7200 / 300 + "시" : ""));
+                                T.Eq(sum, 7200, p.Name + " 일정 합이 24시간이 아님");
+                            }
+                        }
+                        Console.WriteLine("       자기 방(인물 칸 0~7): " + string.Join(",", own) + ", 원작 요일 값(0x08095C18) " + GameDate.Format(hs.Family.Today) + " → " + hs.Game.Weekday());
+                    }
                     {   // 천계 보고(결혼식 뒤 원작 0x0809F938 진입값 2 → 5 → 6): 시작일을 100년 전으로, 세대 기록 수(+0x6A3)를 2(첫 세대교체)로 두면
                         // 가계도 설명 → 작명서 → 칭호·유형 평 → 통신 결혼의 화살 → 세기 확인(1세기 = 새 시대) → 시대 연출 → 새 시대 축하·시간의 책갈피·기록의 전당 → 마무리.
                         // 몸통 세트 0 → 1, 가족 직업이 새 시대 것으로, 시간의 책갈피 +1, 통신 결혼의 화살(화살 칸 10) 1, 고인 목록 비움.

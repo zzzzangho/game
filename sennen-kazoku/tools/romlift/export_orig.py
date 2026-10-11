@@ -181,7 +181,37 @@ def rom_spans(rom, consts=(), extra=(), more=()):
 def more_spans(out_path):
     """출력 파일 옆 newgame_spans.json (newgame_spans.py 결과) 이 있으면 그 범위도 넣는다."""
     p = os.path.join(os.path.dirname(os.path.abspath(out_path)), 'newgame_spans.json')
-    return [tuple(x) for x in json.load(open(p))] if os.path.exists(p) else []
+    # 집 정의 16채 (자기 방 0x08017EF0·방 종류 0x080218E0 이 집 번호로 계산해 읽는다), 사건 시각 표 0x08584610 (0x0802292C)
+    extra = [(0x08581768, 716 * 16), (0x08584610, 0x40)]
+    return ([tuple(x) for x in json.load(open(p))] if os.path.exists(p) else []) + extra
+
+
+def sched_spans(rom, out):
+    """하루 일정 표(작업 +0xDB8 이 가리키는 것)를 모두 넣는다: {명령 표 4바이트 칸(0xFF 끝), 사건 시각 후보(개수 + 시), 다른 후보}.
+    출처 — 관심사 일정 0x08119E78(관심사 레코드 +0x18), 직업 일정 0x08119E34(0x0889D3B8[직업] +0x10/+0x14/+0x18),
+    특별 일정 0x08119E10(0x08887CE0[k]), 사건 자체 일정(사건 +0x20)."""
+    ptrs, spans = set(), []
+    def ptr(a):
+        return rom.u32(a) if rom.ok(a) and rom.ok(rom.u32(a)) else 0
+    for it in out.get('interests', []):
+        rec = ptr(ptr(0x085BD4A0 + 4 * it[0]) + 4 * it[1]) if ptr(0x085BD4A0 + 4 * it[0]) else 0
+        if rec:
+            ptrs.add(ptr(rec + 0x18))
+            for e in (ptr(rec + 0x1C), ptr(rec + 0x20)):
+                if e: ptrs.add(ptr(e + 0x20))
+    for j in range(len(out.get('jobs', []))):
+        rec = ptr(0x0889D3B8 + 4 * j)
+        if rec: ptrs.update(ptr(rec + o) for o in (0x10, 0x14, 0x18))
+    for k in range(0x80):
+        ptrs.add(ptr(0x08887CE0 + 4 * k))
+    for e in out.get('events', {}): ptrs.add(ptr(int(e, 16) + 0x20))
+    for sp in sorted(p for p in ptrs if p):
+        c, h1, h2 = (ptr(sp + 4 * i) for i in range(3))
+        if not (c and h1 and h2): continue
+        n = 0
+        while rom.ok(c + 4 * n) and rom.u8(c + 4 * n) != 0xFF and n < 64: n += 1
+        spans += [(sp, 12), (c, 4 * n + 4), (h1, 1 + rom.u8(h1)), (h2, 1 + rom.u8(h2))]
+    return spans
 
 
 def respan(rom_path, out_path):
@@ -193,7 +223,7 @@ def respan(rom_path, out_path):
         a, _, t = line.rstrip('\n').partition('\t'); trees[a] = json.loads(t)
     out['natives'] = {('0x%08X' % a): n for a, n in NATIVE_NAMES.items()}
     out['rom'] = rom_spans(rom, trees_raw_consts(trees), [int(a, 16) for a in out['events']] + [int(a, 16) for a in out['variantData']],
-                           more_spans(out_path))
+                           more_spans(out_path) + sched_spans(rom, out))
     with open(out_path, 'w', encoding='utf8') as fp: json.dump(out, fp, separators=(',', ':'))
     print('ROM 조각 %d, 크기 %.1f KB' % (len(out['rom']), os.path.getsize(out_path) / 1024))
     return 0
