@@ -192,7 +192,8 @@ namespace SennenKazoku.Game
             if (!LoadOrig()) { Toast("원작 팩을 불러오지 못했습니다"); return; }
             try
             {
-                session = Core.Orig.OrigSession.NewRecommended(origRules, origText, "", OrigSeed(), cartridge: LastCartridge());
+                session = Core.Orig.OrigSession.NewRecommended(origRules, origText, "", OrigSeed(), cartridge: LastCartridge(), fresh: !continueNewFamily);
+                continueNewFamily = false;
                 EnterGame(); Toast("원작 규칙으로 시작합니다 (신님이 추천하는 가족)"); ApplyPlayerName();
             }
             catch (Exception e) { Toast("원작 진행 시작 실패: " + e.Message); session = null; }
@@ -425,7 +426,7 @@ namespace SennenKazoku.Game
 
         void ShowTitle()
         {
-            titleAt = Time.realtimeSinceStartup;
+            titleAt = Time.realtimeSinceStartup; cardShown = false;
             playing = false; popupOpen = false; ClearPopup();
             gameRoot.gameObject.SetActive(false); titleRoot.gameObject.SetActive(true); Clear(titleRoot);
             if (lay == null) return;
@@ -447,7 +448,7 @@ namespace SennenKazoku.Game
             bool hasSave = saves.Exists("auto");
             var c = UiKit.Btn(titleRoot, "cont", hasSave ? "이어하기" : "이어하기 (저장 없음)", Px(18), hasSave ? new Color32(0x3A, 0x6E, 0xC8, 255) : (Color)Color.gray, Color.white, () => { if (hasSave) LoadSlot("auto"); });
             UiKit.SetPx(c.GetComponent<RectTransform>(), x + pad, y, bw, bh); y += bh + Px(10);
-            var n = UiKit.Btn(titleRoot, "new", "처음부터", Px(18), new Color32(0xE8, 0x70, 0x40, 255), Color.white, StartNew);
+            var n = UiKit.Btn(titleRoot, "new", "처음부터", Px(18), new Color32(0xE8, 0x70, 0x40, 255), Color.white, () => { continueNewFamily = false; StartNew(); });
             UiKit.SetPx(n.GetComponent<RectTransform>(), x + pad, y, bw, bh); y += bh + Px(10);
             var l = UiKit.Btn(titleRoot, "load", "저장 슬롯", Px(16), new Color32(0x10, 0x4E, 0x6E, 255), Color.white, () => OpenSaveSlots());
             UiKit.SetPx(l.GetComponent<RectTransform>(), x + pad, y, (bw - Px(10)) / 2, Px(48));
@@ -629,7 +630,8 @@ namespace SennenKazoku.Game
                 // 원작 "내가 아는 가족" 경로: 원작 마무리·입력 확인·가족 레코드 만들기(능력치도 원작이 정한다)
                 try
                 {
-                    session = Core.Orig.OrigSession.NewCustom(origRules, origText, setup, OrigSeed(), LastCartridge());
+                    session = Core.Orig.OrigSession.NewCustom(origRules, origText, setup, OrigSeed(), LastCartridge(), !continueNewFamily);
+                    continueNewFamily = false;
                     var name = session.Family.Name; setup = null; EnterGame(); Toast("이제 모두 끝! " + name + "가를 지켜보자 (원작 규칙)"); ApplyPlayerName();
                 }
                 catch (Exception e) { Toast("원작 가족 만들기 실패: " + e.Message); }
@@ -764,8 +766,10 @@ namespace SennenKazoku.Game
                 else session = new GameSession(r.Family, catalog);
                 EnterGame();
                 if (session is Core.Orig.OrigSession los)
-                {   // 원작 이어 하기: 가문을 마친 저장이면 천년가족 장면부터, 아니면 사건 메모 장면
-                    if (los.Ended ? los.ShowEndingAgain() : los.StartOffline(DateTime.Now)) RefreshAll();
+                {   // 원작 이어 하기 분기(0x0807828C): 천년가족 장면 끝 표시면 그 장면부터, 가계 끊김 장면 끝 표시면 새 가족 맡기(Update), 아니면 사건 메모 장면
+                    int ck = los.ContinueKind;
+                    if (ck == 8) { if (los.ShowEndingAgain()) RefreshAll(); }
+                    else if (ck == 1 && los.StartOffline(DateTime.Now)) RefreshAll();
                 } Toast(r.Warning.Length > 0 ? r.Warning : "불러왔습니다");
             }
             catch (Exception e) { Toast("불러오기 실패: " + e.Message); }
@@ -1054,9 +1058,17 @@ namespace SennenKazoku.Game
                 if (mv != null && mv.EventId == "memo-progress" && Time.unscaledTime >= memoNext) { memoNext = Time.unscaledTime; session.Advance(); AfterEventStep(); }   // 원작처럼 프레임마다 한 묶음(25일)
             }
             if (popupOpen || session.Paused) return;
-            if (session is Core.Orig.OrigSession mos && mos.MillenniumPending) { OpenMillenniumEnd(mos); return; }   // 천년가족 장면 뒤 마지막 메뉴
-            // 원작: 가장이 가장인 채로 죽으면 가문이 끊긴 장면 — 진행을 멈추고 책갈피 되돌리기를 묻는다
-            if (session is Core.Orig.OrigSession eos && eos.LineageEnded) { OpenLineageEnd(eos); return; }
+            if (cardShown) { cardShown = false; ShowTitle(); return; }   // 원작: 엔딩 카드 뒤 제목 화면
+            if (session is Core.Orig.OrigSession bos && bos.BookmarkAskPending) { OpenBookmarkAsk(bos); return; }   // 가계 끊김: 책갈피로 되돌리겠느냐(글 253)
+            if (session is Core.Orig.OrigSession mos && mos.EndMenu != 0) { OpenMillenniumEnd(mos); return; }   // 천년가족·가계 끊김 장면 뒤 마지막 메뉴
+            if (session is Core.Orig.OrigSession nos && nos.ContinueKind == 7) { OpenNewFamilyRequest(nos); return; }   // 끝난 가문 — 새 가족을 맡는다
+            // 원작: 가장이 가장인 채로 죽으면 가문이 끊긴 장면(천계 방식 5) — 신·큐피트 대사 뒤 책갈피 물음 또는 마지막 메뉴
+            if (session is Core.Orig.OrigSession eos && eos.LineageEnded)
+            {
+                RememberRecordName(eos);
+                if (eos.LineageReport()) RefreshAll();
+                return;
+            }
             if (EffectiveSpeed == 0) return;
             acc += Time.deltaTime * EffectiveSpeed;
             bool started = false, midDay = false;
@@ -1607,44 +1619,46 @@ namespace SennenKazoku.Game
             }
         }
 
-        /// <summary>가문이 끊김: 원작은 이때 시간의 책갈피가 있으면 쓴 날로 돌아갈 수 있다(0x0809EE4E → 0x08010AB4).</summary>
-        void OpenLineageEnd(Core.Orig.OrigSession os)
+        /// <summary>가문의 기록에 지금 가족의 앱 이름을 남긴다(원작 기록 칸은 0x0801045C 가 적는다 — 이름표는 앱 로컬 파일).</summary>
+        void RememberRecordName(Core.Orig.OrigSession os)
         {
-            var body = Window("가문이 끊겼습니다", 520); float w = BodyW(body);
-            // 원작 가문의 기록(0x0801045C 가 적은 칸) — 화면 배치는 앱이 정했다(원작 정리 화면 0x0809EAAC 의 그림 연출은 옮기지 않음)
-            var names = LoadRecordNames(); var cur = os.CurrentRecord();
-            if (cur != null)
-            {
-                names[Core.Orig.OrigSession.RecordKey(cur)] = os.Family.Name;
-                try { File.WriteAllText(RecordNamesPath, MiniJson.Serialize(names)); } catch (Exception) { }
-            }
-            string head = cur != null ? os.Family.Name + "가문  " + cur.Years + "년 가족\n" + os.FamilyTypeName(cur.Type) + " · 역대 가족 " + cur.Members + "명"
-                                      : os.Family.Name + "가문 (가문의 기록 상위 3에 들지 못했습니다)";
-            var hd = UiKit.Label(body, "head", head, Px(17), new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.UpperCenter, FontStyle.Bold);
-            UiKit.SetPx(hd.rectTransform, 0, 0, w, Px(60));
-            var recs = os.FamilyRecords();
-            var rl = UiKit.Label(body, "recs", "가문의 기록\n" + string.Join("\n", recs.ConvertAll(r => RecordLine(names, r, os))), Px(13), UiKit.Ink, TextAnchor.UpperLeft);
-            UiKit.SetPx(rl.rectTransform, 0, Px(66), w, Px(170));
-            var btns = new GameObject("btns", typeof(RectTransform)).GetComponent<RectTransform>(); btns.SetParent(body, false);
-            UiKit.SetPx(btns, 0, Px(244), w, Px(130));
-            body = btns;
-            if (os.HasBookmark)
-            {
-                var b = UiKit.Btn(body, "bm", "시간의 책갈피로 돌아가기", Px(16), Color.white, UiKit.Ink, () =>
-                {
-                    ClosePopup();
-                    if (os.RestoreBookmark()) { RebuildActors(); RefreshAll(); SaveSlot("auto", true); Toast("책갈피를 쓴 날로 돌아왔습니다"); }
-                    else Toast("되돌리지 못했습니다");
-                });
-                UiKit.SetPx(b.GetComponent<RectTransform>(), 0, 0, w, Px(56));
-            }
-            else
-            {
-                var l = UiKit.Label(body, "none", "시간의 책갈피가 없습니다.", Px(15), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(l.rectTransform, 0, 0, w, Px(40));
-            }
-            var t = UiKit.Btn(body, "title", "타이틀로", Px(16), Color.white, UiKit.Ink, () => { ClosePopup(); ShowTitle(); });
-            UiKit.SetPx(t.GetComponent<RectTransform>(), 0, Px(66), w, Px(56));
+            var cur = os.CurrentRecord(); if (cur == null) return;
+            var names = LoadRecordNames(); string key = Core.Orig.OrigSession.RecordKey(cur);
+            object v; if (names.TryGetValue(key, out v) && v as string == os.Family.Name) return;
+            names[key] = os.Family.Name;
+            try { File.WriteAllText(RecordNamesPath, MiniJson.Serialize(names)); } catch (Exception) { }
         }
+
+        /// <summary>가계 끊김 장면의 책갈피 물음 (원작 글 253 뒤 예/아니오 — 0x0809F334 의 물음 창).</summary>
+        void OpenBookmarkAsk(Core.Orig.OrigSession os)
+        {
+            var body = Window("시간의 책갈피", 420); float w = BodyW(body);
+            var pages = os.FinalMsg(253);
+            var q = UiKit.Label(body, "q", "높으신 신: " + (pages.Count > 0 ? pages[pages.Count - 1] : "시간을 되돌려 계속 지켜보겠느냐?"), Px(15), UiKit.Ink, TextAnchor.UpperLeft);
+            UiKit.SetPx(q.rectTransform, 0, 0, w, Px(120));
+            var yes = UiKit.Btn(body, "yes", "예", Px(16), Color.white, UiKit.Ink, () =>
+            {
+                ClearPopup(); os.AnswerBookmark(true); RebuildActors(); RefreshAll(); SaveSlot("auto", true);
+            });
+            UiKit.SetPx(yes.GetComponent<RectTransform>(), 0, Px(130), w, Px(52));
+            var no = UiKit.Btn(body, "no", "아니오", Px(16), Color.white, UiKit.Ink, () => { ClearPopup(); os.AnswerBookmark(false); RefreshAll(); });
+            UiKit.SetPx(no.GetComponent<RectTransform>(), 0, Px(188), w, Px(52));
+        }
+
+        /// <summary>
+        /// 끝난 가문을 이어 할 때(원작 이어 하기 분기 7 → 천계 방식 0): 높으신 신 글 666 · 큐피트 667 → 신님이 아는 가족 소개(새 가족 만들기).
+        /// 원작은 이때 저장 영역 초기화 방식 1(가족 +0x20 의 0x40)로 신 등급·감사의 마음·가문의 기록을 남긴다(실기 메모리 비교).
+        /// 원작 큰 글씨 연출("가족을 다음 세대로!")은 옮기지 않았다.
+        /// </summary>
+        void OpenNewFamilyRequest(Core.Orig.OrigSession os)
+        {
+            var body = Window("높으신 신의 부탁", 520); float w = BodyW(body);
+            var t = UiKit.Label(body, "t", "높으신 신: " + string.Join("\n", os.FinalMsg(666)) + "\n\n큐피트: " + string.Join("\n", os.FinalMsg(667)), Px(14), UiKit.Ink, TextAnchor.UpperLeft);
+            UiKit.SetPx(t.rectTransform, 0, 0, w, Px(250));
+            var b = UiKit.Btn(body, "next", "다음", Px(16), Color.white, UiKit.Ink, () => { continueNewFamily = true; StartNew(); });
+            UiKit.SetPx(b.GetComponent<RectTransform>(), 0, Px(260), w, Px(56));
+        }
+        bool continueNewFamily;
 
         /// <summary>
         /// 천년가족 마지막 메뉴 (원작: 천년가족 장면 뒤 글 554 + 메뉴 "가족의 역사·가계도·당신의 정보·종료").
@@ -1653,7 +1667,8 @@ namespace SennenKazoku.Game
         /// </summary>
         void OpenMillenniumEnd(Core.Orig.OrigSession os)
         {
-            var body = Window("천년가족", 560); float w = BodyW(body), y = 0;
+            RememberRecordName(os);
+            var body = Window(os.EndMenu == 5 ? "가문의 끝" : "천년가족", 560); float w = BodyW(body), y = 0;
             var intro = UiKit.Label(body, "intro", "큐피트: " + string.Join("\n", os.FinalMsg(554)), Px(14), UiKit.Ink, TextAnchor.UpperLeft);
             UiKit.SetPx(intro.rectTransform, 0, 0, w, Px(150)); y = Px(156);
             var items = new List<KeyValuePair<string, Action>> {
@@ -1682,9 +1697,12 @@ namespace SennenKazoku.Game
             UiKit.SetPx(no.GetComponent<RectTransform>(), 0, Px(158), w, Px(52));
         }
 
+        bool cardShown;
+
         void OpenEndingCard(Core.Orig.OrigSession os, string bye)
         {
             var body = Window("천년가족", 520); float w = BodyW(body);
+            cardShown = true;
             var c = os.EndingCard();
             var a = UiKit.Label(body, "bye", "큐피트: " + bye, Px(14), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(a.rectTransform, 0, 0, w, Px(70));
             var l1 = UiKit.Label(body, "c1", c[0] + "\n" + c[1], Px(15), new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.UpperLeft); UiKit.SetPx(l1.rectTransform, 0, Px(80), w, Px(60));

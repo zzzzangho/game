@@ -54,6 +54,29 @@ namespace SennenKazoku.Core.Orig
             ResetSave(vm, TitleResetMode(vm.Mem));
         }
 
+        /// <summary>
+        /// 제목 화면 "처음부터"(선택 0): 기록이 있는 카트리지(가족 +0x20 의 0x1000)면 원작은 확인 장면(0x08078F20 → 0x08078E74)을 거치며
+        /// 가족 +0x20 의 0x2000·0x40 (천년가족·가계 끊김 장면 끝 표시)을 끈다. 이어 하기로 새 가족을 맡을 때(이어 하기 분기 7)는 거치지 않는다.
+        /// (+0xD2C8 비트 정리는 통신 쪽이라 옮기지 않았다.)
+        /// </summary>
+        public static void TitleFresh(OrigMem m)
+        {
+            uint f = m.R32(0x0202C030);
+            if ((f & 0x1000) != 0) m.W32(0x0202C030, f & 0xFFFFDFBFu);
+        }
+
+        /// <summary>
+        /// 새 가족의 메인 장면 시작(0x080117D6, 새로 시작한 경우): 가족 +0x20 의 0x40(가계 끊김 뒤 새 가족)이 서 있으면 끄고
+        /// 큐피트 도움말 7 을 넣는다(0x0802B1CC). 실기: 끊긴 저장을 이어 해 새 가족을 만든 뒤 메인 장면에서 0x1044 → 0x1004.
+        /// </summary>
+        public static void MainStart(OrigVm vm)
+        {
+            uint f = vm.Mem.R32(0x0202C030);
+            if ((f & 0x40) == 0) return;
+            vm.Mem.W32(0x0202C030, f & ~0x40u);
+            vm.Call("0802B1CC", 7);
+        }
+
         /// <summary>추천 가족으로 새 게임을 만든다. 시작 날짜는 원작처럼 카트리지 시계 날짜가 없으면 2005-01-01.</summary>
         public static void Recommended(OrigVm vm, int year = 2005, int month = 1, int day = 1)
         {

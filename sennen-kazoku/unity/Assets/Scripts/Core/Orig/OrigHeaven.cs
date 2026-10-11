@@ -90,6 +90,28 @@ namespace SennenKazoku.Core.Orig
             for (int id = 240; id <= 246; id++) Say(-3, id);
         }
 
+        /// <summary>
+        /// 가계 끊김 장면(천계 큰 장면 방식 5, 0x0809EAAC): 상태 3 에서 가족 +0x668 의 0x80(시간의 책갈피)이 서 있으면 상태 0 → 글 253(되돌리겠느냐 물음),
+        /// 아니면 상태 0x11 → 객체 +0x4C(시작일부터 지난 햇수, 0x080D448C)가 99 를 넘으면 글 250~252, 아니면 247~249 (글 목록 0x085BC058[상태] + 객체 +0x60).
+        /// 실기(가계 끊김 표시를 넣어 확인): 책갈피 없음 · 0년 → 247 248 249 → 하늘 행렬 화면("N년가족") → 마지막 메뉴(글 554).
+        /// </summary>
+        public void RunLineageEnd(bool bookmark)
+        {
+            if (bookmark) { Say(-5, 253); return; }
+            int first = Years > 99 ? 250 : 247;
+            for (int id = first; id < first + 3; id++) Say(-5, id);
+        }
+
+        /// <summary>책갈피 물음의 대답 (0x0809EE20: 예 → 상태 4 글 254 · 되돌리기 0x08010AB4 · 상태 15 글 255 256 → 메인 장면, 아니오 → 상태 0x10 글 257~259 → 마지막 메뉴).</summary>
+        public void RunBookmarkAnswer(bool yes)
+        {
+            if (yes) { Say(-5, 254); Say(-5, 255); Say(-5, 256); }
+            else for (int id = 257; id <= 259; id++) Say(-5, id);
+        }
+
+        /// <summary>가계 끊김 장면의 숫자 자리 1A 05 02 09 = 객체 +0x4C (글 엔진 0x080AB774 종류 2: 인자 묶음 객체 +0x24 의 +4+9·4).</summary>
+        public int Years = -1;
+
         /// <summary>마지막 메뉴·기록 글 (554 확인 · 556 기록할까 · 557 기록했어 안녕) 한 장씩.</summary>
         public List<string> MsgPages(int id)
         {
@@ -319,7 +341,7 @@ namespace SennenKazoku.Core.Orig
             return null;
         }
 
-        /// <summary>숫자 자리 1A 05 04 00 = 세대 수(가족 +0x6A3, 화면의 "N대째").</summary>
-        string Number(int a, int b) { return a == 4 ? Gen.ToString() : null; }
+        /// <summary>숫자 자리 1A 05 04 00 = 세대 수(가족 +0x6A3, 화면의 "N대째") · 1A 05 02 09 = 가계 끊김 장면의 햇수(Years).</summary>
+        string Number(int a, int b) { return a == 4 ? Gen.ToString() : a == 2 && b == 9 && Years >= 0 ? Years.ToString() : null; }
     }
 }

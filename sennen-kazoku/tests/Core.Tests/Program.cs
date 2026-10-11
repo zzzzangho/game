@@ -1322,8 +1322,11 @@ namespace SennenKazoku.Tests
                         var rep = flow.ReportIdsForTest; Console.WriteLine("       0일 보고 글: " + string.Join(" ", rep));
                         T.True(rep.Count >= 6 && rep[0] == 64 && rep[1] == 68 && rep[2] == 71 && rep[3] == 74 && rep[4] == 86 && rep[rep.Count - 1] == 75, "0일 보고 글이 실기와 다름");
                     }
+                    // 아래 시험들은 저장(PrepareSave)이 불러온 가족을 고쳐 쓰므로 같은 시작 가족의 사본을 쓴다
+                    string fam0 = MiniJson.Serialize(SaveSystem.ToJson(s0.Family, new ContentCatalog(), SaveSystem.CurrentSchema));
+                    Func<Family> famCopy = () => SaveSystem.FromJson(J.Obj(MiniJson.Parse(fam0)));
                     {   // 천년가족: 장면 대사(240~246) → 마지막 메뉴 대기 → 종료(가족 +0x668 |= 0x100) → 이어 하면 장면부터 다시, 사건 메모 없음
-                        var s3 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, s0.Family);
+                        var s3 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, famCopy());
                         s3.MillenniumReport();
                         s3.ShowDue(9999);
                         var lines = new List<string>(); int g3 = 0;
@@ -1336,7 +1339,67 @@ namespace SennenKazoku.Tests
                         T.True(s3.Ended, "끝 표시 없음");
                         var s4 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, s3.Family);
                         T.True(!s4.StartOffline(t0.AddDays(2)), "끝난 가문인데 사건 메모가 시작됨");
-                        T.True(s4.ShowEndingAgain() && s4.Paused, "끝난 가문 이어 하기에서 장면이 다시 나오지 않음");
+                        T.True(s4.ContinueKind == 8 && s4.ShowEndingAgain() && s4.Paused, "끝난 가문 이어 하기에서 장면이 다시 나오지 않음");
+                        T.True((s3.Game.Mem.R32(0x0202C030) & 0x2008) == 0x2008, "천년가족 장면 끝 표시(+0x20 |= 8 | 0x2000)");
+                    }
+                    Func<SennenKazoku.Core.Orig.OrigSession, List<string>> heavenLines = ss =>
+                    {
+                        var l = new List<string>(); int g = 0;
+                        while (ss.Paused && g++ < 100) { var v = ss.View(); l.Add(v.Speaker + ": " + v.Text.Replace("\n", " ")); ss.Advance(); }
+                        return l;
+                    };
+                    Action<SennenKazoku.Core.Orig.OrigSession> killHead = ss =>
+                    {   // 원작 죽음 처리(0x08114658)로 가장을 죽인다 → 결과 첫 단어 2 (가계 끊김)
+                        var mm = ss.Game.Mem; int head = ss.Family.HeadId;
+                        mm.W32(0x0203C440, 0); ss.Game.Vm.Call("slots", (uint)head, 0); ss.Game.Vm.Call("08114658", 0, 0x0203C440); ss.Project();
+                    };
+                    {   // 가계 끊김(천계 방식 5), 책갈피 없음: 247~249(햇수) → 장면 끝(+0x20 |= 0x44) → 마지막 메뉴 → 종료 → 이어 하기 분기 7 → 새 가족(초기화 방식 1)
+                        var s5 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, famCopy());
+                        var mm = s5.Game.Mem;
+                        mm.W32(0x0202C678, mm.R32(0x0202C678) & ~0x80u);
+                        killHead(s5);
+                        T.True(s5.LineageEnded, "가장이 죽었는데 끊김 아님");
+                        int yrs = s5.FamilyYears();
+                        T.True(s5.LineageReport() && s5.Paused, "가계 끊김 장면이 시작되지 않음");
+                        var lines = heavenLines(s5);
+                        Console.WriteLine("       가계 끊김 장면(햇수 " + yrs + ") " + lines.Count + "장: " + string.Join(" | ", lines).Substring(0, Math.Min(220, string.Join(" | ", lines).Length)));
+                        T.True(lines.Exists(x => x.Contains("끊어지고")) && lines.Exists(x => x.Contains(yrs + "년 가족")), "끊김 대사(247/250)·햇수 숫자");
+                        T.True(!s5.LineageReport(), "끊김 장면이 두 번 나옴");
+                        T.Eq(s5.EndMenu, 5, "마지막 메뉴 대기 아님");
+                        T.Eq((int)(mm.R32(0x0202C030) & 0x2044), 0x44, "장면 끝 표시(+0x20)");
+                        T.Eq(s5.ContinueKind, 7, "이어 하기 분기");
+                        int recs = s5.FamilyRecords().Count; uint rank = mm.R16(0x0202C66E), grat = mm.R32(0x0202C670);
+                        s5.FinishFamily(t0.AddDays(1)); s5.PrepareSave();
+                        var s6 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, s5.Family);
+                        T.True(s6.ContinueKind == 7 && !s6.StartOffline(t0.AddDays(2)) && !s6.ShowEndingAgain(), "끊긴 가문 이어 하기는 새 가족 맡기");
+                        Console.WriteLine("       새 가족 부탁: " + string.Join(" ", s6.FinalMsg(666)).Replace("\n", " "));
+                        T.True(s6.FinalMsg(666).Count > 0 && s6.FinalMsg(667).Count > 0, "글 666·667");
+                        var ns = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "", 777, cartridge: SennenKazoku.Core.Orig.OrigSession.CartridgeOf(s5.Family), fresh: false);
+                        var nm = ns.Game.Mem;
+                        Console.WriteLine("       새 가족: " + ns.Family.Members.Count + "명, 분기 " + ns.ContinueKind + ", 기록 " + ns.FamilyRecords().Count + "칸, 랭크 " + nm.R16(0x0202C66E) + ", 감사 " + nm.R32(0x0202C670) + ", 도움말 큐 " + nm.R8(0x0203BD30));
+                        T.True(ns.ContinueKind == 1 && ns.FamilyRecords().Count == recs && nm.R16(0x0202C66E) == rank && nm.R32(0x0202C670) == grat, "새 가족이 기록·신 등급·감사의 마음을 남기지 않음");
+                        T.Eq((int)nm.R8(0x0203BD30), 7, "새 가족 메인 장면 도움말 7");
+                        T.True(!ns.Ended && ns.Family.Members.Count > 0 && !ns.LineageEnded, "새 가족 상태");
+                        var fs = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "", 777, cartridge: SennenKazoku.Core.Orig.OrigSession.CartridgeOf(s5.Family));
+                        T.True(fs.ContinueKind == 1 && fs.Game.Mem.R8(0x0203BD30) == 0xFF, "처음부터는 끝 표시를 끄고 도움말 없음");
+                    }
+                    {   // 책갈피가 있으면 글 253 → 물음: 아니오 → 257~259 → 마지막 메뉴 / 예 → 되돌리기 + 254~256 → 이어짐
+                        foreach (bool yes in new[] { false, true })
+                        {
+                            var s7 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, famCopy());
+                            var who = s7.Family.Members[0];
+                            s7.Family.Items["item.bookmark"] = 1; T.True(s7.Use(who, "item.bookmark") == null && s7.HasBookmark, "책갈피 쓰기");
+                            int head = s7.Family.HeadId;
+                            killHead(s7);
+                            T.True(s7.LineageReport(), "끊김 장면");
+                            var l1 = heavenLines(s7);
+                            T.True(l1.Exists(x => x.Contains("시간의 책갈피")) && s7.BookmarkAskPending, "책갈피 물음(253)");
+                            s7.AnswerBookmark(yes);
+                            var l2 = heavenLines(s7);
+                            Console.WriteLine("       책갈피 " + (yes ? "예" : "아니오") + ": " + l2.Count + "장, 마지막 메뉴 " + s7.EndMenu + ", 가장 " + (s7.Family.Get(head) != null ? "살아 있음" : "없음"));
+                            if (yes) T.True(s7.EndMenu == 0 && !s7.LineageEnded && s7.Family.Get(head) != null && s7.ContinueKind == 1 && l2.Exists(x => x.Contains("돌아왔느니라")), "책갈피로 되돌아가야 함");
+                            else T.True(s7.EndMenu == 5 && s7.ContinueKind == 7 && l2.Exists(x => x.Contains("쓰지")), "아니오 → 257~259 → 마지막 메뉴");
+                        }
                     }
                 });
             if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "orig_rules.json")) && File.Exists(Path.Combine(origDir, "orig_text.json")))

@@ -49,7 +49,7 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         public bool StartOffline(DateTime now)
         {
-            if (Paused || Ended || !OrigOffline.Recorded(Game.Mem)) return false;
+            if (Paused || ContinueKind != 1 || !OrigOffline.Recorded(Game.Mem)) return false;
             SyncIn();
             OrigOffline.Reseed(Game.Mem);
             uint days = OrigOffline.ElapsedDays(Game.Vm, now);
@@ -86,16 +86,19 @@ namespace SennenKazoku.Core.Orig
 
         /// <summary>원작 "신이 추천하는 가족"으로 새로 시작. seed = 원작 난수(0x02000000) 값(BootSeed).</summary>
         /// <param name="cartridge">이전 원작 세이브 영역(CartridgeOf) — 있으면 빈 카트리지 대신 그 카트리지에서 새로 시작한다(가문의 기록 등이 원작처럼 남는다).</param>
-        public static OrigSession NewRecommended(OrigRules rules, OrigText text, string surname, uint seed, int year = 2005, int month = 1, int day = 1, byte[] cartridge = null)
+        /// <param name="fresh">제목 화면 "처음부터"면 참, 가계가 끊긴 저장을 이어 해 새 가족을 맡으면(ContinueKind 7) 거짓.</param>
+        public static OrigSession NewRecommended(OrigRules rules, OrigText text, string surname, uint seed, int year = 2005, int month = 1, int day = 1, byte[] cartridge = null, bool fresh = true)
         {
             var m = new OrigMem(); var vm = rules.CreateVm(m);
             if (cartridge != null) OrigNewGame.Cartridge(vm, cartridge); else OrigNewGame.BlankCartridge(vm);
+            if (fresh) OrigNewGame.TitleFresh(m);
             OrigNewGame.TitleNewGame(vm);
             m.W32(OrigMem.Seed, seed);
             OrigNewGame.Recommended(vm, year, month, day);
             if (string.IsNullOrEmpty(surname)) surname = Surnames[(int)(seed % (uint)Surnames.Length)];
             var f = new Family { Name = surname };
             GiveStartingArrows(m);
+            OrigNewGame.MainStart(vm);
             var s = new OrigSession(rules, text, f, m);
             s.PrepareSave();
             return s;
@@ -106,7 +109,7 @@ namespace SennenKazoku.Core.Orig
         /// 능력치 등은 원작 가족 레코드 만들기가 정한다. 입력한 이름은 표시 이름(OrigNames)으로 쓴다.
         /// 체격·외형 바이트는 원작 기본값(화면 외형은 앱의 Look) — 규칙 판정에는 쓰이지 않는 값이다.
         /// </summary>
-        public static OrigSession NewCustom(OrigRules rules, OrigText text, FamilySetup setup, uint seed, byte[] cartridge = null)
+        public static OrigSession NewCustom(OrigRules rules, OrigText text, FamilySetup setup, uint seed, byte[] cartridge = null, bool fresh = true)
         {
             var ordered = new List<MemberSetup>(); var slots = new List<int>();
             int child = 4;
@@ -132,12 +135,14 @@ namespace SennenKazoku.Core.Orig
             }
             var m = new OrigMem(); var vm = rules.CreateVm(m);
             if (cartridge != null) OrigNewGame.Cartridge(vm, cartridge); else OrigNewGame.BlankCartridge(vm);
+            if (fresh) OrigNewGame.TitleFresh(m);
             OrigNewGame.TitleNewGame(vm);
             m.W32(OrigMem.Seed, seed);
             OrigNewGame.Custom(vm, GameDate.Year(setup.StartDay), GameDate.Month(setup.StartDay), GameDate.Day(setup.StartDay), cms);
             string surname = string.IsNullOrEmpty(setup.Surname) ? Surnames[(int)(seed % (uint)Surnames.Length)] : setup.Surname;
             var f = new Family { Name = surname };
             GiveStartingArrows(m);
+            OrigNewGame.MainStart(vm);
             // 원작 가족 레코드 만들기는 설정 블록 순서대로 레코드를 만든다 → n 번째 레코드 = n 번째 구성원
             for (int n = 0; n < ordered.Count && n < 8; n++)
                 if (OrigGame.Present(m, n) && !string.IsNullOrEmpty(ordered[n].Name)) f.OrigNames[(int)m.R16(OrigMem.PersonAddr(n) + 0x3C)] = ordered[n].Name;
@@ -251,8 +256,83 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         // ---------- 천년가족 (원작 천계 큰 장면 방식 4 → 마지막 메뉴 → 기록 → 엔딩 카드) ----------
         /// <summary>천년가족 장면을 본 뒤 앱이 마지막 메뉴를 띄워야 하는가 (천계 장을 다 본 뒤 참).</summary>
-        public bool MillenniumPending { get; private set; }
+        public bool MillenniumPending { get { return EndMenu == 4; } }
+        /// <summary>마지막 메뉴(글 554)를 띄울 장면: 0 없음 · 4 천년가족(방식 4) · 5 가계 끊김(방식 5). 두 장면 모두 같은 메뉴로 끝난다(실기).</summary>
+        public int EndMenu { get; private set; }
         bool millenniumQueued;
+
+        /// <summary>
+        /// 원작 이어 하기 분기 (제목 화면 0x0807828C, 선택 1): 가족 +0x20(0x0202C030) 의 0x2000 → 8 천년가족 장면부터 다시(방식 4, 진입값 9) ·
+        /// 0x40 → 7 새 가족 맡기(천계 방식 0: 글 666 "또 부탁이 있느니라" → 신님이 아는 가족) · 아니면 1 사건 메모 장면.
+        /// (+0xD2C8 의 0x10 → 6 은 통신 쪽 경로로 옮기지 않았다.) 0x2000 은 천년가족 장면 끝(0x0809E260), 0x40 은 가계 끊김 장면 끝(0x0809ECC0)이 켠다.
+        /// </summary>
+        public int ContinueKind { get { uint f = Game.Mem.R32(FamFlags); return (f & 0x2000) != 0 ? 8 : (f & 0x40) != 0 ? 7 : 1; } }
+        public const uint FamFlags = OrigMem.Fam + 0x20;
+
+        /// <summary>
+        /// 장면 끝 처리: 천년가족(0x0809E260) — 고인 목록 비우기 0x0800F40C, 가족 +0x20 |= 8 | 0x2000.
+        /// 가계 끊김(0x0809ECC0, 책갈피를 쓰지 않았을 때) — 0x0800F40C, 가족 +0x20 |= 4 | 0x40, 0x2000 끔. 그다음 원작은 마지막 메뉴(글 554)로 간다.
+        /// </summary>
+        void SceneExit(int kind)
+        {
+            var m = Game.Mem;
+            try { Game.Vm.Call("0800F40C"); } catch (OrigUnmodeled) { }
+            uint f = m.R32(FamFlags);
+            m.W32(FamFlags, kind == 4 ? f | 8 | 0x2000 : (f | 4 | 0x40) & ~0x2000u);
+            EndMenu = kind; Project();
+        }
+
+        /// <summary>장을 다 본 뒤 기다리던 장면 끝 처리.</summary>
+        void FlushEndQueues()
+        {
+            if (millenniumQueued) { millenniumQueued = false; SceneExit(4); }
+            if (lineageQueued) { lineageQueued = false; SceneExit(5); }
+            if (bookmarkQueued) { bookmarkQueued = false; BookmarkAskPending = true; }
+        }
+
+        // ---------- 가계 끊김 (원작 천계 큰 장면 방식 5, 0x0809EAAC) ----------
+        /// <summary>책갈피 물음(글 253)에 예/아니오를 기다리는가.</summary>
+        public bool BookmarkAskPending { get; private set; }
+        bool lineageQueued, bookmarkQueued, lineageShown;
+
+        /// <summary>시작일(0x0202C688)부터 오늘(0x0202C684)까지 지난 햇수 — 가계 끊김 장면이 객체 +0x4C 에 넣는 값(0x0800E430 로 풀고 0x080D448C).</summary>
+        public int FamilyYears()
+        {
+            var m = Game.Mem; const uint t = 0x0F03B040;
+            Game.Vm.Call("0800E430", t, 0x0202C688); Game.Vm.Call("0800E430", t + 4, OrigMem.Date);
+            Game.Vm.Call("080D448C", t + 8, t + 10, t, t + 4);
+            return (int)m.R16(t + 8);
+        }
+
+        /// <summary>
+        /// 가계가 끊긴 뒤 원작 장면(사건 끝 종류 2 → 0x0809AF60(5,2), 사건 메모 대답 95 → (5,3)): 책갈피가 있으면 글 253 + 예/아니오(BookmarkAskPending),
+        /// 없으면 247~249(또는 100년 넘으면 250~252) → 장면 끝 → 마지막 메뉴(EndMenu = 5). 한 번만 띄운다.
+        /// </summary>
+        public bool LineageReport()
+        {
+            if (lineageShown || EndMenu != 0 || BookmarkAskPending) return false;
+            lineageShown = true;
+            var h = new OrigHeaven(Game.Vm, Text, Text.Heaven, MarkName, PlayerName);
+            h.Years = FamilyYears();
+            bool bm = HasBookmark;
+            h.RunLineageEnd(bm);
+            if (bm) bookmarkQueued = true; else lineageQueued = true;
+            if (h.Pages.Count > 0) { if (heavenWait == null) heavenWait = new List<OrigHeaven.Page>(); heavenWait.AddRange(h.Pages); }
+            if (StartHeaven()) return true;
+            FlushEndQueues(); return false;
+        }
+
+        /// <summary>책갈피 물음 대답: 예 → 되돌리기(0x08010AB4) + 글 254~256 → 메인 장면으로, 아니오 → 글 257~259 → 장면 끝 → 마지막 메뉴.</summary>
+        public void AnswerBookmark(bool yes)
+        {
+            BookmarkAskPending = false;
+            var h = new OrigHeaven(Game.Vm, Text, Text.Heaven, MarkName, PlayerName);
+            h.Years = FamilyYears();
+            if (yes) { RestoreBookmark(); lineageShown = false; } else lineageQueued = true;
+            h.RunBookmarkAnswer(yes);
+            if (h.Pages.Count > 0) { if (heavenWait == null) heavenWait = new List<OrigHeaven.Page>(); heavenWait.AddRange(h.Pages); }
+            if (!StartHeaven()) FlushEndQueues();
+        }
         /// <summary>가문을 마친 저장인가 (마지막 메뉴 "종료" 가 가족 +0x668 에 0x100 을 켠다, 실기 0x0805E9B4).</summary>
         public bool Ended { get { return (Game.Mem.R32(OrigMem.Fam + 0x668) & 0x100) != 0; } }
 
@@ -267,7 +347,7 @@ namespace SennenKazoku.Core.Orig
         }
 
         /// <summary>가문을 마친 저장을 이어 하면 원작은 천년가족 장면부터 다시 보여 준다(실기) — 앱이 불러온 뒤 부른다.</summary>
-        public bool ShowEndingAgain() { if (!Ended || Paused) return false; MillenniumReport(); return StartHeaven(); }
+        public bool ShowEndingAgain() { if (ContinueKind != 8 || Paused) return false; MillenniumReport(); if (StartHeaven()) return true; FlushEndQueues(); return false; }
 
         /// <summary>마지막 메뉴 글 (원작 글 번호 554·556·557).</summary>
         public List<string> FinalMsg(int id) { return new OrigHeaven(Game.Vm, Text, Text.Heaven, MarkName, PlayerName).MsgPages(id); }
@@ -277,7 +357,7 @@ namespace SennenKazoku.Core.Orig
         {
             var m = Game.Mem;
             m.W32(OrigMem.Fam + 0x668, m.R32(OrigMem.Fam + 0x668) | 0x100);
-            Record(now); MillenniumPending = false;
+            Record(now); EndMenu = 0;
         }
 
         /// <summary>엔딩 카드 (화면 글 570~572 · 큰 글씨 "N년가족"): 신 등급, 지켜본 가문, 햇수.</summary>
@@ -379,7 +459,7 @@ namespace SennenKazoku.Core.Orig
         {
             if (!HasBookmark) return false;
             uint r = Game.Vm.Call("08010AB4");
-            pending.Clear(); cur = null; heavenCur = heavenWait = null; lineageEnded = false;
+            pending.Clear(); cur = null; heavenCur = heavenWait = null; lineageEnded = false; EndMenu = 0; lineageQueued = bookmarkQueued = false;
             Project();
             return r != 0;
         }
@@ -946,7 +1026,7 @@ namespace SennenKazoku.Core.Orig
             {
                 if (heavenPage < heavenCur.Count - 1) { heavenPage++; return false; }
                 heavenCur = null;
-                if (millenniumQueued) { millenniumQueued = false; MillenniumPending = true; }
+                FlushEndQueues();
                 if (memo != null) { if (!memo.Done) memo.Continue(); return MemoAfter(); }   // 사건 메모 → 천계 보고 → 남은 날 이어서
                 if (cur == null) return true;   // 사건 뒤 큐피트 도움말이었으면 아래에서 그 사건을 마저 끝낸다
             }
