@@ -1387,8 +1387,10 @@ namespace SennenKazoku.Game
             if (v == null)
             {
                 var p = Sel(); dlgTitle.text = ""; dlgSpeaker.text = "";
-                bool soon = p != null && !string.IsNullOrEmpty(p.PlannedStateId) && (p.Gauge >= 255 || p.Gauge <= 0);
-                dlgText.text = p == null ? "" : "<color=#1E46C8>" + p.Name + "</color>는 이런 생각을 하는 모양이야" + (soon ? " <color=#E04040>!</color>" : "") + "\n「" + PlannedTitle(p) + "」";
+                // "!" = 앱이 지어낸 사건 임박 표시라 원작 세션에서는 쓰지 않는다(원작 힌트는 집 감정 말풍선)
+                bool soon = p != null && !(session is Core.Orig.OrigSession) && !string.IsNullOrEmpty(p.PlannedStateId) && (p.Gauge >= 255 || p.Gauge <= 0);
+                if (session is Core.Orig.OrigSession) dlgText.text = p == null ? "" : "<color=#1E46C8>" + p.Name + "</color>\n★" + PlannedTitle(p);   // 원작 집 화면 아래 칸: 이름 · ★지금 관심사
+                else dlgText.text = p == null ? "" : "<color=#1E46C8>" + p.Name + "</color>는 이런 생각을 하는 모양이야" + (soon ? " <color=#E04040>!</color>" : "") + "\n「" + PlannedTitle(p) + "」";
                 nextBtn.gameObject.SetActive(false); LayoutDialog(); return;
             }
             dlgTitle.text = v.Title + "   [" + (v.Origin == "original" ? "원작 규칙" : "신규") + " · " + (v.TextSource == "original-translation" ? "원작 문구" : "임시 문구") + "]";
