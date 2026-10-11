@@ -1278,6 +1278,16 @@ namespace SennenKazoku.Tests
                     Console.WriteLine("       " + hours + "시간(" + (int)(hours * 450) + "일) → " + days + "일 진행, 진행 장 " + progress + ", 천계 장 " + heaven + ", " + GameDate.Format(s.Family.Today) + ", " + sw.ElapsedMilliseconds + "ms" + (s.LineageEnded ? ", 가계 끊김" : ""));
                     foreach (var t in seen.Take(hours == 1 ? 14 : 40)) Console.WriteLine("         " + (t.Length > 110 ? t.Substring(0, 110) + "…" : t));
                     if (hours == 1) T.Eq(days, 450, "지난 날 수");
+                    {   // 0일(기록 2초 뒤): 실기 글 61 → 64 68 71 74 86 (89) 75 — 진행 없이 보고, 물음 없이 끝
+                        var s2 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, s0.Family);
+                        T.True(s2.StartOffline(t0.AddSeconds(2)), "0일 이어 하기 시작 안 됨");
+                        var ids = new List<int>(); var flow = s2.Memo;
+                        int guard = 0; while (s2.Paused && guard++ < 200) { var v2 = s2.View(); if (v2.NeedsChoice) s2.Choose("yes"); else s2.Advance(); }
+                        T.True(!s2.Paused, "0일 흐름이 끝나지 않음");
+                        T.Eq(s2.Family.Today, d0, "0일인데 날짜가 바뀜");
+                        var rep = flow.ReportIdsForTest; Console.WriteLine("       0일 보고 글: " + string.Join(" ", rep));
+                        T.True(rep.Count >= 6 && rep[0] == 64 && rep[1] == 68 && rep[2] == 71 && rep[3] == 74 && rep[4] == 86 && rep[rep.Count - 1] == 75, "0일 보고 글이 실기와 다름");
+                    }
                 });
             if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "orig_rules.json")) && File.Exists(Path.Combine(origDir, "orig_text.json")))
                 T.Run("원작 세션(앱 연결): 추천 가족 → 2년 진행 → 사건 대사 → 저장·불러오기 후 같은 진행 (로컬)", () =>

@@ -21,7 +21,9 @@ namespace SennenKazoku.Core.Orig
         readonly OrigVm vm; readonly OrigMem m; readonly OrigText text;
         readonly Func<int, string> personName; readonly Func<string> player; readonly Func<int, int> ageOf;
         Phase phase; readonly List<string> pages = new List<string>(); int page;
-        int answerMsg;
+        int answerMsg, lastReport = -1;
+        /// <summary>마지막 보고에서 고른 글 번호 (검사용).</summary>
+        public readonly List<int> ReportIdsForTest = new List<int>();
         public bool Done { get { return phase == Phase.Done; } }
         /// <summary>물음에 "예" 하고 세대교체였으면 참 — 세션이 천계 보고를 띄운 뒤 Continue 를 부른다.</summary>
         public bool WantsHeaven { get; private set; }
@@ -72,9 +74,11 @@ namespace SennenKazoku.Core.Orig
             switch (phase)
             {
                 case Phase.Greeting:
-                    if (Off.Days == 0) { phase = Phase.Done; return true; }
+                    if (Off.Days == 0) { StartReport(); return false; }   // 원작: 일 수 0 이면 진행 없이 바로 보고(상태 0x5D) — 실기 61 → 64 68 71 74 86 89 75
                     phase = Phase.Progress; return false;
-                case Phase.Report: Question(); return false;
+                case Phase.Report:
+                    if (lastReport == 75) { phase = Phase.Done; return true; }   // 75 "함께 지켜보자！ 출발！！" 로 끝나면 물음 없이 집으로 (실기)
+                    Question(); return false;
                 case Phase.Memo: Question(); return false;
                 case Phase.Answer:
                     if (answerMsg == 83) { WantsHeaven = true; phase = Phase.Done; return true; }
@@ -129,8 +133,9 @@ namespace SennenKazoku.Core.Orig
         /// <summary>보고 글 목록: 첫 글은 장면이 직접(0x080CD4F8~), 그다음은 원작 보고 함수 0x080D5CE0 이 하나씩 고른다.</summary>
         void StartReport()
         {
-            var l = new List<string>();
-            foreach (var a in ReportMessages()) l.AddRange(a.Pages);
+            var l = new List<string>(); lastReport = -1;
+            ReportIdsForTest.Clear();
+            foreach (var a in ReportMessages()) { l.AddRange(a.Pages); lastReport = a.Id; ReportIdsForTest.Add(a.Id); }
             SetPages(Phase.Report, l);
         }
 
