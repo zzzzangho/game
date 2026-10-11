@@ -628,6 +628,23 @@ namespace SennenKazoku.Tests
                 }
             }
             T.True(repOk, "사건 메모 보고 글 순서가 실기와 다름");
+            // ⑤ 세대교체 보고 "출발" 뒤 천계(진입값 4): 실기 천계 첫 프레임 덤프(h6/d_*) → C# 천계 글 번호를 실기 글 기록(h7/h.log, 371 은 그 앞)과 비교
+            var hdump = Directory.Exists(Path.Combine(offDir, "h6")) ? Directory.GetFiles(Path.Combine(offDir, "h6"), "d_*.ram").OrderBy(f => f).FirstOrDefault() : null;
+            bool hvOk = true;
+            if (hdump != null && File.Exists(Path.Combine(offDir, "h7", "ids.txt")) && File.Exists(Path.Combine(dir, "orig_text.json")))
+            {
+                var text = SennenKazoku.Core.Orig.OrigText.FromJson(J.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(dir, "orig_text.json")))));
+                var m = Load(hdump); var vm = rules.CreateVm(m);
+                var h = new SennenKazoku.Core.Orig.OrigHeaven(vm, text, text.Heaven, id => "○", "신님");
+                h.RunAfterWedding(4);
+                var got = new List<int>(); foreach (var pg in h.Pages) if (pg.MsgId >= 0 && (got.Count == 0 || got[got.Count - 1] != pg.MsgId)) got.Add(pg.MsgId);
+                // 실기 글 번호 (h.log 의 글 포인터를 ROM 글 표로 바꾼 것 — 도구가 로컬에서 만든 ids.txt, 371 은 중단점을 걸기 전)
+                var idsFile = Path.Combine(offDir, "h7", "ids.txt");
+                var want = File.Exists(idsFile) ? File.ReadAllText(idsFile).Trim().Split(' ').ToList() : new List<string>();
+                hvOk = string.Join(" ", got) == string.Join(" ", want);
+                Console.WriteLine("       천계(진입값 4) 실기: " + string.Join(" ", want) + "\n       천계(진입값 4) C#:   " + string.Join(" ", got));
+            }
+            T.True(hvOk, "사건 메모 뒤 천계 글 순서가 실기와 다름");
             T.True(beginOk, "사건 메모 장면 시작이 실기와 다름");
             T.True(same == files.Count - 1, "하루 묶음이 실기와 다름");
             T.True(chainOk, "시작부터 이어 한 진행이 실기와 다름");

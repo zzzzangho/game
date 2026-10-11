@@ -81,9 +81,9 @@ namespace SennenKazoku.Core.Orig
         /// <summary>
         /// 결혼식 등 결과 첫 단어 1 의 장면 뒤 원작 차례 전체: 진입값 2 → (끝값 3) 가계도 → 진입값 5 → (끝값 4) 시대 연출 → 진입값 6.
         /// </summary>
-        public void RunAfterWedding()
+        public void RunAfterWedding(int entry = 2)
         {
-            Run(2);
+            Run(entry);   // 2 = 결혼식 뒤, 4 = 사건 메모 세대교체 보고 "출발"(실기: 천계 객체 +0x68 · 0x0203BDFC = 4)
             if (Exit == 3) { Screen("가계도", "[원작 가계도 화면 — 앱 요약] " + m.R8(Fam + 0x6A3) + "대째 가족이 가계도에 더해졌다."); Run(5); }
             if (Exit == 4)
             {

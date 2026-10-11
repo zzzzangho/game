@@ -247,10 +247,10 @@ namespace SennenKazoku.Core.Orig
         /// 세기 확인(새 시대: 몸통 세트·직업·관심사), 고인 목록 비우기가 이때 원작 함수로 일어난다. 대사는 그날 사건 장 뒤에 보인다.
         /// 결혼 장면 뒤 메인 장면 복귀(0x080111B8)는 원작에서 천계 뒤에 오지만 앱은 장면 안에서 먼저 부른다(결혼으로 가족이 바뀌어 그날은 거기서 끝난다).
         /// </summary>
-        public void HeavenReport()
+        public void HeavenReport(int entry = 2)
         {
             var h = new OrigHeaven(Game.Vm, Text, Text.Heaven, MarkName, PlayerName);
-            try { h.RunAfterWedding(); }
+            try { h.RunAfterWedding(entry); }
             catch (OrigUnmodeled) { }
             LastHeaven = h;
             if (h.Pages.Count > 0) { if (heavenWait == null) heavenWait = new List<OrigHeaven.Page>(); heavenWait.AddRange(h.Pages); }
@@ -915,7 +915,7 @@ namespace SennenKazoku.Core.Orig
                 memo.Advance();
                 if (memo.WantsHeaven)
                 {   // 세대교체 보고 "출발" → 천계 보고 (원작은 천계 장면으로 갔다가 사건 메모 장면 방식 1 로 돌아온다)
-                    Project(); HeavenReport();
+                    Project(); HeavenReport(4);
                     if (StartHeaven()) return false;
                     memo.Continue();
                 }
