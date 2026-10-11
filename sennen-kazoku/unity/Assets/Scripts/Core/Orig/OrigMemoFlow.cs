@@ -15,13 +15,16 @@ namespace SennenKazoku.Core.Orig
     /// </summary>
     public sealed class OrigMemoFlow
     {
-        enum Phase { Greeting, Progress, Report, Question, Answer, Memo, Done }
+        enum Phase { Greeting, Progress, Report, Question, Answer, MemoIntro, Memo, Done }
 
         public OrigOffline Off { get; private set; }
         readonly OrigVm vm; readonly OrigMem m; readonly OrigText text;
         readonly Func<int, string> personName; readonly Func<string> player; readonly Func<int, int> ageOf;
         Phase phase; readonly List<string> pages = new List<string>(); int page;
-        int answerMsg, lastReport = -1;
+        int answerMsg, lastReport = -1, memoPage;
+        const int MemoPer = 3;
+        /// <summary>메모 보기에서 고른 항목 — 세션이 그 사건 장면을 효과 없이 다시 보여 준 뒤 지운다.</summary>
+        public Entry ReplayRequest;
         /// <summary>마지막 보고에서 고른 글 번호 (검사용).</summary>
         public readonly List<int> ReportIdsForTest = new List<int>();
         public bool Done { get { return phase == Phase.Done; } }
@@ -47,6 +50,25 @@ namespace SennenKazoku.Core.Orig
             var v = new EventView { EventId = phase == Phase.Progress ? "memo-progress" : "memo", Title = "사건 메모", Speaker = phase == Phase.Progress ? "" : "큐피트",
                 Phase = phase == Phase.Question ? "choices" : "pages", Origin = "original", Certainty = "rom", TextSource = "original-translation", PersonId = -1 };
             if (phase == Phase.Progress) { v.Text = ProgressText(); v.TextSource = "app-summary"; return v; }
+            if (phase == Phase.Memo)
+            {
+                var es = Entries(); int pagesN = Math.Max(1, (es.Count + MemoPer - 1) / MemoPer);
+                memoPage = Math.Min(memoPage, pagesN - 1);
+                var sb = new System.Text.StringBuilder("사건 메모 " + (memoPage + 1) + "/" + pagesN);
+                for (int i = memoPage * MemoPer; i < Math.Min(es.Count, (memoPage + 1) * MemoPer); i++)
+                {
+                    var e = es[i];
+                    sb.Append('\n').Append(i - memoPage * MemoPer + 1).Append(". ");
+                    if (e.Date >= 0) sb.Append(GameDate.Year(e.Date)).Append('.').Append(GameDate.Month(e.Date)).Append('.').Append(GameDate.Day(e.Date)).Append(' ');
+                    sb.Append(personName(e.PersonId)).Append(" 『").Append(e.Title.Length > 0 ? e.Title : "?").Append("』");
+                    v.Choices.Add(new ChoiceView { Id = "view:" + i, Text = (i - memoPage * MemoPer + 1) + " 보기" });
+                }
+                if (es.Count == 0) sb.Append("\n(메모 없음)");
+                if (pagesN > 1) { v.Choices.Add(new ChoiceView { Id = "prev", Text = "◀ 앞" }); v.Choices.Add(new ChoiceView { Id = "next", Text = "다음 ▶" }); }
+                v.Choices.Add(new ChoiceView { Id = "close", Text = "닫기 (B)" });
+                v.Text = sb.ToString(); v.Phase = "choices"; v.TextSource = "original-data"; v.Speaker = "";
+                return v;
+            }
             v.Text = pages.Count > 0 ? pages[Math.Min(page, pages.Count - 1)] : "";
             if (phase == Phase.Memo) v.TextSource = "original-data";
             if (phase == Phase.Question && page >= pages.Count - 1)
@@ -79,7 +101,7 @@ namespace SennenKazoku.Core.Orig
                 case Phase.Report:
                     if (lastReport == 75) { phase = Phase.Done; return true; }   // 75 "함께 지켜보자！ 출발！！" 로 끝나면 물음 없이 집으로 (실기)
                     Question(); return false;
-                case Phase.Memo: Question(); return false;
+                case Phase.MemoIntro: phase = Phase.Memo; memoPage = 0; return false;
                 case Phase.Answer:
                     if (answerMsg == 83) { WantsHeaven = true; phase = Phase.Done; return true; }
                     if (answerMsg == 95) LineageEnded = true;
@@ -90,6 +112,15 @@ namespace SennenKazoku.Core.Orig
 
         public void Choose(string id)
         {
+            if (phase == Phase.Memo)
+            {   // 메모 보기 (원작은 목록에서 고르면 그 사건 장면을 다시 보여 주고 B 로 닫는다)
+                var es = Entries(); int pagesN = Math.Max(1, (es.Count + MemoPer - 1) / MemoPer);
+                if (id == "prev") memoPage = (memoPage + pagesN - 1) % pagesN;
+                else if (id == "next") memoPage = (memoPage + 1) % pagesN;
+                else if (id == "close") Question();
+                else if (id.StartsWith("view:") && int.TryParse(id.Substring(5), out int k) && k >= 0 && k < es.Count) ReplayRequest = es[k];
+                return;
+            }
             if (phase != Phase.Question) return;
             if (id == "yes")
             {
@@ -99,8 +130,7 @@ namespace SennenKazoku.Core.Orig
             else
             {
                 int no = m.R8(Obj + 0x994D) == 1 || m.R8(Obj + 0x994E) == 1 ? 99 : 85;
-                var l = Msg(no, Args.None); l.AddRange(MemoPages());
-                SetPages(Phase.Memo, l);
+                SetPages(Phase.MemoIntro, Msg(no, Args.None));
             }
         }
 
@@ -268,22 +298,6 @@ namespace SennenKazoku.Core.Orig
                 }
                 p = m.R32(p + 4);
             }
-            return l;
-        }
-
-        List<string> MemoPages()
-        {
-            var l = new List<string>(); var sb = new System.Text.StringBuilder(); int n = 0;
-            foreach (var e in Entries())
-            {
-                if (sb.Length > 0) sb.Append('\n');
-                if (e.Date >= 0) sb.Append(GameDate.Year(e.Date)).Append('.').Append(GameDate.Month(e.Date)).Append('.').Append(GameDate.Day(e.Date)).Append(' ');
-                sb
-                  .Append(personName(e.PersonId)).Append(" 『").Append(e.Title.Length > 0 ? e.Title : "?").Append("』");
-                if (++n % 3 == 0) { l.Add(sb.ToString()); sb.Clear(); }
-            }
-            if (sb.Length > 0) l.Add(sb.ToString());
-            if (l.Count == 0) l.Add("(메모 없음)");
             return l;
         }
 

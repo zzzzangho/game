@@ -748,7 +748,13 @@ namespace SennenKazoku.Core.Orig
 
         void StartNext()
         {
-            cur = pending.Dequeue(); page = 0; stages = new List<List<OrigText.StageActor>>(); endStage = new List<OrigText.StageActor>();
+            cur = pending.Dequeue();
+            BuildPages();
+        }
+
+        void BuildPages()
+        {
+            page = 0; stages = new List<List<OrigText.StageActor>>(); endStage = new List<OrigText.StageActor>();
             OrigText.Rec rec;
             if (Text.Records.TryGetValue(cur.Data, out rec) && !string.IsNullOrEmpty(rec.Script))
                 pages = OrigText.ScenePages(rec.Script, SlotName, stages, endStage);
@@ -840,7 +846,7 @@ namespace SennenKazoku.Core.Orig
                     Origin = "original", Certainty = "rom", TextSource = hp.MsgId < 0 ? "app-summary" : "original-translation", PersonId = -1
                 };
             }
-            if (memo != null) return memo.View();
+            if (memo != null && !replaying) return memo.View();
             if (cur == null) return null;
             OrigText.Rec rec; Text.Records.TryGetValue(cur.Data, out rec);
             return new EventView
@@ -899,6 +905,11 @@ namespace SennenKazoku.Core.Orig
                 if (memo != null) { memo.Continue(); return MemoAfter(); }   // 사건 메모 → 천계 보고 → 남은 날 이어서
                 if (cur == null) return true;   // 사건 뒤 큐피트 도움말이었으면 아래에서 그 사건을 마저 끝낸다
             }
+            if (replaying && cur != null)
+            {
+                if (page < pages.Count - 1) { page++; return false; }
+                cur = null; replaying = false; return false;
+            }
             if (memo != null)
             {
                 memo.Advance();
@@ -926,7 +937,22 @@ namespace SennenKazoku.Core.Orig
             return true;
         }
 
-        public bool Choose(string choiceId) { if (memo != null) { memo.Choose(choiceId); return true; } return false; }
+        public bool Choose(string choiceId)
+        {
+            if (memo == null) return false;
+            memo.Choose(choiceId);
+            var e = memo.ReplayRequest; memo.ReplayRequest = null;
+            if (e != null && e.Record != 0)
+            {   // 메모 보기에서 고른 사건: 원작은 사건 장면을 보기 방식으로 띄우고(효과 없음) 끝나면 사건 메모(장면 방식 1)로 돌아온다
+                var m = Game.Mem;
+                Game.Vm.Call("slots", (uint)e.PersonId, 0);
+                var ev = new OrigGame.DayEvent { Data = e.Record, PersonId = (uint)e.PersonId };
+                for (uint k = 0; k < 28; k++) ev.Slots[k] = m.R16(OrigMem.Slots + 2 * k);
+                cur = ev; replaying = true; BuildPages();
+            }
+            return true;
+        }
+        bool replaying;
 
         bool MemoAfter()
         {

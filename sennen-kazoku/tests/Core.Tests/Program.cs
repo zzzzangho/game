@@ -1264,15 +1264,24 @@ namespace SennenKazoku.Tests
                     double hours = double.TryParse(Environment.GetEnvironmentVariable("SK_OFF_HOURS"), out var hh) ? hh : 1;
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     T.True(s.StartOffline(t0.AddHours(hours)), "이어 하기 시작 안 됨");
-                    var seen = new List<string>(); int steps = 0, progress = 0, heaven = 0;
+                    var seen = new List<string>(); int steps = 0, progress = 0, heaven = 0, replayPages = 0; bool askedNo = false, viewed = false, closed = false;
                     while (s.Paused && steps++ < 50000)
                     {
                         var v = s.View();
                         if (v.EventId == "memo-progress") progress++;
                         else if (v.EventId == "heaven") heaven++;
+                        else if (v.EventId != "memo" && v.EventId != "memo-progress") replayPages++;
                         else if (seen.Count < 400) seen.Add(v.Text.Replace("\n", " "));
-                        if (v.NeedsChoice) s.Choose("yes"); else s.Advance();
+                        if (v.NeedsChoice)
+                        {   // 첫 물음은 "아니" → 메모 보기 → 첫 사건 다시 보기 → 닫기 → 다시 물음에 "응"
+                            if (v.Choices.Exists(c => c.Id == "close")) { if (!viewed && v.Choices.Exists(c => c.Id == "view:0")) { viewed = true; s.Choose("view:0"); } else { closed = true; s.Choose("close"); } }
+                            else if (!askedNo) { askedNo = true; s.Choose("no"); }
+                            else s.Choose("yes");
+                        }
+                        else s.Advance();
                     }
+                    Console.WriteLine("       메모 보기: 아니 " + askedNo + ", 사건 다시 보기 장 " + replayPages + ", 닫기 " + closed);
+                    if (hours == 1) T.True(askedNo && closed && (replayPages > 0 || !viewed), "메모 보기 흐름");
                     T.True(!s.Paused, "사건 메모 흐름이 끝나지 않음");
                     int days = s.Family.Today - d0;
                     Console.WriteLine("       " + hours + "시간(" + (int)(hours * 450) + "일) → " + days + "일 진행, 진행 장 " + progress + ", 천계 장 " + heaven + ", " + GameDate.Format(s.Family.Today) + ", " + sw.ElapsedMilliseconds + "ms" + (s.LineageEnded ? ", 가계 끊김" : ""));
