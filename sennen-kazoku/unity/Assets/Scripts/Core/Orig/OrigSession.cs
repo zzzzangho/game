@@ -902,7 +902,7 @@ namespace SennenKazoku.Core.Orig
             {
                 if (heavenPage < heavenCur.Count - 1) { heavenPage++; return false; }
                 heavenCur = null;
-                if (memo != null) { memo.Continue(); return MemoAfter(); }   // 사건 메모 → 천계 보고 → 남은 날 이어서
+                if (memo != null) { if (!memo.Done) memo.Continue(); return MemoAfter(); }   // 사건 메모 → 천계 보고 → 남은 날 이어서
                 if (cur == null) return true;   // 사건 뒤 큐피트 도움말이었으면 아래에서 그 사건을 마저 끝낸다
             }
             if (replaying && cur != null)
@@ -915,9 +915,12 @@ namespace SennenKazoku.Core.Orig
                 memo.Advance();
                 if (memo.WantsHeaven)
                 {   // 세대교체 보고 "출발" → 천계 보고 (원작은 천계 장면으로 갔다가 사건 메모 장면 방식 1 로 돌아온다)
-                    Project(); HeavenReport(4);
+                    // 원작 장면 끝(0x080CC188): 세대교체(+0x38 = 1)면 남은 날이 있으면 천계 진입값 4(보고 뒤 사건 메모로 돌아옴), 다 됐으면 진입값 3(돌아오지 않음)
+                    bool rest = memo.Off.Done < memo.Off.Days;
+                    Project(); HeavenReport(rest ? 4 : 3);
+                    if (!rest) { memo.Finish(); }
                     if (StartHeaven()) return false;
-                    memo.Continue();
+                    if (rest) memo.Continue();
                 }
                 return MemoAfter();
             }

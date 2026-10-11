@@ -15,7 +15,7 @@ namespace SennenKazoku.Core.Orig
     /// </summary>
     public sealed class OrigMemoFlow
     {
-        enum Phase { Greeting, Progress, Report, Question, Answer, MemoIntro, Memo, Done }
+        enum Phase { Greeting, Progress, Report, Question, Answer, MemoIntro, Memo, Heaven, Done }
 
         public OrigOffline Off { get; private set; }
         readonly OrigVm vm; readonly OrigMem m; readonly OrigText text;
@@ -103,7 +103,7 @@ namespace SennenKazoku.Core.Orig
                     Question(); return false;
                 case Phase.MemoIntro: phase = Phase.Memo; memoPage = 0; return false;
                 case Phase.Answer:
-                    if (answerMsg == 83) { WantsHeaven = true; phase = Phase.Done; return true; }
+                    if (answerMsg == 83) { WantsHeaven = true; phase = Phase.Heaven; return false; }   // 세션이 천계 보고를 띄운 뒤 Continue / Finish
                     if (answerMsg == 95) LineageEnded = true;
                     phase = Phase.Done; return true;
             }
@@ -133,6 +133,9 @@ namespace SennenKazoku.Core.Orig
                 SetPages(Phase.MemoIntro, Msg(no, Args.None));
             }
         }
+
+        /// <summary>흐름을 끝낸다 (남은 날 없이 천계로 가는 경우).</summary>
+        public void Finish() { WantsHeaven = false; phase = Phase.Done; }
 
         /// <summary>천계 보고 뒤 남은 날 이어 하기 (장면 방식 1). 남은 날이 없으면 끝.</summary>
         public void Continue()
