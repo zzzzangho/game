@@ -1322,6 +1322,22 @@ namespace SennenKazoku.Tests
                         var rep = flow.ReportIdsForTest; Console.WriteLine("       0일 보고 글: " + string.Join(" ", rep));
                         T.True(rep.Count >= 6 && rep[0] == 64 && rep[1] == 68 && rep[2] == 71 && rep[3] == 74 && rep[4] == 86 && rep[rep.Count - 1] == 75, "0일 보고 글이 실기와 다름");
                     }
+                    {   // 천년가족: 장면 대사(240~246) → 마지막 메뉴 대기 → 종료(가족 +0x668 |= 0x100) → 이어 하면 장면부터 다시, 사건 메모 없음
+                        var s3 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, s0.Family);
+                        s3.MillenniumReport();
+                        s3.ShowDue(9999);
+                        var lines = new List<string>(); int g3 = 0;
+                        while (s3.Paused && g3++ < 100) { var v3 = s3.View(); lines.Add(v3.Speaker + ": " + v3.Text.Replace("\n", " ")); s3.Advance(); }
+                        Console.WriteLine("       천년가족 장면 " + lines.Count + "장: " + string.Join(" | ", lines.Take(3)).Substring(0, Math.Min(200, string.Join(" | ", lines.Take(3)).Length)));
+                        T.True(lines.Count >= 7 && lines.Exists(x => x.Contains("천년 가족이 되었구나")), "천년가족 대사");
+                        T.True(s3.MillenniumPending, "마지막 메뉴 대기 아님");
+                        Console.WriteLine("       마지막 메뉴: " + string.Join(" ", s3.FinalMsg(554)).Replace("\n", " ") + " / 카드: " + string.Join(" ", s3.EndingCard()));
+                        s3.FinishFamily(t0.AddDays(1)); s3.PrepareSave();
+                        T.True(s3.Ended, "끝 표시 없음");
+                        var s4 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, s3.Family);
+                        T.True(!s4.StartOffline(t0.AddDays(2)), "끝난 가문인데 사건 메모가 시작됨");
+                        T.True(s4.ShowEndingAgain() && s4.Paused, "끝난 가문 이어 하기에서 장면이 다시 나오지 않음");
+                    }
                 });
             if (!string.IsNullOrEmpty(origDir) && File.Exists(Path.Combine(origDir, "orig_rules.json")) && File.Exists(Path.Combine(origDir, "orig_text.json")))
                 T.Run("원작 세션(앱 연결): 추천 가족 → 2년 진행 → 사건 대사 → 저장·불러오기 후 같은 진행 (로컬)", () =>

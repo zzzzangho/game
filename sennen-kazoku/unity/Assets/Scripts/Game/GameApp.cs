@@ -763,7 +763,10 @@ namespace SennenKazoku.Game
                 }
                 else session = new GameSession(r.Family, catalog);
                 EnterGame();
-                if (session is Core.Orig.OrigSession los && los.StartOffline(DateTime.Now)) RefreshAll();   // 원작 이어 하기: 사건 메모 장면 Toast(r.Warning.Length > 0 ? r.Warning : "불러왔습니다");
+                if (session is Core.Orig.OrigSession los)
+                {   // 원작 이어 하기: 가문을 마친 저장이면 천년가족 장면부터, 아니면 사건 메모 장면
+                    if (los.Ended ? los.ShowEndingAgain() : los.StartOffline(DateTime.Now)) RefreshAll();
+                } Toast(r.Warning.Length > 0 ? r.Warning : "불러왔습니다");
             }
             catch (Exception e) { Toast("불러오기 실패: " + e.Message); }
         }
@@ -1051,6 +1054,7 @@ namespace SennenKazoku.Game
                 if (mv != null && mv.EventId == "memo-progress" && Time.unscaledTime >= memoNext) { memoNext = Time.unscaledTime; session.Advance(); AfterEventStep(); }   // 원작처럼 프레임마다 한 묶음(25일)
             }
             if (popupOpen || session.Paused) return;
+            if (session is Core.Orig.OrigSession mos && mos.MillenniumPending) { OpenMillenniumEnd(mos); return; }   // 천년가족 장면 뒤 마지막 메뉴
             // 원작: 가장이 가장인 채로 죽으면 가문이 끊긴 장면 — 진행을 멈추고 책갈피 되돌리기를 묻는다
             if (session is Core.Orig.OrigSession eos && eos.LineageEnded) { OpenLineageEnd(eos); return; }
             if (EffectiveSpeed == 0) return;
@@ -1640,6 +1644,54 @@ namespace SennenKazoku.Game
             }
             var t = UiKit.Btn(body, "title", "타이틀로", Px(16), Color.white, UiKit.Ink, () => { ClosePopup(); ShowTitle(); });
             UiKit.SetPx(t.GetComponent<RectTransform>(), 0, Px(66), w, Px(56));
+        }
+
+        /// <summary>
+        /// 천년가족 마지막 메뉴 (원작: 천년가족 장면 뒤 글 554 + 메뉴 "가족의 역사·가계도·당신의 정보·종료").
+        /// 종료 → 글 556 "기록할게" 예/아니오 → 예: 가족 +0x668 |= 0x100 · 기록 → 글 557 → 엔딩 카드(화면 글 570~572, "N년가족") → 타이틀.
+        /// 앱: 가족의 역사·당신의 정보는 기존 화면(가문의 기록·가족 진단)을 연다 — 원작 화면 그림은 옮기지 않았다.
+        /// </summary>
+        void OpenMillenniumEnd(Core.Orig.OrigSession os)
+        {
+            var body = Window("천년가족", 560); float w = BodyW(body), y = 0;
+            var intro = UiKit.Label(body, "intro", "큐피트: " + string.Join("\n", os.FinalMsg(554)), Px(14), UiKit.Ink, TextAnchor.UpperLeft);
+            UiKit.SetPx(intro.rectTransform, 0, 0, w, Px(150)); y = Px(156);
+            var items = new List<KeyValuePair<string, Action>> {
+                new KeyValuePair<string, Action>("가족의 역사 (가문의 기록)", () => { ClosePopup(); OpenRecords(); }),
+                new KeyValuePair<string, Action>("당신의 정보 (가족 진단)", () => { ClosePopup(); OpenDiagnosis(); }),
+                new KeyValuePair<string, Action>("종료", () => OpenMillenniumRecord(os)) };
+            foreach (var it in items)
+            {
+                var b = UiKit.Btn(body, "m" + y, it.Key, Px(16), Color.white, UiKit.Ink, it.Value);
+                UiKit.SetPx(b.GetComponent<RectTransform>(), 0, y, w, Px(52)); y += Px(58);
+            }
+        }
+
+        void OpenMillenniumRecord(Core.Orig.OrigSession os)
+        {
+            var body = Window("사건 기록", 360); float w = BodyW(body);
+            var q = UiKit.Label(body, "q", "큐피트: " + string.Join("\n", os.FinalMsg(556)), Px(15), UiKit.Ink, TextAnchor.UpperLeft);
+            UiKit.SetPx(q.rectTransform, 0, 0, w, Px(90));
+            var yes = UiKit.Btn(body, "yes", "예", Px(16), Color.white, UiKit.Ink, () =>
+            {
+                os.FinishFamily(DateTime.Now); SaveSlot("auto", true);
+                OpenEndingCard(os, string.Join("\n", os.FinalMsg(557)));
+            });
+            UiKit.SetPx(yes.GetComponent<RectTransform>(), 0, Px(100), w, Px(52));
+            var no = UiKit.Btn(body, "no", "아니오", Px(16), Color.white, UiKit.Ink, () => OpenMillenniumEnd(os));
+            UiKit.SetPx(no.GetComponent<RectTransform>(), 0, Px(158), w, Px(52));
+        }
+
+        void OpenEndingCard(Core.Orig.OrigSession os, string bye)
+        {
+            var body = Window("천년가족", 520); float w = BodyW(body);
+            var c = os.EndingCard();
+            var a = UiKit.Label(body, "bye", "큐피트: " + bye, Px(14), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(a.rectTransform, 0, 0, w, Px(70));
+            var l1 = UiKit.Label(body, "c1", c[0] + "\n" + c[1], Px(15), new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.UpperLeft); UiKit.SetPx(l1.rectTransform, 0, Px(80), w, Px(60));
+            var l2 = UiKit.Label(body, "c2", c[2], Px(40), new Color32(0xE8, 0x50, 0x70, 255), TextAnchor.MiddleCenter, FontStyle.Bold); UiKit.SetPx(l2.rectTransform, 0, Px(150), w, Px(90));
+            var l3 = UiKit.Label(body, "c3", c[3], Px(15), new Color32(0x1E, 0x46, 0x9A, 255), TextAnchor.MiddleRight); UiKit.SetPx(l3.rectTransform, 0, Px(244), w, Px(30));
+            var t = UiKit.Btn(body, "title", "타이틀로", Px(16), Color.white, UiKit.Ink, () => { ClosePopup(); ShowTitle(); });
+            UiKit.SetPx(t.GetComponent<RectTransform>(), 0, Px(290), w, Px(56));
         }
 
         /// <summary>선대 마음의 결정: 원작처럼 선대의 마음 목록(0x0202C328)을 보여 주고 고른 마음을 이어받게 한다.</summary>

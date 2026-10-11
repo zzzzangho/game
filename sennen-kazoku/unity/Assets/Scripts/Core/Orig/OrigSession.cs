@@ -49,7 +49,7 @@ namespace SennenKazoku.Core.Orig
         /// </summary>
         public bool StartOffline(DateTime now)
         {
-            if (Paused || !OrigOffline.Recorded(Game.Mem)) return false;
+            if (Paused || Ended || !OrigOffline.Recorded(Game.Mem)) return false;
             SyncIn();
             OrigOffline.Reseed(Game.Mem);
             uint days = OrigOffline.ElapsedDays(Game.Vm, now);
@@ -208,8 +208,10 @@ namespace SennenKazoku.Core.Orig
             SyncIn();
             Game.NextDate();
             bool wedding = false;
-            foreach (var e in Game.TickDay()) { pending.Enqueue(e); if (e.Result[0] == 2) lineageEnded = true; if (e.Result[0] == 1) wedding = true; }
+            bool millennium = false;
+            foreach (var e in Game.TickDay()) { pending.Enqueue(e); if (e.Result[0] == 2) lineageEnded = true; if (e.Result[0] == 1) wedding = true; if (e.Result[0] == 3) millennium = true; }
             if (wedding) HeavenReport();
+            if (millennium) MillenniumReport();   // 사건 끝 종류 3 → 천계 큰 장면 방식 4 (0x0804DFF8)
             Project();
             if (DeferEvents) return false;   // 앱: 사건은 그 시각에 ShowDue 로
             if (pending.Count > 0) { StartNext(); return true; }
@@ -247,6 +249,48 @@ namespace SennenKazoku.Core.Orig
         /// 세기 확인(새 시대: 몸통 세트·직업·관심사), 고인 목록 비우기가 이때 원작 함수로 일어난다. 대사는 그날 사건 장 뒤에 보인다.
         /// 결혼 장면 뒤 메인 장면 복귀(0x080111B8)는 원작에서 천계 뒤에 오지만 앱은 장면 안에서 먼저 부른다(결혼으로 가족이 바뀌어 그날은 거기서 끝난다).
         /// </summary>
+        // ---------- 천년가족 (원작 천계 큰 장면 방식 4 → 마지막 메뉴 → 기록 → 엔딩 카드) ----------
+        /// <summary>천년가족 장면을 본 뒤 앱이 마지막 메뉴를 띄워야 하는가 (천계 장을 다 본 뒤 참).</summary>
+        public bool MillenniumPending { get; private set; }
+        bool millenniumQueued;
+        /// <summary>가문을 마친 저장인가 (마지막 메뉴 "종료" 가 가족 +0x668 에 0x100 을 켠다, 실기 0x0805E9B4).</summary>
+        public bool Ended { get { return (Game.Mem.R32(OrigMem.Fam + 0x668) & 0x100) != 0; } }
+
+        /// <summary>천년가족 축하 대사(240~246)를 천계 장으로 띄우고, 다 보면 MillenniumPending.</summary>
+        public void MillenniumReport()
+        {
+            var h = new OrigHeaven(Game.Vm, Text, Text.Heaven, MarkName, PlayerName);
+            h.RunMillennium();
+            if (heavenWait == null) heavenWait = new List<OrigHeaven.Page>();
+            heavenWait.AddRange(h.Pages);
+            millenniumQueued = true;
+        }
+
+        /// <summary>가문을 마친 저장을 이어 하면 원작은 천년가족 장면부터 다시 보여 준다(실기) — 앱이 불러온 뒤 부른다.</summary>
+        public bool ShowEndingAgain() { if (!Ended || Paused) return false; MillenniumReport(); return StartHeaven(); }
+
+        /// <summary>마지막 메뉴 글 (원작 글 번호 554·556·557).</summary>
+        public List<string> FinalMsg(int id) { return new OrigHeaven(Game.Vm, Text, Text.Heaven, MarkName, PlayerName).MsgPages(id); }
+
+        /// <summary>마지막 메뉴 "종료" → 기록: 가족 +0x668 |= 0x100, 기록(시각·seed) — 실기 0x0805E9B4 → 0x08092710.</summary>
+        public void FinishFamily(DateTime now)
+        {
+            var m = Game.Mem;
+            m.W32(OrigMem.Fam + 0x668, m.R32(OrigMem.Fam + 0x668) | 0x100);
+            Record(now); MillenniumPending = false;
+        }
+
+        /// <summary>엔딩 카드 (화면 글 570~572 · 큰 글씨 "N년가족"): 신 등급, 지켜본 가문, 햇수.</summary>
+        public string[] EndingCard()
+        {
+            var cur = CurrentRecord(); int years = cur != null ? cur.Years : Family.YearsAsFamily;
+            string rank = Game.Mem.R16(0x0202C66E).ToString();
+            return new[] { Text.UiText(570, "{이름38}성 신님").Replace("{이름38}", rank),
+                           Text.UiText(571, "{이름38}이/가 지켜본 {이름39}가문은…").Replace("{이름38}", PlayerName).Replace("{이름39}", Family.Name).Replace("이/가", JosaIga(PlayerName)),
+                           years + "년가족", Text.UiText(572, "이었습니다…♪") };
+        }
+        static string JosaIga(string w) { if (string.IsNullOrEmpty(w)) return "이/가"; char c = w[w.Length - 1]; return c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 != 0 ? "이" : "가"; }
+
         public void HeavenReport(int entry = 2)
         {
             var h = new OrigHeaven(Game.Vm, Text, Text.Heaven, MarkName, PlayerName);
@@ -902,6 +946,7 @@ namespace SennenKazoku.Core.Orig
             {
                 if (heavenPage < heavenCur.Count - 1) { heavenPage++; return false; }
                 heavenCur = null;
+                if (millenniumQueued) { millenniumQueued = false; MillenniumPending = true; }
                 if (memo != null) { if (!memo.Done) memo.Continue(); return MemoAfter(); }   // 사건 메모 → 천계 보고 → 남은 날 이어서
                 if (cur == null) return true;   // 사건 뒤 큐피트 도움말이었으면 아래에서 그 사건을 마저 끝낸다
             }
@@ -961,7 +1006,9 @@ namespace SennenKazoku.Core.Orig
         {
             if (!memo.Done) return false;
             if (memo.LineageEnded) lineageEnded = true;
+            bool mil = memo.Millennium;
             memo = null; Project();
+            if (mil) { MillenniumReport(); StartHeaven(); return false; }
             return true;
         }
         /// <summary>

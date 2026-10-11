@@ -31,6 +31,7 @@ namespace SennenKazoku.Core.Orig
         /// <summary>물음에 "예" 하고 세대교체였으면 참 — 세션이 천계 보고를 띄운 뒤 Continue 를 부른다.</summary>
         public bool WantsHeaven { get; private set; }
         public bool LineageEnded { get; private set; }
+        public bool Millennium { get; private set; }
 
         const uint Rep = 0x0F03C100;   // 보고 객체 (원작 장면 하위 객체 — +0 장면, +0x48 지금 글, +0x4C 중요 메모 차례, +0x4D 날짜, +0x51 표시)
         const uint Fam = OrigMem.Fam, Obj = OrigOffline.Obj;
@@ -105,6 +106,7 @@ namespace SennenKazoku.Core.Orig
                 case Phase.Answer:
                     if (answerMsg == 83) { WantsHeaven = true; phase = Phase.Heaven; return false; }   // 세션이 천계 보고를 띄운 뒤 Continue / Finish
                     if (answerMsg == 95) LineageEnded = true;
+                    if (answerMsg == 98) Millennium = true;   // 장면 끝 +0x38 = 3 → 천계 큰 장면 방식 4 (0x080CC206)
                     phase = Phase.Done; return true;
             }
             return false;
