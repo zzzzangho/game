@@ -262,7 +262,7 @@ namespace SennenKazoku.Game
             // 큐피트 + 게임 팁 (팁 문구는 새로 쓴 안내 — 원작 문구 아님)
             cupid = UiKit.Box(scene, "cupid", Color.white, art.Cupid(0)); cupid.preserveAspect = true; cupid.raycastTarget = true;
             if (cupid.sprite == null) { cupid.sprite = UiKit.Circle; cupid.color = new Color32(0xFF, 0xE0, 0x70, 255); }
-            cupid.gameObject.AddComponent<Button>().onClick.AddListener(() => { tipIndex++; tipUntil = Time.time + 8f; RefreshTip(); });
+            cupid.gameObject.AddComponent<Button>().onClick.AddListener(() => { if (session is Core.Orig.OrigSession) return; tipIndex++; tipUntil = Time.time + 8f; RefreshTip(); });
             tipBox = UiKit.Box(scene, "tip", new Color(1, 1, 1, 0.94f));
             tipText = UiKit.Label(tipBox.transform, "t", "", 13, UiKit.Ink, TextAnchor.MiddleCenter);
             tips = new[] {
@@ -984,7 +984,41 @@ namespace SennenKazoku.Game
 
         void UpdateTip()
         {
+            var tos = session as Core.Orig.OrigSession;
+            if (tos != null && tos.Text.Heaven.Tips.Count >= 32) { UpdateOrigTip(tos); return; }
             if (Time.time > tipUntil) { tipIndex++; tipUntil = Time.time + 8f; RefreshTip(); }
+        }
+
+        // 원작 집 화면 큐피트 한마디 (메인 장면 0x080198E4·0x08019B70~0x08019C90): 장면 +0x178 비트 0x400 대기 · 0x800 보이는 중, +0x194 카운터(프레임)
+        int tipState, tipCounter = 3000; float tipFrac, tipPrevTime = -1; bool tipWasPaused = true;
+        readonly System.Random tipRng = new System.Random();
+
+        /// <summary>
+        /// 장면을 만들 때(0x080206F0, 사건 뒤 메인 장면을 다시 만들 때도) 카운터 3000. 쉬는 동안 프레임마다 −1(16비트), 0 이 되면 대기·카운터 120.
+        /// 대기 중 장면 시각이 3750(12:30) 이상이면 0x085868B0[시대·32 + (난수 & 31)] 를 띄우고 보이는 중으로. 보이는 중 카운터 −1, 0 이면 지운다 —
+        /// 카운터가 0 에서 다시 줄어 다음 한마디까지 65535프레임. 자정(시각 7200 넘김)에 보이는 중 비트를 지운다(0x08019456).
+        /// 원작은 게임 난수(0x08000614)를 쓰지만 앱은 하루 계산을 06:00 에 끝내므로 화면용 난수를 따로 쓴다. 대사마다 붙은 0x08586AB0 바이트(2~4)는 뜻 미확인이라 쓰지 않는다.
+        /// </summary>
+        void UpdateOrigTip(Core.Orig.OrigSession os)
+        {
+            if (session.Paused || popupOpen) { tipWasPaused = session.Paused || tipWasPaused; tipBox.gameObject.SetActive(false); return; }
+            if (tipWasPaused) { tipWasPaused = false; tipCounter = 3000; tipState = 0; }
+            int now = HouseClock.FromDayFraction(Mathf.Clamp01(acc / SecondsPerDay));
+            if (tipPrevTime >= 0 && now < tipPrevTime && tipState == 2) tipState = 0;   // 자정
+            tipPrevTime = now;
+            tipFrac += Time.deltaTime * 60f; int frames = (int)tipFrac; tipFrac -= frames;
+            for (int i = 0; i < frames && i < 600; i++)
+            {
+                if (tipState == 1 && now >= 3750)
+                {
+                    int era = Mathf.Clamp(session.Family.BodySet, 0, 3), k = era * 32 + (tipRng.Next() & 31);
+                    tipText.text = k < os.Text.Heaven.Tips.Count ? os.Text.Heaven.Tips[k] : "";
+                    tipState = 2;
+                }
+                if (tipState == 0) { tipCounter = (tipCounter - 1) & 0xFFFF; if (tipCounter == 0) { tipState = 1; tipCounter = 120; } }
+                else if (tipState == 2) { tipCounter = (tipCounter - 1) & 0xFFFF; if (tipCounter == 0) tipState = 0; }
+            }
+            tipBox.gameObject.SetActive(tipState == 2);
         }
 
         static float Mod(float a, float m) { return m <= 0 ? a : a - Mathf.Floor(a / m) * m; }

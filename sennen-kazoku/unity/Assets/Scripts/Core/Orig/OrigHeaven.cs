@@ -31,6 +31,8 @@ namespace SennenKazoku.Core.Orig
             public readonly Dictionary<int, string> Dreams = new Dictionary<int, string>();
             /// <summary>시대 연출(0x0806AC04): 시대−1 → 큐피트 글 번호(0x0858A854) · 띠 화면 글 번호(0x0858A874).</summary>
             public readonly List<int> EraMsgs = new List<int>(), EraBands = new List<int>();
+            /// <summary>집 화면 큐피트 한마디 128개 (0x085868B0[시대·32 + k]).</summary>
+            public readonly List<string> Tips = new List<string>();
             /// <summary>큐피트 도움말 글 바이트 (0x08586890[k]).</summary>
             public readonly Dictionary<int, byte[]> Help = new Dictionary<int, byte[]>();
             public bool Ok { get { return Lists.Count > 0 && Msgs.Count > 0; } }
@@ -47,6 +49,7 @@ namespace SennenKazoku.Core.Orig
                 var dr = J.Child(h, "dreams"); if (dr != null) foreach (var kv in dr) d.Dreams[int.Parse(kv.Key)] = kv.Value as string ?? "";
                 foreach (var x in J.Arr(J.Get(h, "eraMsgs")) ?? new List<object>()) d.EraMsgs.Add(Convert.ToInt32(x));
                 foreach (var x in J.Arr(J.Get(h, "eraBands")) ?? new List<object>()) d.EraBands.Add(Convert.ToInt32(x));
+                foreach (var x in J.Arr(J.Get(h, "tips")) ?? new List<object>()) d.Tips.Add(x as string ?? "");
                 var hp = J.Child(h, "help"); if (hp != null) foreach (var kv in hp) d.Help[int.Parse(kv.Key)] = Hex(kv.Value as string ?? "");
                 return d;
             }

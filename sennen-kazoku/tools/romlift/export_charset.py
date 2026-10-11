@@ -148,7 +148,9 @@ def heaven_pack(rom, table):
         p = u32(0x08586890 + 4 * k) - 0x08000000
         e = rom.find(b'%e', p)   # 이 글은 1A 토큰 대신 ASCII 표지(%n 줄 · %p 장 · %r/%g/%b/%k 색 · %u 플레이어 · %f 가문 · %e 끝)를 쓴다
         help_[str(k)] = rom[p:e + 2].hex()
-    return {"base": '0x%08X' % base, "lists": lists, "help": help_, "states": {str(st): (p - base) // 4 for st, p in ptrs.items()},
+    # 집 화면 큐피트 한마디 (메인 장면 0x080198E4: 0x085868B0[시대·32 + 난수&31]) — 시대 4 × 32
+    tips = [decode(rom, table, u32(0x085868B0 + 4 * k), 60) for k in range(128)]
+    return {"base": '0x%08X' % base, "lists": lists, "help": help_, "tips": tips, "states": {str(st): (p - base) // 4 for st, p in ptrs.items()},
             "msgs": msgs, "types": types, "lives": lives, "dreams": dreams, "eraMsgs": era_msgs, "eraBands": era_bands}
 
 
