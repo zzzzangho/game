@@ -26,7 +26,7 @@ namespace SennenKazoku.Core.Orig
 
         public OrigVm(OrigMem mem) { Mem = mem; }
 
-        public void AddTree(string addr, object json) { trees[Norm(addr)] = ParseNode(json); }
+        public void AddTree(string addr, object json) { trees[Norm(addr)] = ParseNode(json); resolved.Clear(); }
         public bool HasTree(string addr) { return trees.ContainsKey(Norm(addr)) || lazy.ContainsKey(Norm(addr)); }
         public int TreeCount { get { return trees.Count + lazy.Count; } }
 
@@ -34,7 +34,7 @@ namespace SennenKazoku.Core.Orig
         byte[] treeText; readonly Dictionary<string, KeyValuePair<int, int>> lazy = new Dictionary<string, KeyValuePair<int, int>>();
         public void SetTreeSource(byte[] text)
         {
-            treeText = text; int i = 0;
+            treeText = text; int i = 0; resolved.Clear();
             while (i < text.Length)
             {
                 int tab = Array.IndexOf(text, (byte)'\t', i); if (tab < 0) break;
@@ -157,12 +157,21 @@ namespace SennenKazoku.Core.Orig
                         return Call((args[0] & ~1u).ToString("X8"), rest);
                     }
             }
-            var key = Norm(fn);
-            // 규칙 파일의 네이티브 표(주소 → 이름)에 있으면 변환 트리 대신 그 처리를 쓴다 (트리를 다시 만들지 않고 바꿀 수 있게)
-            if (Rules != null && Rules.Natives.TryGetValue(key, out var nat)) return CallInner(nat, args);
-            if (!TryTree(key, out var t)) throw new OrigUnmodeled("옮기지 않은 원작 함수 " + fn);
-            return Run(t, args);
+            // 이름 → (네이티브 이름 또는 트리) 를 한 번만 찾아 둔다 (호출마다 주소 글을 다시 만들지 않게)
+            if (!resolved.TryGetValue(fn, out var rs))
+            {
+                var key = Norm(fn);
+                // 규칙 파일의 네이티브 표(주소 → 이름)에 있으면 변환 트리 대신 그 처리를 쓴다 (트리를 다시 만들지 않고 바꿀 수 있게)
+                if (Rules != null && Rules.Natives.TryGetValue(key, out var nat)) rs = new Resolved { Native = nat };
+                else if (TryTree(key, out var t)) rs = new Resolved { Tree = t };
+                else throw new OrigUnmodeled("옮기지 않은 원작 함수 " + fn);
+                resolved[fn] = rs;
+            }
+            return rs.Native != null ? CallInner(rs.Native, args) : Run(rs.Tree, args);
         }
+
+        sealed class Resolved { public string Native; public Node Tree; }
+        readonly Dictionary<string, Resolved> resolved = new Dictionary<string, Resolved>();
 
         // ---------------- 실행 ----------------
         public const uint FrameTop = 0x0F100000, FrameSize = 0x1000;   // 지역 변수 프레임 (GBA 에 없는 빈 주소 영역)
