@@ -202,6 +202,13 @@ def sched_spans(rom, out):
     for j in range(len(out.get('jobs', []))):
         rec = ptr(0x0889D3B8 + 4 * j)
         if rec: ptrs.update(ptr(rec + o) for o in (0x10, 0x14, 0x18))
+    # 직업 자료(0x08886000~0x088A3000: 직업 기록·직급 표·일정)가 가리키는 번역 글(0x0940xxxx~) — 직급 이름 등.
+    # 결과 스크립트 0x080AEAFC 가 0x080A4FD8 로 옮겨 쓴다(예: 0x088972BC → 0x09446EAC).
+    for a in range(0x08886000, 0x088A3000, 4):
+        t = rom.u32(a)
+        if 0x09400000 <= t < 0x09500000 and rom.ok(t):
+            e = rom.b.find(b'\x1a\xff', t - B)
+            if 0 <= e - (t - B) < 0x100: spans.append((t, e - (t - B) + 2))
     for k in range(0x80):
         ptrs.add(ptr(0x08887CE0 + 4 * k))
     for e in out.get('events', {}): ptrs.add(ptr(int(e, 16) + 0x20))

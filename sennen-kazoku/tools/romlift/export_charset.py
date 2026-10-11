@@ -143,7 +143,12 @@ def heaven_pack(rom, table):
         if not 0x08000000 <= q < 0x0A000000: break
         t = u32(q)
         if 0x08000000 <= t < 0x0A000000: dreams[str(i)] = decode(rom, table, t, 60)
-    return {"base": '0x%08X' % base, "lists": lists, "states": {str(st): (p - base) // 4 for st, p in ptrs.items()},
+    help_ = {}
+    for k in range(8):   # 큐피트 도움말 (메인 장면 0x0801EAD0 이 0x08586890[k] 를 띄운다, k = 0x0802B1CC 로 넣은 번호)
+        p = u32(0x08586890 + 4 * k) - 0x08000000
+        e = rom.find(b'%e', p)   # 이 글은 1A 토큰 대신 ASCII 표지(%n 줄 · %p 장 · %r/%g/%b/%k 색 · %u 플레이어 · %f 가문 · %e 끝)를 쓴다
+        help_[str(k)] = rom[p:e + 2].hex()
+    return {"base": '0x%08X' % base, "lists": lists, "help": help_, "states": {str(st): (p - base) // 4 for st, p in ptrs.items()},
             "msgs": msgs, "types": types, "lives": lives, "dreams": dreams, "eraMsgs": era_msgs, "eraBands": era_bands}
 
 

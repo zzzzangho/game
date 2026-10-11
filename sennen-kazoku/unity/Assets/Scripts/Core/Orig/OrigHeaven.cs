@@ -31,6 +31,8 @@ namespace SennenKazoku.Core.Orig
             public readonly Dictionary<int, string> Dreams = new Dictionary<int, string>();
             /// <summary>시대 연출(0x0806AC04): 시대−1 → 큐피트 글 번호(0x0858A854) · 띠 화면 글 번호(0x0858A874).</summary>
             public readonly List<int> EraMsgs = new List<int>(), EraBands = new List<int>();
+            /// <summary>큐피트 도움말 글 바이트 (0x08586890[k]).</summary>
+            public readonly Dictionary<int, byte[]> Help = new Dictionary<int, byte[]>();
             public bool Ok { get { return Lists.Count > 0 && Msgs.Count > 0; } }
 
             public static Data FromJson(Dictionary<string, object> h)
@@ -45,6 +47,7 @@ namespace SennenKazoku.Core.Orig
                 var dr = J.Child(h, "dreams"); if (dr != null) foreach (var kv in dr) d.Dreams[int.Parse(kv.Key)] = kv.Value as string ?? "";
                 foreach (var x in J.Arr(J.Get(h, "eraMsgs")) ?? new List<object>()) d.EraMsgs.Add(Convert.ToInt32(x));
                 foreach (var x in J.Arr(J.Get(h, "eraBands")) ?? new List<object>()) d.EraBands.Add(Convert.ToInt32(x));
+                var hp = J.Child(h, "help"); if (hp != null) foreach (var kv in hp) d.Help[int.Parse(kv.Key)] = Hex(kv.Value as string ?? "");
                 return d;
             }
             static byte[] Hex(string s)
@@ -227,6 +230,41 @@ namespace SennenKazoku.Core.Orig
             byte[] b; if (!data.Msgs.TryGetValue(id, out b)) return;
             for (int i = 0; i + 2 < b.Length && i < 16; i++) if (b[i] == 0x1A && b[i + 1] == 0x0A) { speaker = b[i + 2]; break; }
             foreach (var pg in text.Decode(b, Name, null, Number)) Pages.Add(new Page { Speaker = speaker, Text = pg, State = st, MsgId = id });
+        }
+
+        /// <summary>
+        /// 큐피트 도움말 k (0x08586890[k]) 의 장들 — 사건 장면 뒤 메인 장면이 띄운다(OrigEvents.CupidHelp). State −2 로 표시.
+        /// 이 글은 글자(2바이트) 사이에 ASCII 표지를 쓴다: %n 줄 · %p 장 · %r %g %b %k 글자 색(앱은 색 없음) · %u 플레이어 이름 · %f 가문 이름 · %e 끝.
+        /// </summary>
+        public List<Page> HelpPages(int k)
+        {
+            var l = new List<Page>(); byte[] b;
+            if (!data.Help.TryGetValue(k, out b)) return l;
+            var sb = new System.Text.StringBuilder(); var run = new List<byte>();
+            Action flush = () =>
+            {
+                if (run.Count == 0) return;
+                run.Add(0x1A); run.Add(0xFF);
+                foreach (var s in text.Decode(run.ToArray(), Name, null, Number)) sb.Append(s);
+                run.Clear();
+            };
+            Action page = () => { if (sb.Length > 0) l.Add(new Page { Speaker = 2, Text = sb.ToString(), State = -2, MsgId = 1000 + k }); sb.Clear(); };
+            for (int i = 0; i < b.Length;)
+            {
+                if (b[i] == 0x25 && i + 1 < b.Length)
+                {
+                    flush(); char c = (char)b[i + 1]; i += 2;
+                    if (c == 'e') break;
+                    if (c == 'n') sb.Append('\n');
+                    else if (c == 'p') page();
+                    else if (c == 'u') sb.Append(player);
+                    else if (c == 'f') sb.Append(personName((int)OrigResultScript.MarkFamily));
+                }
+                else if (b[i] >= 0x80 && i + 1 < b.Length) { run.Add(b[i]); run.Add(b[i + 1]); i += 2; }
+                else i++;
+            }
+            flush(); page();
+            return l;
         }
 
         void Screen(string name, string summary) { Pages.Add(new Page { Speaker = 0, Screen = name, Text = summary, State = -1 }); }

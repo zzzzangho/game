@@ -744,7 +744,7 @@ namespace SennenKazoku.Core.Orig
                 var hp = heavenCur[Math.Min(heavenPage, heavenCur.Count - 1)];
                 return new EventView
                 {
-                    EventId = "heaven", Title = hp.MsgId < 0 ? "천계 — " + hp.Screen : "천계",
+                    EventId = hp.State == -2 ? "cupid-help" : "heaven", Title = hp.State == -2 ? "큐피트" : hp.MsgId < 0 ? "천계 — " + hp.Screen : "천계",
                     Speaker = hp.Speaker == 1 ? "높으신 신" : hp.Speaker == 2 ? "큐피트" : "", Text = hp.Text, Phase = "pages",
                     Origin = "original", Certainty = "rom", TextSource = hp.MsgId < 0 ? "app-summary" : "original-translation", PersonId = -1
                 };
@@ -804,10 +804,17 @@ namespace SennenKazoku.Core.Orig
             {
                 if (heavenPage < heavenCur.Count - 1) { heavenPage++; return false; }
                 heavenCur = null;
-                return true;
+                if (cur == null) return true;   // 사건 뒤 큐피트 도움말이었으면 아래에서 그 사건을 마저 끝낸다
             }
             if (cur == null) return false;
             if (page < pages.Count - 1) { page++; return false; }
+            if (cur.Help.Count > 0)
+            {   // 사건 뒤 큐피트 도움말 (원작 메인 장면이 꺼내 띄움) — 천계 장 자리를 빌려 보여 준다
+                var hv = new OrigHeaven(Game.Vm, Text, Text.Heaven, MarkName, PlayerName); var hl = new List<OrigHeaven.Page>();
+                foreach (int k in cur.Help) hl.AddRange(hv.HelpPages(k));
+                cur.Help.Clear();
+                if (hl.Count > 0) { heavenCur = hl; heavenPage = 0; return false; }
+            }
             OrigText.Rec rec; Text.Records.TryGetValue(cur.Data, out rec);
             Family.History.Add(new EventRecord { Day = Family.Today, EventId = rec != null ? rec.Id : "0x" + cur.Data.ToString("X8"),
                 Title = rec != null ? rec.Title : "원작 사건", PersonId = (int)cur.PersonId });

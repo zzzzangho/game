@@ -557,6 +557,10 @@ namespace SennenKazoku.Tests
                     var me = Load(sf[i + 1]); var vme = rules.CreateVm(me);
                     uint rd = me.R16(0x0203BBCA), qe = 0x0203BBD0 + 8 * ((rd + 23) % 24), id = me.R16(qe + 6);
                     SennenKazoku.Core.Orig.OrigEvents.RunEffect(vme, rules, data, v);
+                    {   // 큐피트 도움말 0x0804DB50: 장면 시작 덤프의 신님 랭크·사건 인물 +0x69 로 (C# 규칙과 같은 입력)
+                        uint pn = vmp.Call("0800E524", id);
+                        SennenKazoku.Core.Orig.OrigEvents.CupidHelp(me, data, pn < 8 ? mp.R8(SennenKazoku.Core.Orig.OrigMem.PersonAddr((int)pn) + 0x69) : 0, mp.R16(0x0202C66E));
+                    }
                     vme.Call("080111B8", 0xFFFFFFFD, id, 1, 0, v, 0, data);
                     var want = File.ReadAllBytes(sf[i + 2]);
                     var diffs = new List<string>(); int nd = 0;
@@ -1101,6 +1105,21 @@ namespace SennenKazoku.Tests
                                 Console.WriteLine("       일정 " + (day == 0 ? "첫날 " : "다음날 ") + p.Name + ": " + string.Join(" ", plan.ConvertAll(st => st.Kind + "→방" + st.Room + "(" + (st.End - st.Start) / 300 + "h)")) + (evt >= 0 ? "  사건 " + (evt + 1800) % 7200 / 300 + "시" : ""));
                                 T.Eq(sum, 7200, p.Name + " 일정 합이 24시간이 아님");
                             }
+                        }
+                        {   // 큐피트 도움말: 종류 8 결과(0x08927458) · 화살 표시 비트 0 · 랭크 0→1 → 도움말 1, 다시 → 도움말 2, 랭크 1→2 → 도움말 3
+                            var hm2 = hs.Game.Mem; const uint F24 = SennenKazoku.Core.Orig.OrigMem.Fam + 0x24, RK = 0x0202C66E;
+                            hm2.W8(F24, 0); for (uint q = 0; q < 3; q++) hm2.W8(0x0203BD30 + q, 0xFF);
+                            uint rk = hm2.R16(RK); hm2.W16(RK, 1);
+                            SennenKazoku.Core.Orig.OrigEvents.CupidHelp(hm2, 0x08927458, 1, 0);
+                            SennenKazoku.Core.Orig.OrigEvents.CupidHelp(hm2, 0x08927458, 1, 0);
+                            hm2.W16(RK, 2); SennenKazoku.Core.Orig.OrigEvents.CupidHelp(hm2, 0x08927458, 0, 1);
+                            var got = new List<int>(); for (int h = SennenKazoku.Core.Orig.OrigEvents.PopHelp(hm2); h >= 0; h = SennenKazoku.Core.Orig.OrigEvents.PopHelp(hm2)) got.Add(h);
+                            var hv = new SennenKazoku.Core.Orig.OrigHeaven(hs.Game.Vm, text, text.Heaven, x => "이름", "신님");
+                            var hp1 = hv.HelpPages(1);
+                            Console.WriteLine("       큐피트 도움말 차례 " + string.Join(",", got) + ", 가족 +0x24 = 0x" + hm2.R8(F24).ToString("X") + ", 도움말 1 첫 장: " + (hp1.Count > 0 ? hp1[0].Text.Replace("\n", " / ") : "(없음)") + " (" + hp1.Count + "장)");
+                            T.Eq(string.Join(",", got), "1,2,3", "큐피트 도움말 차례");
+                            T.True(hp1.Count > 0 && hp1[0].Text.Contains("화살"), "큐피트 도움말 1 글");
+                            hm2.W16(RK, rk); hm2.W8(F24, 0);
                         }
                         Console.WriteLine("       자기 방(인물 칸 0~7): " + string.Join(",", own) + ", 원작 요일 값(0x08095C18) " + GameDate.Format(hs.Family.Today) + " → " + hs.Game.Weekday());
                     }

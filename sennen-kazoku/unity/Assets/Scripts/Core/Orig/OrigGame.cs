@@ -61,6 +61,8 @@ namespace SennenKazoku.Core.Orig
             public uint[] Result = new uint[3];
             /// <summary>결과 스크립트가 글 상자에 낸 글 바이트 (OrigText.Decode 로 푼다 — 원작 결과 문구).</summary>
             public byte[] Shown = new byte[0];
+            /// <summary>장면 뒤 메인 장면이 띄울 큐피트 도움말 번호 (0x0203BD30 에서 꺼낸 차례, OrigEvents.CupidHelp).</summary>
+            public List<int> Help = new List<int>();
         }
 
         /// <summary>결과 문구에서 앱 번역으로 바꿔 끼울 원문 글 주소인가 (OrigSession 이 OrigText.Overrides 로 정한다).</summary>
@@ -293,6 +295,8 @@ namespace SennenKazoku.Core.Orig
                 var shown = new List<byte>();
                 OrigEvents.RunScene(Vm, Rules, data, id, de.Slots, de.Result, shown, TextOverride);
                 de.Shown = shown.ToArray();
+                // 메인 장면으로 돌아오면 도움말 큐를 꺼내 띄운다 (0x0801EAD0 → 0x08586890[k] 글)
+                for (int h = OrigEvents.PopHelp(Mem); h >= 0; h = OrigEvents.PopHelp(Mem)) de.Help.Add(h);
                 if (de.Result[0] >= 1 && de.Result[0] <= 4) EndCodes.Add(de.Result[0] + "@" + data.ToString("X8"));
                 de.Points1 = Mem.R32(0x0202C670); de.Rank1 = Mem.R16(0x0202C66E);
                 for (uint i = 0; i < 32; i++) de.Inv1[i] = (byte)Mem.R8(0x0202C640 + i);

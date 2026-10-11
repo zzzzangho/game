@@ -75,6 +75,9 @@ namespace SennenKazoku.Core.Orig
             if (tr) System.Console.WriteLine("    [SC] 장면 시작 +0x69=" + vm.Mem.R8(pr0 + 0x69) + " 게이지 " + vm.Mem.R8(pr0 + 0x5A));
             vm.Call("0800E57C");
             vm.Call("slots", personId, 0);
+            // 장면 +0x29C = 장면 시작 때 신님 랭크(0x0804C754), +0x2A0 = 사건 인물 레코드 +0x69(화살 표시, 0x0804C7AE — 인물이 없으면 적지 않는다)
+            uint rank0 = vm.Mem.R16(OrigMem.Fam + 0x65E), pn = vm.Call("0800E524", personId & 0xFFFF);
+            uint arrow = pn < 8 ? vm.Mem.R8(OrigMem.PersonAddr((int)pn) + 0x69) : 0;
             if (slotsOut != null) for (int k = 0; k < slotsOut.Length && k < 28; k++) slotsOut[k] = vm.Mem.R16(OrigMem.Slots + 2 * (uint)k);
             uint v = 0;
             var fns = Fns(vm, rules, data);
@@ -86,9 +89,48 @@ namespace SennenKazoku.Core.Orig
             OrigResultScript.Run(vm, personId, data, shownOut, textOverride);
             var res = RunEffect(vm, rules, data, v);
             if (resultOut != null) for (int k = 0; k < 3 && k < resultOut.Length; k++) resultOut[k] = res[k];
+            CupidHelp(vm.Mem, data, arrow, rank0);
             if (tr) System.Console.WriteLine("    [SC] 효과 뒤 +0x69=" + vm.Mem.R8(pr0 + 0x69));
             vm.Call("080111B8", 0xFFFFFFFD, personId, 1, 0, v, 0, data);
             return v;
+        }
+
+        public const uint HelpQueue = 0x0203BD30;
+
+        /// <summary>
+        /// 사건 장면 끝 큐피트 도움말 (0x0804DB50, 장면 +0x54 = 0 인 큐 사건). 결과 기록 +0 종류가 6~10 일 때, 가족 +0x24 비트로 한 번씩:
+        /// 화살 표시 비트 0 이면 도움말 1(비트 1) — 이미 봤으면 도움말 2(비트 2); 랭크가 장면 동안 1→2 넘으면 3(비트 4), 2→3 은 4(비트 8),
+        /// 3→4 는 5(비트 0x10), 4→5 는 6(비트 0x20). 넣기 = 0x0802B1CC (3칸 큐를 한 칸 밀고 맨 앞에).
+        /// 실기 사건 장면 덤프: 화살 맞은 인물의 종류 8 사건 뒤 0x0203BD30 = 01 FF FF, 가족 +0x24 = 1.
+        /// </summary>
+        public static void CupidHelp(OrigMem m, uint data, uint arrow, uint rank0)
+        {
+            uint kind = m.R8(data);
+            if (kind < 6 || kind > 10) return;
+            uint rank = m.R16(OrigMem.Fam + 0x65E), f = m.R8(OrigMem.Fam + 0x24);
+            if ((f & 1) == 0 && (arrow & 1) != 0) { PushHelp(m, 1); f |= 1; }
+            else if ((f & 2) == 0 && (arrow & 1) != 0) { PushHelp(m, 2); f |= 2; }
+            if ((f & 4) == 0 && rank0 <= 1 && rank > 1) { PushHelp(m, 3); f |= 4; }
+            if ((f & 8) == 0 && rank0 <= 2 && rank > 2) { PushHelp(m, 4); f |= 8; }
+            if ((f & 0x10) == 0 && rank0 <= 3 && rank > 3) { PushHelp(m, 5); f |= 0x10; }
+            if ((f & 0x20) == 0 && rank0 <= 4 && rank > 4) { PushHelp(m, 6); f |= 0x20; }
+            m.W8(OrigMem.Fam + 0x24, f);
+        }
+
+        static void PushHelp(OrigMem m, uint k)
+        {
+            m.W8(HelpQueue + 2, m.R8(HelpQueue + 1)); m.W8(HelpQueue + 1, m.R8(HelpQueue)); m.W8(HelpQueue, k);
+        }
+
+        /// <summary>0x0802B22C: 큐 끝(오래된 것)부터 꺼낸다. 없으면 −1.</summary>
+        public static int PopHelp(OrigMem m)
+        {
+            for (uint i = 3; i > 0; i--)
+            {
+                uint v = m.R8(HelpQueue + i - 1);
+                if (v != 0xFF) { m.W8(HelpQueue + i - 1, 0xFF); return (int)v; }
+            }
+            return -1;
         }
 
         /// <summary>가족 레코드 n 의 사건 한 번: 슬롯표 → 변형 → 효과. 돌려주는 값 = 결과 기록 주소.</summary>
