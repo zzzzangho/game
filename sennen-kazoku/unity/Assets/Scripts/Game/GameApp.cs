@@ -1447,6 +1447,7 @@ namespace SennenKazoku.Game
                 var b = UiKit.Btn(body, t.Id, "", Px(14), n > 0 && can ? Color.white : new Color(0.88f, 0.88f, 0.9f), UiKit.Ink, () =>
                 {
                     if (id == "item.heart_crystal" && session is Core.Orig.OrigSession os) { ClosePopup(); OpenLegacyHearts(os); return; }
+                    if (id == "arrow.legacy" && session is Core.Orig.OrigSession os2) { ClosePopup(); OpenLegacyDreams(os2); return; }
                     var err = session.Use(Sel(), id);
                     ClosePopup(); Toast(err ?? (Interventions.Find(id).Name + "을(를) " + Sel().Name + "에게 썼습니다"));
                     if (err == null) SaveSlot("auto", true);
@@ -1522,6 +1523,29 @@ namespace SennenKazoku.Game
             if (list.Count == 0)
             {
                 var l = UiKit.Label(body, "none", "이어받을 선대의 마음이 없습니다.", Px(15), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(l.rectTransform, 0, 0, w, Px(60));
+            }
+        }
+
+        /// <summary>선대의 꿈의 화살: 원작 화살 메뉴처럼 남겨진 꿈 목록에서 고른다 (OrigSession.UseLegacyDream).</summary>
+        void OpenLegacyDreams(Core.Orig.OrigSession os)
+        {
+            var p = Sel(); if (p == null) return;
+            var body = Window("선대의 꿈의 화살 — " + p.Name, 520); float w = BodyW(body), y = 0, bh = Px(52);
+            var list = os.LegacyDreams();
+            for (int k = 0; k < list.Count; k++)
+            {
+                int idx = k;
+                var b = UiKit.Btn(body, "ld" + k, GenLabel(os.Generation(list[k][0])) + "  " + os.LegacyName(list[k][0]) + "의 꿈  『" + os.DreamName(list[k][1]) + "』", Px(15), Color.white, UiKit.Ink, () =>
+                {
+                    var err = os.UseLegacyDream(Sel(), idx);
+                    ClosePopup(); Toast(err ?? (Sel().Name + "이(가) 선대의 꿈을 이어받았습니다"));
+                    if (err == null) SaveSlot("auto", true);
+                });
+                UiKit.SetPx(b.GetComponent<RectTransform>(), 0, y, w, bh); y += bh + Px(6);
+            }
+            if (list.Count == 0)
+            {
+                var l = UiKit.Label(body, "none", "이어받을 선대의 꿈이 없습니다.", Px(15), UiKit.Ink, TextAnchor.UpperLeft); UiKit.SetPx(l.rectTransform, 0, 0, w, Px(60));
             }
         }
 

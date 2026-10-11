@@ -1087,6 +1087,19 @@ namespace SennenKazoku.Tests
                         T.Eq(string.Join(" ", hv.Trace.ConvertAll(x => x.ToString("X"))), want, "천계 상태 차례");
                         if (text.Heaven.Ok) T.True(hv.Pages.Exists(x => x.MsgId == 371) && hv.Pages.Exists(x => x.MsgId == 400) && hv.Pages.Exists(x => x.MsgId == 403) && hv.Pages.Exists(x => x.MsgId == 481) && hv.Pages.Exists(x => x.MsgId == 435) && hv.Pages.Exists(x => x.MsgId == 260), "천계 대사");
                     }
+                    {   // 선대의 꿈의 화살: 꿈 목록(0x0202C4B4)에 첫 인물의 꿈 하나를 넣고 화살 칸 8 = 1 → 원작 메뉴 경로(칸 100+k)로 쏘면
+                        // 대상 관심사(+0x3E)가 바뀌고 목록이 비며 칸 8 이 0 이 돼야 한다
+                        var ds = SennenKazoku.Core.Orig.OrigSession.NewRecommended(rules, text, "김", 0x1234); var dm = ds.Game.Mem;
+                        var dwho = ds.Family.Members[ds.Family.Members.Count - 1]; uint ddrec = 0;
+                        for (int n = 0; n < 8; n++) if ((int)dm.R16(SennenKazoku.Core.Orig.OrigMem.PersonAddr(n) + 0x3C) == dwho.Id) ddrec = SennenKazoku.Core.Orig.OrigMem.PersonAddr(n);
+                        uint dream = 0x30;   // 관심사 번호(특별 기록 표) — 시험용
+                        dm.W16(0x0202C4B4, (uint)ds.Family.Members[0].Id); dm.W16(0x0202C4B6, dream); dm.W16(0x0202C4B8, 0xFFFF); dm.W8(0x0202C648, 1);
+                        uint i0 = dm.R16(ddrec + 0x3E);
+                        var derr = ds.UseLegacyDream(dwho, 0);
+                        Console.WriteLine("       선대의 꿈의 화살(" + ds.DreamName((int)dream) + " → " + dwho.Name + "): " + (derr ?? "성공") + ", 관심사 " + i0 + " → " + dm.R16(ddrec + 0x3E) +
+                            ", 목록 " + ds.LegacyDreams().Count + ", 칸 8 " + dm.R8(0x0202C648));
+                        T.True(derr == null && ds.LegacyDreams().Count == 0 && dm.R8(0x0202C648) == 0 && dm.R16(ddrec + 0x3E) != i0, "선대의 꿈의 화살");
+                    }
                     var wdump = Environment.GetEnvironmentVariable("SK_WEDDING_DUMP");
                     if (!string.IsNullOrEmpty(wdump))
                     {   // 실기 확인용(로컬): 천계 보고가 처음 도는 날(결혼식)까지 진행하고, 그 며칠 전의 저장 영역(0x0202C010~)을 파일로 남긴다.

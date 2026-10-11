@@ -459,6 +459,64 @@ namespace SennenKazoku.Core.Orig
             }
         }
 
+        /// <summary>선대의 꿈 목록 (가족 +0x4A4 = 0x0202C4B4, 4바이트씩: u16 인물, u16 관심사(꿈), 끝 0xFFFF — 천계 보고 0x080A0BC0 → 0x0800F86C(0, …) 가 넣는다).</summary>
+        public const uint DreamList = 0x0202C4B4;
+
+        /// <summary>선대의 꿈 목록: [인물 번호, 관심사] 차례대로.</summary>
+        public List<int[]> LegacyDreams()
+        {
+            var r = new List<int[]>(); var m = Game.Mem;
+            for (uint k = 0; k < 99; k++)
+            {
+                uint id = m.R16(DreamList + 4 * k); if (id == 0xFFFF) break;
+                r.Add(new[] { (int)id, (int)m.R16(DreamList + 4 * k + 2) });
+            }
+            return r;
+        }
+
+        /// <summary>꿈 이름 (특별 기록 0x088915C8[관심사] +0 글 — 로컬 글 팩 heaven.dreams). 없으면 "꿈 N번".</summary>
+        public string DreamName(int interest)
+        {
+            string s; return Text.Heaven.Dreams.TryGetValue(interest & 0x7FFF, out s) && s.Length > 0 ? s : "꿈 " + interest + "번";
+        }
+
+        /// <summary>
+        /// 선대의 꿈의 화살: 목록 k 번째 꿈을 target 에게. 원작 화살 메뉴는 꿈을 가짜 칸 100+k 로 보여 주고(0x08023800),
+        /// 고르면 메뉴 +0x18E = 꿈 주인, +0x18C = 꿈 관심사를 넣은 뒤(0x0801CE04~) 쏠 수 있는지 0x0801CECC(메뉴, 100+k) →
+        /// 맞으면 화살 함수 0x08024440(메뉴, 100+k, 인물 객체, 관심사) — 칸 10 초과 분기에서 관심사를 나이 단계에 맞춰(0x0811990C) 인물 +0x3E 에 넣는다 —
+        /// 그리고 0x0800F9AC(0, k) 로 목록에서 빼며 화살 칸 8(+0x638) −1.
+        /// </summary>
+        public string UseLegacyDream(Person target, int k)
+        {
+            var t = Interventions.Find("arrow.legacy");
+            if (target == null) return "대상이 없습니다";
+            SyncIn();
+            var m = Game.Mem; uint inv = SlotAddr(t);
+            if (m.R8(inv) == 0) return t.Name + "이(가) 없습니다";
+            var list = LegacyDreams(); if (k < 0 || k >= list.Count) return "선대의 꿈이 없습니다";
+            uint rec = 0;
+            for (int n = 0; n < 8; n++) if (OrigGame.Present(m, n) && (int)m.R16(OrigMem.PersonAddr(n) + 0x3C) == target.Id) { rec = OrigMem.PersonAddr(n); break; }
+            if (rec == 0) return "대상이 없습니다";
+            var ew = (byte[])m.Ewram.Clone(); var iw = (byte[])m.Iwram.Clone();
+            try
+            {
+                for (uint i = 0; i < 0x800; i += 4) m.W32(ToolObj + i, 0);
+                m.W32(ToolObj + 4, ToolChar); m.W32(ToolObj + 0x154, 0); m.W32(ToolChar + 4, rec);
+                m.W16(ToolObj + 0x18E, (uint)list[k][0]); m.W16(ToolObj + 0x18C, (uint)list[k][1]);
+                uint slot = 100 + (uint)k;
+                if (Game.Vm.Call("0801CECC", ToolObj, slot) == 0) return ArrowRefusal(RefusalEntry(m, m.R32(ToolObj + 0x200)), t);
+                Game.Vm.Call("08024440", ToolObj, slot, ToolChar, (uint)list[k][1]);
+                Game.Vm.Call("0800F9AC", 0, (uint)k);
+                Project();
+                return null;
+            }
+            catch (OrigUnmodeled e)
+            {
+                Array.Copy(ew, m.Ewram, ew.Length); Array.Copy(iw, m.Iwram, iw.Length);
+                return t.Name + ": 원작 함수 실행 실패 (" + e.Message + ")";
+            }
+        }
+
         public bool CanUse(string toolId) { var t = Interventions.Find(toolId); return t != null && t.OrigSlot >= 0 && !NotPorted.Contains(toolId); }
 
         /// <summary>
@@ -474,6 +532,7 @@ namespace SennenKazoku.Core.Orig
             if (t == null || t.OrigSlot < 0) return "알 수 없는 도구";
             if (NotPorted.Contains(toolId)) return t.Name + "은(는) 아직 옮기지 않았습니다";
             if (toolId == "item.heart_crystal") return "이어받을 선대의 마음을 고르세요 (UseLegacyHeart)";
+            if (toolId == "arrow.legacy") return "이어받을 선대의 꿈을 고르세요 (UseLegacyDream)";
             if (target == null) return "대상이 없습니다";
             SyncIn();
             var m = Game.Mem; uint rec = 0;
