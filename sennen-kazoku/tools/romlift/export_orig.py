@@ -42,6 +42,10 @@ NATIVE_NAMES.update({0x08006A58: "malloc", 0x0800695C: "free"})
 # 거절 문구 꾸미기 0x08025240(장면, 문구) — 이름 자리를 채운 글을 만드는 화면 함수. 앱은 글을 따로 만들므로 문구 포인터만 돌려준다.
 NATIVES.update({0x08025240: 2})
 NATIVE_NAMES.update({0x08025240: "ret1"})
+# 글상자 띄우기 0x080A60B0(인물, 글, 숫자 칸, 창, 이름 인자 3개) — 사건 메모 보고(0x080D5CE0)가 다음 글을 고른 뒤 부른다. 앱은 인자를 기록해 글을 따로 만든다.
+# 창 닫기 0x08042DA8 — 화면 함수.
+NATIVES.update({0x080A60B0: 7, 0x08042DA8: 2})
+NATIVE_NAMES.update({0x080A60B0: "msg", 0x08042DA8: "noop"})
 STATE_TABLE, CAND_TABLE = 0x085BD4A0, 0x085BD4B4
 OPS = {'add': '+', 'sub': '-', 'mul': '*', 'and': '&', 'or': '|', 'xor': '^', 'shl': '<<', 'lsr': '>>', 'asr': '>>>',
        'udiv': '/', 'umod': '%', 'sdiv': '/s', 'smod': '%s'}

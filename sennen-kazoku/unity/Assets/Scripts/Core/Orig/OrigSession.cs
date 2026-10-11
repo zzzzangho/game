@@ -33,7 +33,31 @@ namespace SennenKazoku.Core.Orig
         /// <summary>마지막 천계 보고 (시험·점검용).</summary>
         public OrigHeaven LastHeaven { get; private set; }
 
-        public bool Paused { get { return cur != null || heavenCur != null; } }
+        public bool Paused { get { return cur != null || heavenCur != null || memo != null; } }
+
+        // ---------- 전원 꺼진 동안의 진행 (원작 사건 메모 장면, OrigOffline · OrigMemoFlow) ----------
+        OrigMemoFlow memo;
+        /// <summary>지금 사건 메모 흐름 (없으면 null).</summary>
+        public OrigMemoFlow Memo { get { return memo; } }
+
+        /// <summary>기록(원작 큐피트 메뉴 "사건 기록" 0x08092710): 시각·기록 표시·다음 seed. 앱은 저장할 때(멈춤·끝냄·슬롯 저장) 부른다.</summary>
+        public void Record(DateTime now) { SyncIn(); OrigOffline.Record(Game.Mem, now); }
+
+        /// <summary>
+        /// 이어 하기(원작 제목 화면 → 사건 메모 장면 방식 0): seed = 가족 +0x68C, 기록 시각부터 now 까지 8초에 하루. 기록한 적이 없으면 거짓.
+        /// 흐름은 View/Advance/Choose 로 진행한다(Paused 동안).
+        /// </summary>
+        public bool StartOffline(DateTime now)
+        {
+            if (Paused || !OrigOffline.Recorded(Game.Mem)) return false;
+            SyncIn();
+            OrigOffline.Reseed(Game.Mem);
+            uint days = OrigOffline.ElapsedDays(Game.Vm, now);
+            memo = new OrigMemoFlow(Game.Vm, Text, MarkName, () => PlayerName, AgeOf, days);
+            return true;
+        }
+
+        int AgeOf(int id) { var p = Family.Get(id); return p == null ? -1 : p.Age(Family.Today); }
 
         /// <summary>표시 이름이 없는 새 인물에게 붙이는 이름 (앱 표시용, 원작 이름 아님).</summary>
         static readonly string[] MaleNames = { "민준", "서준", "도윤", "하준", "지호", "준우", "현우", "건우", "우진", "선우", "유준", "정우", "승현", "시우", "지훈", "태윤" };
@@ -816,6 +840,7 @@ namespace SennenKazoku.Core.Orig
                     Origin = "original", Certainty = "rom", TextSource = hp.MsgId < 0 ? "app-summary" : "original-translation", PersonId = -1
                 };
             }
+            if (memo != null) return memo.View();
             if (cur == null) return null;
             OrigText.Rec rec; Text.Records.TryGetValue(cur.Data, out rec);
             return new EventView
@@ -871,7 +896,19 @@ namespace SennenKazoku.Core.Orig
             {
                 if (heavenPage < heavenCur.Count - 1) { heavenPage++; return false; }
                 heavenCur = null;
+                if (memo != null) { memo.Continue(); return MemoAfter(); }   // 사건 메모 → 천계 보고 → 남은 날 이어서
                 if (cur == null) return true;   // 사건 뒤 큐피트 도움말이었으면 아래에서 그 사건을 마저 끝낸다
+            }
+            if (memo != null)
+            {
+                memo.Advance();
+                if (memo.WantsHeaven)
+                {   // 세대교체 보고 "출발" → 천계 보고 (원작은 천계 장면으로 갔다가 사건 메모 장면 방식 1 로 돌아온다)
+                    Project(); HeavenReport();
+                    if (StartHeaven()) return false;
+                    memo.Continue();
+                }
+                return MemoAfter();
             }
             if (cur == null) return false;
             if (page < pages.Count - 1) { page++; return false; }
@@ -889,7 +926,15 @@ namespace SennenKazoku.Core.Orig
             return true;
         }
 
-        public bool Choose(string choiceId) { return false; }
+        public bool Choose(string choiceId) { if (memo != null) { memo.Choose(choiceId); return true; } return false; }
+
+        bool MemoAfter()
+        {
+            if (!memo.Done) return false;
+            if (memo.LineageEnded) lineageEnded = true;
+            memo = null; Project();
+            return true;
+        }
         /// <summary>
         /// 결과 예고: 지금 관심사가 MAX(255)/MIN(0) 에서 끝나면 무엇이 오르고 내리는지. 원작 메모리를 잠시 보관해 두고
         /// 같은 VM 으로 그 사건(변형 고르기 + 효과 함수, OrigEvents.Run)을 실제로 돌린 뒤 능력치 차이를 보고 메모리를 되돌린다.

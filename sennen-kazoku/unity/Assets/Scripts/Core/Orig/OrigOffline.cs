@@ -63,17 +63,7 @@ namespace SennenKazoku.Core.Orig
         {
             var o = new OrigOffline(vm); var m = o.m;
             m.W8(Obj + 8, 0);   // 방식 0 (원작처럼 나머지 칸은 지우지 않는다 — 메모 칸은 사용 표시(+8)만 지운다)
-            for (uint k = 0; k < 8; k++) m.W16(Obj + 0x9952 + 2 * k, 0xFFFF);
-            m.W32(Obj + 0x38, 0);
-            for (uint k = 0; k < 20; k++) m.W32(Obj + 0x5684 + 4 * k, 0);
-            m.W32(Obj + 0x5664, m.R16(Fam + 0x66C));
-            m.W8(Obj + 0x994B, 0);
-            m.W32(Obj + 0x24, 0x46);
-            m.W16(Obj + 0x987A, 0);
-            m.W8(Obj + 0x994C, 0); m.W8(Obj + 0x994D, 0); m.W8(Obj + 0x994E, 0); m.W8(Obj + 0x994F, 0);
-            m.W32(Obj + 0x5668, 0); m.W32(Obj + 0x566C, 0); m.W8(Obj + 0x5670, 1);
-            for (uint k = 0; k <= 0x2BB; k++) m.W8(Obj + 0x56DC + 24 * k, 0);
-            m.W32(Obj + 0x5680, Obj + 0x5668);
+            o.Common();
             m.W8(0x02029BA0, 1); m.W16(0x02029BA6, 0);
             m.W32(Obj + 0x9940, 0);
             m.W32(Obj + 0x9944, days);
@@ -93,10 +83,53 @@ namespace SennenKazoku.Core.Orig
             vm.Call("080D7248", Obj);
             m.W16(Obj + 0x9878, (vm.Call("08095D3C", Obj + 0x5658, Obj + 0x565C) + 1) & 0xFFFF);
             m.W16(0x02029BA2, m.R16(Fam + 0x670));
+            o.Members();
+            return o;
+        }
+
+        /// <summary>
+        /// 천계 보고 뒤 이어서(장면 방식 1, 0x080C9FD0): 보고 차례 0x02029BA0 += 1, 시작 = 지금 게임 날짜, 끝 = 세대가 바뀌던 날 메모 기록(0x080D3140 → 0x080CC538)이
+        /// 0x02029B98 에 남긴 원래 끝 날짜, 일 수 = 두 날짜 차이(0x08095EE8). 남은 날이 없으면 null.
+        /// </summary>
+        public static OrigOffline BeginNext(OrigVm vm)
+        {
+            var o = new OrigOffline(vm); var m = o.m;
+            m.W8(Obj + 8, 1);
+            o.Common();
+            m.W8(0x02029BA0, m.R8(0x02029BA0) + 1);
+            m.W32(Obj + 0x9940, 0);
+            vm.Call("0800E430", Obj + 0x5658, OrigMem.Date);
+            m.W32(Obj + 0x565C, m.R32(0x02029B98));
+            m.W32(Obj + 0x9944, vm.Call("08095EE8", Obj + 0x5658, Obj + 0x565C));
+            m.W32(Obj + 0x5660, m.R32(Obj + 0x5658));
+            m.W16(Obj + 0x9878, (vm.Call("08095D3C", Obj + 0x5658, Obj + 0x565C) + 1) & 0xFFFF);
+            vm.Call("080D7248", Obj);
+            o.Members();
+            return o;
+        }
+
+        /// <summary>두 방식 공통 앞부분 (0x080C9A1A~0x080C9C28).</summary>
+        void Common()
+        {
+            for (uint k = 0; k < 8; k++) m.W16(Obj + 0x9952 + 2 * k, 0xFFFF);
+            m.W32(Obj + 0x38, 0);
+            for (uint k = 0; k < 20; k++) m.W32(Obj + 0x5684 + 4 * k, 0);
+            m.W32(Obj + 0x5664, m.R16(Fam + 0x66C));
+            m.W8(Obj + 0x994B, 0);
+            m.W32(Obj + 0x24, m.R8(Obj + 8) == 0 ? 0x46u : 0x5Au);
+            m.W16(Obj + 0x987A, 0);
+            m.W8(Obj + 0x994C, 0); m.W8(Obj + 0x994D, 0); m.W8(Obj + 0x994E, 0); m.W8(Obj + 0x994F, 0);
+            m.W32(Obj + 0x5668, 0); m.W32(Obj + 0x566C, 0); m.W8(Obj + 0x5670, 1);
+            for (uint k = 0; k <= 0x2BB; k++) m.W8(Obj + 0x56DC + 24 * k, 0);
+            m.W32(Obj + 0x5680, Obj + 0x5668);
+        }
+
+        /// <summary>두 방식 공통 끝부분 (0x080CA0BC~): 인물 칸 수(번호 FFFF 앞까지)와 인물 칸 초기화 0x0802AFBC.</summary>
+        void Members()
+        {
             m.W8(Obj + 0x987C, 0);
             for (uint k = 0; k < 8 && m.R16(OrigMem.Person + OrigMem.PersonSize * k + 0x3C) != 0xFFFF; k++) m.W8(Obj + 0x987C, k + 1);
             for (uint k = 0; k < m.R8(Obj + 0x987C); k++) vm.Call("0802AFBC", OrigMem.Person + OrigMem.PersonSize * k, Obj + 0x9880 + 24 * k);
-            return o;
         }
 
         /// <summary>

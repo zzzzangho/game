@@ -590,6 +590,36 @@ namespace SennenKazoku.Tests
                 }
                 if (chainOk) Console.WriteLine("       시작부터 이어 하기: 묶음 " + (files.Count - 1) + "번 모두 원작과 같음");
             }
+            // ④ 보고 글 고르기(0x080D5CE0): 실기 덤프(보고 함수 첫 호출 d_NN_080d5ce2) → C# 으로 계속 불러 고른 글(글 포인터·인물)을 실기 기록(msg.log)과 비교
+            bool repOk = true;
+            var rdir = Path.Combine(offDir, "r");
+            if (Directory.Exists(rdir) && File.Exists(Path.Combine(rdir, "msg.log")))
+            {
+                var lines = File.ReadAllLines(Path.Combine(rdir, "msg.log"));
+                var want = new List<string>(); uint rep = 0; int first = -1;
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    if (lines[i].Contains("pc=080d5ce2")) { if (first < 0) { first = i; rep = Convert.ToUInt32(lines[i].Split(' ').First(x => x.StartsWith("r0=")).Substring(3), 16); } continue; }
+                    if (first >= 0 && lines[i].Contains("pc=080a60b2") && lines[i].Contains("lr=080d"))
+                        want.Add(lines[i].Split(' ').First(x => x.StartsWith("r1=")).Substring(3) + "/" + lines[i].Split(' ').First(x => x.StartsWith("r0=")).Substring(3));
+                }
+                var dumps = Directory.GetFiles(rdir, "d_*_080d5ce2.ram").OrderBy(f => f).ToList();
+                if (dumps.Count > 0 && rep != 0)
+                {
+                    var m = Load(dumps[0]); var vm = rules.CreateVm(m);
+                    var got = new List<string>();
+                    for (int k = 0; k < 40; k++)
+                    {
+                        vm.Messages = new List<uint[]>();
+                        vm.Call("080D5CE0", rep);
+                        if (vm.Messages.Count == 0) break;
+                        foreach (var a in vm.Messages) got.Add(a[1].ToString("x8") + "/" + a[0].ToString("x8"));
+                    }
+                    repOk = string.Join(" ", got) == string.Join(" ", want);
+                    Console.WriteLine("       보고 글(실기): " + string.Join(" ", want) + "\n       보고 글(C#):   " + string.Join(" ", got));
+                }
+            }
+            T.True(repOk, "사건 메모 보고 글 순서가 실기와 다름");
             T.True(beginOk, "사건 메모 장면 시작이 실기와 다름");
             T.True(same == files.Count - 1, "하루 묶음이 실기와 다름");
             T.True(chainOk, "시작부터 이어 한 진행이 실기와 다름");

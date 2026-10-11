@@ -19,6 +19,8 @@ namespace SennenKazoku.Core.Orig
         public readonly OrigMem Mem;
         readonly Dictionary<string, Node> trees = new Dictionary<string, Node>();
         public int Calls;   // 실행한 호출 수 (무한 재귀 방지)
+        /// <summary>null 이 아니면 글상자 띄우기(네이티브 "msg") 인자를 여기에 모은다.</summary>
+        public List<uint[]> Messages;
         /// <summary>참이면 옮기지 못한 경로 예외 메시지에 호출 경로를 붙인다 (진단용).</summary>
         public static bool Trail;
 
@@ -127,6 +129,9 @@ namespace SennenKazoku.Core.Orig
                         return 0;
                     }
                 case "noop": return 0;   // 소리·화면 함수 (규칙 상태를 바꾸지 않음)
+                case "msg":   // 글상자 띄우기 0x080A60B0 — 인자(인물, 글 포인터, 숫자 칸, 창, 이름 인자 3개)를 기록만 한다 (OrigOffline.Report)
+                    if (Messages != null) Messages.Add((uint[])args.Clone());
+                    return 0;
                 case "ret1": return args.Length > 1 ? args[1] : 0;   // 문구 꾸미기 0x08025240: 글 대신 받은 문구 포인터를 돌려준다
                 case "malloc":   // 원작 힙 할당 0x08006A58 — 원작 힙 상태 대신 작업 영역에서 차례로 잡는다
                     {
