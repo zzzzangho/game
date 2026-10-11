@@ -64,9 +64,44 @@ namespace SennenKazoku.Game
 
         public Texture2D HouseTexture()
         {
-            var t = Texture(J.Str(J.Child(Manifest, "house"), "file"));
+            Texture2D t = null;
+            if (houseKey.Length > 0)
+            {
+                var h = J.Child(J.Child(Manifest, "houses"), houseKey);
+                t = Texture(J.Str(J.Child(h, "slots"), houseSlot.ToString()));   // 시간대 칸 그림 (없으면 기본)
+                if (t == null) t = Texture(J.Str(h, "file"));
+            }
+            else t = Texture(J.Str(J.Child(Manifest, "house"), "file"));
             if (t != null) t.wrapMode = TextureWrapMode.Repeat;               // 세계가 한 바퀴 이어진다
             return t;
+        }
+
+        string houseKey = ""; int houseSlot;
+        /// <summary>지금 집이 원작 집 정의에서 뽑은 2차원 집(높이 &gt; 160, 방마다 층)인가.</summary>
+        public bool HouseIsWorld { get { return houseKey.Length > 0; } }
+        public string HouseKey { get { return houseKey; } }
+        /// <summary>
+        /// 원작 집 그림 고르기: 집 번호 = 등급(0x0202C6AF 아래 4비트) + 4·시대(가족 +0x682) (원작 0x080171BC) — 시대·등급마다 집이 다르다(실기).
+        /// manifest "houses"(tools/gba_capture/house_rom.py, 로컬 추출: 집 정의 표 0x08581768 의 그림 자원 + 방 자리)에 있으면 그 집으로 바꾼다.
+        /// slot = 시간대 팔레트 칸(HouseClock). 그림이나 방이 바뀌었으면 true. 없으면 기본 집("house").
+        /// </summary>
+        public bool SelectHouse(int era, int grade, int slot)
+        {
+            var hs = J.Child(Manifest, "houses");
+            string key = "e" + era + "g" + grade;
+            var h = hs != null ? J.Child(hs, key) : null;
+            if (h == null || Texture(J.Str(h, "file")) == null) key = "";
+            int sl = slot;
+            if (key.Length > 0 && Texture(J.Str(J.Child(h, "slots"), sl.ToString())) == null) sl = (slot & ~1) % 8;   // 사이 색 칸이 없으면 앞 칸
+            if (key == houseKey && sl == houseSlot) return false;
+            bool sameHouse = key == houseKey; houseKey = key; houseSlot = sl;
+            if (sameHouse) return true;
+            var src = key.Length > 0 ? h : J.Child(Manifest, "house");
+            if (src == null) return true;
+            HouseWidth = J.Int(src, "width", 960); HouseHeight = J.Int(src, "height", 160); FloorY = J.Int(src, "floorY", 112);
+            Rooms.Clear();
+            foreach (var r in J.List(src, "rooms")) { var l = J.Arr(r); var a = new int[l.Count]; for (int i = 0; i < l.Count; i++) a[i] = System.Convert.ToInt32(l[i]); Rooms.Add(a); }
+            return true;
         }
 
         public Sprite Sprite(string name)

@@ -192,11 +192,33 @@ int main(int argc, char** argv) {
                     char sp[512]; snprintf(sp, sizeof sp, "%s/%s.state", argv[2], getenv("SWEEP_RELOAD"));
                     struct VFile* vf = VFileOpen(sp, O_RDONLY); mCoreLoadStateNamed(c, vf, SAVESTATE_ALL); vf->close(vf);
                 }
-                for (int k = 0; k < (getenv("SWEEP_SETTLE") ? atoi(getenv("SWEEP_SETTLE")) : 3); k++) { c->busWrite16(c, addr, (uint16_t)v); if (getenv("SWEEP_ALL")) { c->busWrite16(c, addr - 4, (uint16_t)v); c->busWrite16(c, addr - 8, (uint16_t)v); c->busWrite16(c, 0x03007dd8, (uint16_t)v); } c->setKeys(c, 0); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; }
+                for (int k = 0; k < (getenv("SWEEP_SETTLE") ? atoi(getenv("SWEEP_SETTLE")) : 3); k++) { c->busWrite16(c, addr, (uint16_t)v); if (getenv("SWEEP_ALL")) { c->busWrite16(c, addr - 4, (uint16_t)v); c->busWrite16(c, addr - 8, (uint16_t)v); c->busWrite16(c, 0x03007dd8, (uint16_t)v); }
+                    if (getenv("SWEEP_Y")) { uint16_t y = (uint16_t)atoi(getenv("SWEEP_Y")); c->busWrite16(c, addr + 2, y); c->busWrite16(c, addr - 2, y); c->busWrite16(c, addr - 6, y); }   /* 세로 위치 고정 (집 화면 0x020047F2 등) */
+                    c->setKeys(c, 0); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; }
                 char p[512]; snprintf(p, sizeof p, "%s/%s_%05d.ppm", argv[2], arg, v);
                 FILE* f = fopen(p, "wb"); fprintf(f, "P6 240 160 255\n");
                 for (int k = 0; k < 240 * 160; k++) { unsigned q = pix[k]; unsigned char rgb[3] = { q & 0xFF, (q >> 8) & 0xFF, (q >> 16) & 0xFF }; fwrite(rgb, 1, 3, f); }
                 fclose(f);
+            }
+        } else if (!strcmp(cmd, "pan")) {   /* pan <x주소> <x0> <x1> <y> <프레임당 px> <찍는 간격 px> <접두어> : 카메라(x, x+2=y, 그리고 −4·−8 사본)를 게임처럼 조금씩 옮기며 찍기 */
+            unsigned addr; int x0, x1, ty, sp, every; if (sscanf(line, "%*s %i %d %d %d %d %d %199s", &addr, &x0, &x1, &ty, &sp, &every, arg) != 7) continue;
+            int cx = (int16_t)c->busRead16(c, addr), cy = (int16_t)c->busRead16(c, addr + 2);
+            #define PAN_SET(X, Y) do { for (int o = 0; o <= 8; o += 4) { c->busWrite16(c, addr - o, (uint16_t)(X)); c->busWrite16(c, addr + 2 - o, (uint16_t)(Y)); } } while (0)
+            #define PAN_FRAME() do { c->setKeys(c, 0); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; } while (0)
+            while (cx != x0 || cy != ty) {   /* 시작점까지 천천히 */
+                cx += cx < x0 ? (x0 - cx < sp ? x0 - cx : sp) : cx > x0 ? -(cx - x0 < sp ? cx - x0 : sp) : 0;
+                cy += cy < ty ? (ty - cy < sp ? ty - cy : sp) : cy > ty ? -(cy - ty < sp ? cy - ty : sp) : 0;
+                PAN_SET(cx, cy); PAN_FRAME();
+            }
+            for (int k = 0; k < 20; k++) { PAN_SET(cx, cy); PAN_FRAME(); }
+            for (int x = x0; x <= x1; x += sp) {
+                PAN_SET(x, ty); PAN_FRAME(); PAN_SET(x, ty); PAN_FRAME();
+                if ((x - x0) % every == 0) {
+                    char p[512]; snprintf(p, sizeof p, "%s/%s_%05d_%05d.ppm", argv[2], arg, ty, x);
+                    FILE* f = fopen(p, "wb"); fprintf(f, "P6 240 160 255\n");
+                    for (int k = 0; k < 240 * 160; k++) { unsigned q = pix[k]; unsigned char rgb[3] = { q & 0xFF, (q >> 8) & 0xFF, (q >> 16) & 0xFF }; fwrite(rgb, 1, 3, f); }
+                    fclose(f);
+                }
             }
         } else if (!strcmp(cmd, "bpload")) {   /* bpload <중단점 주소> <메모리 주소> <파일> : 그 주소에 처음 닿을 때 파일을 메모리에 쓴다 (장면이 만들어지기 직전에 상태 심기) */
             unsigned addr = 0, mem = 0; if (sscanf(line, "%*s %i %i %199s", &addr, &mem, arg) != 3) continue;

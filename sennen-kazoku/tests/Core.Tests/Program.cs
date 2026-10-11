@@ -672,6 +672,10 @@ namespace SennenKazoku.Tests
                 foreach (var kv in want) for (int i = 0; i < kv.Value.Length; i++) T.Eq((int)(SceneAnim.ActorCenterX(i, kv.Key) - 16), kv.Value[i]);
                 // 장면 시작 밝기(실기, 액자 배경 한 점 R 값/16): 3040프레임 16 · 3052 80 · 3062 128 · 3086 255 — 화면이 검게 된 3020프레임 기준
                 T.Eq((int)Math.Round((1 - SceneAnim.IntroBlack(20)) * 16), 1); T.Eq((int)Math.Round((1 - SceneAnim.IntroBlack(32)) * 16), 5);
+                // 집 시간대 팔레트(원작 0x08017AF8) — 실기에서 장면 시각을 바꿔 잰 칸: 600→4, 1250·1500→6, 2420·3000·4000→0, 4820·5000→2, 5710·6500→4
+                foreach (var kv in new[] { new[] { 600, 4 }, new[] { 1250, 6 }, new[] { 1500, 6 }, new[] { 2420, 0 }, new[] { 3000, 0 }, new[] { 4000, 0 }, new[] { 4820, 2 }, new[] { 5000, 2 }, new[] { 5710, 4 }, new[] { 6500, 4 } })
+                    T.Eq(HouseClock.Slot(kv[0]), kv[1], "집 시간대 칸 " + kv[0]);
+                T.Eq(HouseClock.FromDayFraction(0), 1800); T.Eq(HouseClock.FromDayFraction(0.75f), 0);
                 T.Eq((int)Math.Round((1 - SceneAnim.IntroBlack(42)) * 16), 8); T.Eq(SceneAnim.IntroBlack(66), 0f); T.Eq(SceneAnim.IntroBlack(10), 1f);
                 // 끝(마지막 장을 넘긴 뒤 t): 밝기 R 240(t20)·224(24)·208(26)·192(30)·…·16(62)·0(66) — 단계 = (255 − R)/16
                 int[] ot = { 20, 24, 26, 30, 32, 36, 38, 42, 44, 48, 50, 54, 56, 60, 62, 66 };

@@ -37,8 +37,8 @@ namespace SennenKazoku.Game
         // 원작 측정(에뮬레이터, 사건 없는 날): 하루 = 5,220~5,280 프레임 ≈ 5,250 / 59.7275fps ≈ 87.9초. R 을 누르고 있으면 780~840 프레임 → ×6.48
         const float SecondsPerDay = 5250f / 59.7275f, HoldSpeed = 5250f / 810f;
         bool playing, popupOpen, follow = true; int lastAutoDay; float toastUntil;
-        int selectedId = -1; float scrollX;                             // GBA px
-        sealed class Actor { public int Id; public float X, Target; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; }
+        int selectedId = -1; float scrollX, camY;                             // GBA px
+        sealed class Actor { public int Id; public float X, Target, Floor; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; }
         readonly Dictionary<int, Actor> actors = new Dictionary<int, Actor>();
 
         // =============================================================== 시작
@@ -821,8 +821,8 @@ namespace SennenKazoku.Game
                 img.gameObject.AddComponent<Button>().onClick.AddListener(() => { selectedId = pid; follow = true; shownImm = -1; RefreshBar(); OpenDetail(session.Family.Get(pid)); });
                 var bub = UiKit.Box(img.transform, "bubble", Color.white, null); bub.preserveAspect = true; bub.gameObject.SetActive(false);
                 var bubT = UiKit.Label(bub.transform, "t", "", 14, Color.red, TextAnchor.MiddleCenter, FontStyle.Bold);
-                float x = UnityEngine.Random.Range(room[0] + 4, room[1] - 36);
-                actors[p.Id] = new Actor { Id = p.Id, X = x, Target = x, Rt = img.rectTransform, Img = img, NextMove = Time.time + UnityEngine.Random.Range(2f, 6f), Bubble = bub, BubbleText = bubT };
+                float x = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36));
+                actors[p.Id] = new Actor { Id = p.Id, X = x, Target = x, Floor = RoomFloor(room), Rt = img.rectTransform, Img = img, NextMove = Time.time + UnityEngine.Random.Range(2f, 6f), Bubble = bub, BubbleText = bubT };
             }
         }
 
@@ -857,18 +857,23 @@ namespace SennenKazoku.Game
 
         void UpdateActors()
         {
-            float viewW = lay.Scene.W / hs; int W = art.HouseWidth; int floorTop = art.FloorY - 61;
+            RefreshHouse();
+            float viewW = lay.Scene.W / hs, viewH = lay.Scene.H / hs; int W = art.HouseWidth, H = Mathf.Max(1, art.HouseHeight);
             var sa = SelActor();
             if (follow && sa != null) scrollX = Mathf.Lerp(scrollX, sa.X - viewW / 2f + 16, Time.deltaTime * 3f);
             scrollX = Mod(scrollX, W);
-            house.uvRect = new Rect(scrollX / W, 0, viewW / W, 1);
+            // 여러 층 집(원작 집 정의): 고른 사람의 층을 따라 위아래로 (바닥이 화면 112 줄 — 옛 파노라마와 같은 자리)
+            float camTarget = H > viewH && sa != null ? Mathf.Clamp(sa.Floor - 112f, 0f, H - viewH) : 0f;
+            camY = H > viewH ? Mathf.Lerp(camY, camTarget, Time.deltaTime * 3f) : 0f;
+            house.uvRect = H > viewH ? new Rect(scrollX / W, 1f - (camY + viewH) / H, viewW / W, viewH / H) : new Rect(scrollX / W, 0, viewW / W, 1);
             foreach (var a in actors.Values)
             {
                 var p = session.Family.Get(a.Id);
                 if (Time.time > a.NextMove)                                     // 임시 행동: 집 안을 오간다(원작 이동 규칙 미해명)
                 {
-                    var rooms = Rooms(); var room = UnityEngine.Random.value < 0.7f ? rooms[HomeRoom(p)] : rooms[UnityEngine.Random.Range(1, rooms.Count)];
-                    a.Target = UnityEngine.Random.Range(room[0] + 4, room[1] - 36); a.NextMove = Time.time + UnityEngine.Random.Range(4f, 10f);
+                    var rooms = Rooms(); var room = UnityEngine.Random.value < 0.7f ? rooms[HomeRoom(p)] : rooms[UnityEngine.Random.Range(Mathf.Min(1, rooms.Count - 1), rooms.Count)];
+                    a.Target = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36)); a.NextMove = Time.time + UnityEngine.Random.Range(4f, 10f);
+                    if (RoomFloor(room) != (int)a.Floor) { a.Floor = RoomFloor(room); a.X = a.Target; }   // 다른 층 방: 바로 옮긴다(원작 계단 이동은 옮기지 않음)
                 }
                 float d = a.Target - a.X; bool moving = Mathf.Abs(d) > 0.5f;
                 if (moving) a.X += Mathf.Sign(d) * Mathf.Min(Mathf.Abs(d), 18f * Time.deltaTime);
@@ -876,7 +881,8 @@ namespace SennenKazoku.Game
                 var spr = Figure(p, moving && d < 0, moving ? (int)(a.Anim * 4) : 0);
                 if (spr != null) a.Img.sprite = spr;
                 float dx = Mod(a.X - scrollX, W); if (dx > viewW + 32) dx -= W;
-                UiKit.SetPx(a.Rt, dx * hs, floorTop * hs, 32 * hs, 64 * hs);
+                float top = a.Floor - 61 - camY;
+                UiKit.SetPx(a.Rt, dx * hs, top * hs, 32 * hs, 64 * hs);
                 // 머리 위 말풍선: 사건 직전(예정 상태 2일 이내)엔 "!", 평소엔 가끔 원작 감정 말풍선(음표·zzz 등)
                 bool soon = !string.IsNullOrEmpty(p.PlannedStateId) && (p.Gauge >= 255 || p.Gauge <= 0);   // 게이지 끝 = MAX/MIN 사건 차례
                 bool emote = !soon && Mathf.Repeat(Time.time + a.Id * 2.3f, 9f) < 1.6f;
@@ -900,7 +906,7 @@ namespace SennenKazoku.Game
             {
                 float dx = Mod(sa.X - scrollX, W); if (dx > viewW + 32) dx -= W;
                 float bob = Mathf.Sin(Time.time * 3f) * 2f;
-                UiKit.SetPx(marker.rectTransform, (dx + 8) * hs, (floorTop + 6 + bob) * hs, 16 * hs, 16 * hs);
+                UiKit.SetPx(marker.rectTransform, (dx + 8) * hs, (sa.Floor - 61 - camY + 6 + bob) * hs, 16 * hs, 16 * hs);
             }
             // 큐피트: 장면 왼쪽 위를 떠다니며 팁 말풍선을 보여 준다
             {
@@ -989,7 +995,26 @@ namespace SennenKazoku.Game
         void OnApplicationQuit() { if (playing && session != null) { try { session.PrepareSave(); saves.Save("auto", session.Family, catalog); } catch (Exception) { } } }
 
         // =============================================================== 표시 갱신
-        void RefreshAll() { RefreshHud(); RefreshBar(); RefreshDialog(); }
+        void RefreshAll() { RefreshHouse(); RefreshHud(); RefreshBar(); RefreshDialog(); }
+
+        /// <summary>
+        /// 원작 세션: 시대·집 등급이 바뀌면(세기 확인·이사) 그 집 그림으로, 하루 시각이 바뀌면 그 시간대 팔레트 그림으로 바꾼다.
+        /// 앱의 하루(SecondsPerDay)는 06:00 에 시작해 원작 하루 7200 단위로 대응한다(HouseClock — 원작 0x08017AF8 의 문턱값).
+        /// </summary>
+        void RefreshHouse()
+        {
+            if (session == null || house == null || !(session is SennenKazoku.Core.Orig.OrigSession)) return;
+            var f = session.Family; string before = art.HouseKey;
+            int slot = HouseClock.Slot(HouseClock.FromDayFraction(Mathf.Clamp01(acc / SecondsPerDay)));
+            if (art.SelectHouse(Mathf.Clamp(f.BodySet, 0, 3), f.HouseGrade & 0xF, slot))
+            {
+                house.texture = art.HouseTexture();
+                if (art.HouseKey != before) RebuildActors();
+            }
+        }
+
+        /// <summary>방의 바닥(집 세계 y). 원작 집 정의의 방은 [x0, x1, 위, 아래, 종류], 옛 파노라마 방은 [x0, x1] (바닥 = FloorY).</summary>
+        int RoomFloor(int[] room) { return room.Length >= 4 ? room[3] : art.FloorY; }
 
         float EffectiveSpeed { get { return speed == 0 ? 0f : holdingSpeed ? HoldSpeed : 1f; } }
 
