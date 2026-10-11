@@ -384,7 +384,8 @@ namespace SennenKazoku.Core.Orig
         /// <summary>엔딩 카드 (화면 글 570~572 · 큰 글씨 "N년가족"): 신 등급, 지켜본 가문, 햇수.</summary>
         public string[] EndingCard()
         {
-            var cur = CurrentRecord(); int years = cur != null ? cur.Years : Family.YearsAsFamily;
+            // "N년가족" = 시작일(0x0202C688)부터 오늘까지 꽉 찬 햇수 — 실기: 카드 직전에 시작일을 1902-01-01 로 바꾸면 2005-10-16 에 "103년가족"
+            int years; try { years = FamilyYears(); } catch (OrigUnmodeled) { var cur = CurrentRecord(); years = cur != null ? cur.Years : Family.YearsAsFamily; }
             string rank = Game.Mem.R16(0x0202C66E).ToString();
             return new[] { Text.UiText(570, "{이름38}성 신님").Replace("{이름38}", rank),
                            Text.UiText(571, "{이름38}이/가 지켜본 {이름39}가문은…").Replace("{이름38}", PlayerName).Replace("{이름39}", Family.Name).Replace("이/가", JosaIga(PlayerName)),

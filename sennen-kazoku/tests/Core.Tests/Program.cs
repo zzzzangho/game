@@ -1347,6 +1347,12 @@ namespace SennenKazoku.Tests
                         T.True(lines.Count >= 7 && lines.Exists(x => x.Contains("천년 가족이 되었구나")), "천년가족 대사");
                         T.True(s3.MillenniumPending, "마지막 메뉴 대기 아님");
                         Console.WriteLine("       마지막 메뉴: " + string.Join(" ", s3.FinalMsg(554)).Replace("\n", " ") + " / 카드: " + string.Join(" ", s3.EndingCard()));
+                        {   // 엔딩 카드 "N년가족": 실기에서 시작일을 1902-01-01 로 바꾸면 2005-10-16 에 103
+                            var cm = s3.Game.Mem; var keep = new uint[6]; for (uint i = 0; i < 3; i++) { keep[i] = cm.R8(0x0202C688 + i); keep[3 + i] = cm.R8(0x0202C684 + i); }
+                            SennenKazoku.Core.Orig.OrigDate.Set(cm, 0x0202C688, 1902, 1, 1); SennenKazoku.Core.Orig.OrigDate.Set(cm, 0x0202C684, 2005, 10, 16);
+                            T.Eq(s3.EndingCard()[2], "103년가족", "엔딩 카드 햇수");
+                            for (uint i = 0; i < 3; i++) { cm.W8(0x0202C688 + i, keep[i]); cm.W8(0x0202C684 + i, keep[3 + i]); }
+                        }
                         s3.FinishFamily(t0.AddDays(1)); s3.PrepareSave();
                         T.True(s3.Ended, "끝 표시 없음");
                         var s4 = SennenKazoku.Core.Orig.OrigSession.Load(rules, text, s3.Family);
