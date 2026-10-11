@@ -38,7 +38,7 @@ namespace SennenKazoku.Game
         const float SecondsPerDay = 5250f / 59.7275f, HoldSpeed = 5250f / 810f;
         bool playing, popupOpen, follow = true; int lastAutoDay; float toastUntil;
         int selectedId = -1; float scrollX, camY;                             // GBA px
-        sealed class Actor { public int Id; public float X, Target, Floor; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; public int Room = -1, Kind = -1, Spot = -1; public bool Hidden; }
+        sealed class Actor { public int Id; public float X, Target, Floor; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; public int Room = -1, Kind = -1, Spot = -1, Emo = -1; public float EmoStart, EmoCheck; public bool Hidden; }
         readonly Dictionary<int, Actor> actors = new Dictionary<int, Actor>();
 
         // =============================================================== 시작
@@ -908,7 +908,24 @@ namespace SennenKazoku.Game
                 float dx = Mod(a.X - scrollX, W); if (dx > viewW + 32) dx -= W;
                 float top = a.Floor - 61 - camY;
                 UiKit.SetPx(a.Rt, dx * hs, top * hs, 32 * hs, 64 * hs);
-                // 머리 위 말풍선: 사건 직전(예정 상태 2일 이내)엔 "!", 평소엔 가끔 원작 감정 말풍선(음표·zzz 등)
+                var hos = session as Core.Orig.OrigSession;
+                if (hos != null && HouseEmoTable() != null)
+                {
+                    // 원작 감정 말풍선(OrigSession.HouseEmote, 그림·움직임 = 실기 house_emo): 걷는 동안은 없다(실기 화면). 앱 인물은 누운 그림이 없어 zzz 도 머리 위에 둔다.
+                    if (moving) a.Emo = -1;
+                    else if (Time.time >= a.EmoCheck)
+                    {
+                        a.EmoCheck = Time.time + 0.5f;
+                        int e = hos.HouseEmote(p.Id, a.Kind == 0);
+                        if (e != a.Emo) { a.Emo = e; a.EmoStart = Time.time; }
+                    }
+                    int ef = a.Emo >= 0 ? houseEmoTable.Frame(a.Emo, (int)((Time.time - a.EmoStart) * 60f)) : -1;
+                    var es = ef >= 0 ? art.Sprite("house_emo_" + a.Emo + "_" + ef) : null;
+                    a.Bubble.gameObject.SetActive(es != null);
+                    if (es != null) { a.Bubble.sprite = es; a.Bubble.color = Color.white; a.BubbleText.text = ""; UiKit.SetPx(a.Bubble.rectTransform, 0, 0, 32 * hs, 32 * hs); }
+                    continue;
+                }
+                // (원작 세션이 아니거나 집 말풍선 그림이 없을 때 — 앱 임시 표시) 사건 직전엔 "!", 평소엔 가끔 감정 말풍선
                 bool soon = !string.IsNullOrEmpty(p.PlannedStateId) && (p.Gauge >= 255 || p.Gauge <= 0);   // 게이지 끝 = MAX/MIN 사건 차례
                 bool emote = !soon && Mathf.Repeat(Time.time + a.Id * 2.3f, 9f) < 1.6f;
                 if (soon) { a.Bubble.sprite = null; a.Bubble.color = new Color(1, 1, 1, 0.95f); a.BubbleText.text = "!"; a.BubbleText.color = new Color32(0xE0, 0x30, 0x30, 255); }
@@ -1048,6 +1065,14 @@ namespace SennenKazoku.Game
 
         /// <summary>방의 바닥(집 세계 y). 원작 집 정의의 방은 [x0, x1, 위, 아래, 종류], 옛 파노라마 방은 [x0, x1] (바닥 = FloorY).</summary>
         int RoomFloor(int[] room) { return room.Length >= 4 ? room[3] : art.FloorY; }
+
+        SceneAnim.EmotionTable houseEmoTable; bool houseEmoTried;
+        /// <summary>집 화면 감정 말풍선 움직임 표 (LocalArt house_emo_anim.json — tools/gba_capture/house_emo.py). 없으면 null.</summary>
+        SceneAnim.EmotionTable HouseEmoTable()
+        {
+            if (!houseEmoTried) { houseEmoTried = true; var t = art.Text("house_emo_anim.json"); if (t != null) houseEmoTable = SceneAnim.EmotionTable.Parse(t); }
+            return houseEmoTable;
+        }
 
         /// <summary>방마다 차지한 자리 비트 (원작 장면 방 표 +0x1C).</summary>
         readonly Dictionary<int, int> roomSpots = new Dictionary<int, int>();

@@ -513,6 +513,35 @@ namespace SennenKazoku.Core.Orig
             return true;
         }
 
+        /// <summary>
+        /// 집 화면 감정 말풍선 번호 (원작 인물 작업 매 프레임 0x080133EA~ — 말풍선 스프라이트(작업 +0xDE0, 그림 자원 3288) +0x20):
+        /// 잠(작업 +0xDD0 비트 0x20 — 일정 명령 6 이 켬) 5 · 관심사(0x08118FCC) +0xD = 3(분류 3) 2 ·
+        /// +0x11 = 0 이고 신님 랭크 > 3 → 7(하트) · +0x11 = 1 이고 랭크 > 6 → 9(전구) · 지금 관심사가 꿈(레코드 +0x3E)의 관련 관심사(0x08119A30)이고 랭크 > 5 → 8(불꽃) ·
+        /// 그 밖은 성격(+0x32 아래 4비트)·관심사 성격(+0xF) 궁합 0x08028870: 0(한쪽이 0) → 3(초록 ♪) · 1(같음) → 4(♫) · 2(다름) → 6(파란 엉킴).
+        /// 실기에서 조건을 바꿔 각 번호의 그림을 확인했다(house_emo.py). 관심사가 없으면(0xFFFF) −1.
+        /// </summary>
+        public int HouseEmote(int personId, bool sleeping) { return HouseEmote(Game.Vm, personId, sleeping); }
+        public static int HouseEmote(OrigVm vm, int personId, bool sleeping)
+        {
+            if (sleeping) return 5;
+            var m = vm.Mem;
+            int n = -1; for (int k = 0; k < 8; k++) if (OrigGame.Present(m, k) && m.R16(OrigMem.PersonAddr(k) + 0x3C) == (uint)personId) n = k;
+            if (n < 0) return -1;
+            uint p = OrigMem.PersonAddr(n);
+            if (m.R16(p + 0x80) == 0xFFFF) return -1;
+            try
+            {
+                uint ir = vm.Call("08118FCC", p + 0x80), rank = m.R16(OrigMem.Fam + 0x65E);
+                if (m.R8(ir + 0xD) == 3) return 2;
+                if (m.R8(ir + 0x11) == 0 && rank > 3) return 7;
+                if (m.R8(ir + 0x11) == 1 && rank > 6) return 9;
+                if (vm.Call("08119A30", p + 0x80, m.R16(p + 0x3E), 0) != 0 && rank > 5) return 8;
+                uint a = vm.Call("08028870", m.R8(p + 0x32) & 0xF, m.R8(ir + 0xF));
+                return a == 0 ? 3 : a == 1 ? 4 : 6;
+            }
+            catch (OrigUnmodeled) { return -1; }
+        }
+
         /// <summary>하루 일정의 한 칸: 06:00 = 0 기준 하루 단위(1시간 300) [Start, End), 집 정의 방 칸, 일정 방 종류
         /// (0 = 자기 방에서 잠, 1 = 자기 방, 2·3·4 = 집 머리 +0x10·+0x18·+0x14 방, 5 = 외출 → 방 0).</summary>
         public sealed class PlanStep { public int Start, End, Room, Kind; }

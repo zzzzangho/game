@@ -376,6 +376,24 @@ namespace SennenKazoku.Tests
                 }
                 Console.WriteLine("       하루 일정 고르기(실기 작업 4개, 요일 " + hg.Weekday() + "): " + string.Join(", ", hres));
             }
+            // 집 감정 말풍선(0x080133EA~): 실기 집 화면 RAM(house_emo_r400.ram) 의 말풍선 스프라이트 움직임 번호 — 인물 0 = 4(♫), 1 = 3(초록 ♪), 3 = 3
+            if (File.Exists(Path.Combine(dir, "house_emo_r400.ram")))
+            {
+                var em = Fresh("house_emo_r400.ram"); var evm = rules.CreateVm(em);
+                string got = string.Join(",", new[] { 0, 1, 3 }.Select(id => SennenKazoku.Core.Orig.OrigSession.HouseEmote(evm, id, false)));
+                Console.WriteLine("       집 감정 말풍선(인물 0,1,3): " + got + " (실기 4,3,3)");
+                T.Eq(got, "4,3,3", "집 감정 말풍선이 실기와 다름");
+                // 조건을 바꾼 실기 화면(house_emo.py): 랭크 7 + 관심사 (1,70) → 7 하트 · (1,22) → 9 전구 · (3,0) → 2 · (2,175) → 6 · 꿈 0 + (0,16) → 8
+                const uint R1 = 0x0202CA94; var cases = new List<string>();
+                foreach (var c in new[] { new[] { 1, 70, -1 }, new[] { 1, 22, -1 }, new[] { 3, 0, -1 }, new[] { 2, 175, -1 }, new[] { 0, 16, 0 } })
+                {
+                    var cm2 = Fresh("house_emo_r400.ram"); var cvm2 = rules.CreateVm(cm2);
+                    cm2.W16(0x0202C66E, 7); cm2.W16(R1 + 0x80, (uint)c[0]); cm2.W16(R1 + 0x82, (uint)c[1]); if (c[2] >= 0) cm2.W16(R1 + 0x3E, (uint)c[2]);
+                    cases.Add(SennenKazoku.Core.Orig.OrigSession.HouseEmote(cvm2, 1, false).ToString());
+                }
+                Console.WriteLine("       조건을 바꾼 말풍선: " + string.Join(",", cases) + " (실기 7,9,2,6,8)");
+                T.Eq(string.Join(",", cases), "7,9,2,6,8", "조건별 집 감정 말풍선이 실기와 다름");
+            }
             // 세기 확인(0x080A113C, 자동 변환 — 점프 표 뒤 반복문 머리를 찾도록 lift.py 를 고친 뒤 변환됨): 시작일을 1·2·4·7세기 전으로 바꾼 RAM 에서
             // 원작 ROM 을 unicorn 으로 돌린 결과(century/c<세기>.out.ram)와 저장 영역 0x0202C010~0x0203C440·결과 8바이트가 같아야 한다.
             if (Directory.Exists(Path.Combine(dir, "century")))
