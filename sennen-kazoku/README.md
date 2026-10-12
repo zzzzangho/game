@@ -32,9 +32,10 @@ dotnet run --project tools/PackLintCli -- unity/Assets/Resources/BundledPacks �
 ## 테스트 APK 빌드 (본인 테스트용 — 배포 금지)
 
 `UNITY_EMAIL=… UNITY_PASSWORD=… tools/build_android.sh [출력.apk]` — Docker 로 GameCI Unity 이미지(`unityci/editor:ubuntu-<ProjectVersion>-android-3`)를 받아
-`BuildScript.BuildAndroid` 를 돌린다. 원작 자료는 이 컴퓨터의 `unity/Assets/Resources/LocalArt · LocalOrig · LocalPacks`(git 제외)에 있는 것이 들어간다.
+`BuildScript.BuildAndroid` 를 돌린다. 원작 자료는 이 컴퓨터의 `unity/Assets/Resources/LocalArt · LocalAudio · LocalOrig · LocalPacks`(git 제외)에 있는 것이 들어간다.
 - `LocalOrig/`: 원작 팩의 `orig_rules.json` · `orig_rules.json.trees` → `orig_trees.bytes` · `orig_text.json`
 - `LocalArt/opening_frames.bin.bytes`: `python3 -I tools/gba_capture/opening_frames.py <ROM>` (엔딩 카드 뒤 오프닝 데모)
+- `LocalAudio/`: `python3 -I tools/gba_capture/audio_rip.py <ROM>` (원작 배경음악·효과음 — 아래 "원작 소리")
 - 결과 `build/` 와 `*.apk` 는 git 에서 빠진다. Unity 계정은 2단계 인증이 꺼져 있어야 컨테이너 안에서 활성화된다(끝나면 반납).
 
 ## 원작 그래픽 사용 (로컬 전용)
@@ -55,6 +56,16 @@ python3 -I tools/gba_capture/gallery_fit.py <천년가족.gba> <idx 디렉터리
 ```
 게임에서는 구성원 외형을 이 파트의 조합으로 그립니다(조합 규칙은 원작 갤러리와 픽셀 대조로 확인).
 
+## 원작 소리 (로컬 전용)
+원작 소리 엔진은 표준 m4a 가 아니라서 악보를 바로 옮기지 않고, 에뮬레이터(mGBA)에서 원작 엔진이 곡마다 내는 소리를 녹음합니다.
+```bash
+sudo apt-get install libmgba-dev ffmpeg python3-numpy   # ffmpeg 가 없으면 wav 로 씁니다(용량이 큼)
+python3 -I tools/gba_capture/audio_rip.py <천년가족.gba>   # → unity/Assets/Resources/LocalAudio/ (음악 104곡 + 앱 효과음, 4코어 약 15분)
+```
+반복 곡은 원작 엔진의 트랙 읽기 위치에서 찾은 반복 지점으로 "앞부분 + 반복 한 바퀴"로 잘라 이음매 없이 돕니다. 어느 화면에서 어느 곡이 나오는지는
+원작 재생 함수를 부르는 곳에서 찾았습니다(제목 · 신님 대화 · 가족 만들기 · 시대·집 등급별 집 곡 · 사건마다 정해진 사건 곡 · 천계 보고 · 천년가족 · 가계 끊김 · 오프닝 데모).
+자세한 내용은 [docs/08](docs/08_원작규칙해독.md) "소리". 설정 화면에서 배경음악·효과음 음량을 바꿀 수 있습니다. **추출한 소리도 배포하면 안 됩니다.**
+
 ## 구현된 것
 - **메인 화면 (사용자 스케치 기준)**: HUD(가족 이름·소지금·무드 포인트·날짜) + 오른쪽 위 배속 코너(누르는 동안 ×4, 원작 R 버튼), 원작 집 단면도(가로 순환 스크롤), 큐피트 게임 팁 말풍선(팁 문구는 새로 씀), 왼쪽 아래 아이템·오른쪽 아래 활 코너, 인물 패널(초상·이름·하트·체·지·매·운 등급·열중 게이지·◀▶·글상자·결과 예고 "푹 빠져 있어! → 무드↑ 하트↓"), 탭(상세·가계도·사건·설정). 머리 위 말풍선: 사건 직전 "!", 평소엔 원작 감정 말풍선
 - **원작 파트 조합 캐릭터**: 앞머리·뒷머리·얼굴·눈·코·입·몸통 번호 + 머리색 8·피부색 4·의상 4·의상색 4, 나이에 따른 연령 칸(아이·성인·노인), 앞모습 걷기 2프레임·뒷모습 2프레임
@@ -72,7 +83,7 @@ python3 -I tools/gba_capture/gallery_fit.py <천년가족.gba> <idx 디렉터리
 - 제작자 도구: `PackLintCli`(검사·분기별 미리보기·시뮬레이션), Unity 창 `천년가족 > 이벤트 팩 검사·미리보기`
 
 ## 아직 구현하지 않은 것
-결혼·출산·사망·세대교체, 직업 이름표(코드만 — 원작 2개만 이름 확인)/수입, 계절 의상(몸통 블록 4~15) 사용, 스킬 효과, 애정 붐 등 나머지 화살, 아이템 입수 경로, 시간대별 배경, 원작 걷기 경로, 원작 달력/이벤트 빈도, 컨디션·관계/상태 코드 기반 조건, 다중 후보 경로 상태(195개), 원작 그래픽·애니메이션·음악, 효과의 "몰입도·상태 보정", 팩 서명, 원격 서버, iOS, 정식 한글 폰트 번들, 단위 Unity PlayMode 테스트.
+결혼·출산·사망·세대교체, 직업 이름표(코드만 — 원작 2개만 이름 확인)/수입, 계절 의상(몸통 블록 4~15) 사용, 스킬 효과, 애정 붐 등 나머지 화살, 아이템 입수 경로, 시간대별 배경, 원작 걷기 경로, 원작 달력/이벤트 빈도, 컨디션·관계/상태 코드 기반 조건, 다중 후보 경로 상태(195개), 원작 그래픽·애니메이션, 집 화면 인물 행동 효과음·글자 소리, 효과의 "몰입도·상태 보정", 팩 서명, 원격 서버, iOS, 정식 한글 폰트 번들, 단위 Unity PlayMode 테스트.
 
 ## 원작과 다른 점 (아직 해독하지 못한 부분 — docs/08 "아직 해독하지 못한 것")
 - 사건이 실제로 뜨는 때(인물 행동 루틴): 앱은 게이지가 255/0 이고 요일 조건을 만족하는 날 바로 띄운다.

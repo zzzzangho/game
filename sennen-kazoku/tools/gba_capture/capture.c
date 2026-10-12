@@ -32,8 +32,19 @@ static void bp_load(void) {
     if (f) { while ((ch = fgetc(f)) != EOF) { g_core->busWrite8(g_core, g_bpl_mem + (unsigned)cnt, (uint8_t)ch); cnt++; } fclose(f); }
     g_bpl_done = 1; printf("bpload @%ld %08x %ld\n", g_frame, g_bpl_mem, cnt);
 }
+/* bpreg: 중단점 주소에 닿을 때 레지스터 값을 바꾼다 (남은 횟수 −1 = 계속). 소리 녹음에서 원작 재생 함수의 곡 번호를 바꿀 때 쓴다 */
+static struct { unsigned addr; char reg[8]; uint32_t val; int left; } g_bpreg[16]; static int g_nbpreg;
+static void bp_reg(void) {
+    uint32_t pc = 0; g_core->readRegister(g_core, "pc", &pc);
+    for (int i = 0; i < g_nbpreg; i++)
+        if (g_bpreg[i].left != 0 && pc >= g_bpreg[i].addr && pc <= g_bpreg[i].addr + 4) {
+            g_core->writeRegister(g_core, g_bpreg[i].reg, &g_bpreg[i].val);
+            if (g_bpreg[i].left > 0) g_bpreg[i].left--;
+            break;
+        }
+}
 static void wp_entered(struct mDebugger* d, enum mDebuggerEntryReason r, struct mDebuggerEntryInfo* info) {
-    if (r == DEBUGGER_ENTER_BREAKPOINT) bp_load();
+    if (r == DEBUGGER_ENTER_BREAKPOINT) { bp_load(); bp_reg(); }
     if (g_wlog && r == DEBUGGER_ENTER_BREAKPOINT) bp_log();
     if (g_wlog && info && r == DEBUGGER_ENTER_WATCHPOINT) {
         uint32_t pc = 0, lr = 0; g_core->readRegister(g_core, "pc", &pc); g_core->readRegister(g_core, "lr", &lr);
@@ -57,6 +68,41 @@ static void bp_log(void) {
 }
 static struct mDebugger g_dbg;
 
+/* ---- 소리 녹음: "audio <파일.wav>" 부터 "audio off" 까지 매 프레임 소리 버퍼를 비워 16비트 스테레오 WAV 로 쓴다 ---- */
+struct blip_t;
+int blip_samples_avail(const struct blip_t*);
+int blip_read_samples(struct blip_t*, short out[], int count, int stereo);
+void blip_set_rates(struct blip_t*, double clock_rate, double sample_rate);
+#define AUDIO_RATE 32768
+static FILE* g_wav; static long g_wav_n;
+static void wav_close(void) {
+    if (!g_wav) return;
+    uint32_t data = (uint32_t)g_wav_n * 4, riff = data + 36;
+    fseek(g_wav, 4, SEEK_SET); fwrite(&riff, 4, 1, g_wav); fseek(g_wav, 40, SEEK_SET); fwrite(&data, 4, 1, g_wav);
+    fclose(g_wav); g_wav = NULL; printf("audio %ld samples\n", g_wav_n);
+}
+static void wav_open(struct mCore* c, const char* path) {
+    wav_close(); g_wav = fopen(path, "wb"); g_wav_n = 0;
+    static const unsigned char hdr[44] = { 'R','I','F','F',0,0,0,0,'W','A','V','E','f','m','t',' ',16,0,0,0,1,0,2,0,
+        AUDIO_RATE & 0xFF, (AUDIO_RATE >> 8) & 0xFF, 0, 0, (AUDIO_RATE * 4) & 0xFF, ((AUDIO_RATE * 4) >> 8) & 0xFF, ((AUDIO_RATE * 4) >> 16) & 0xFF, 0,
+        4,0,16,0,'d','a','t','a',0,0,0,0 };
+    fwrite(hdr, 1, 44, g_wav);
+    for (int ch = 0; ch < 2; ch++) blip_set_rates(c->getAudioChannel(c, ch), c->frequency(c), AUDIO_RATE);
+}
+static void audio_drain(struct mCore* c) {
+    struct blip_t* L = c->getAudioChannel(c, 0); struct blip_t* R = c->getAudioChannel(c, 1);
+    short buf[2048];
+    for (;;) {
+        int n = blip_samples_avail(L); if (n > 1024) n = 1024; if (n <= 0) break;
+        blip_read_samples(L, buf, n, 1); blip_read_samples(R, buf + 1, n, 1);
+        if (g_wav) { fwrite(buf, 4, (size_t)n, g_wav); g_wav_n += n; }
+    }
+}
+static void frame1(struct mCore* c) {
+    if (g_dbg.platform) mDebuggerRunFrame(&g_dbg); else c->runFrame(c);
+    audio_drain(c);
+}
+
 int main(int argc, char** argv) {
     static struct mLogger lg = { .log = quiet }; mLogSetDefaultLogger(&lg);
     if (argc < 4) { fprintf(stderr, "usage\n"); return 2; }
@@ -64,16 +110,16 @@ int main(int argc, char** argv) {
     color_t* pix = calloc(240 * 160, sizeof(color_t)); c->setVideoBuffer(c, pix, 240);
     if (!mCoreLoadFile(c, argv[1])) { fprintf(stderr, "rom load fail\n"); return 2; }
     if (argc > 4 && !strncmp(argv[4], "save=", 5)) c->loadTemporarySave(c, VFileOpen(argv[4] + 5, O_RDONLY));
-    c->reset(c);
+    c->setAudioBufferSize(c, 2048); c->reset(c);
     FILE* sc = fopen(argv[3], "r"); char line[256]; long frame = 0;
     while (fgets(line, sizeof line, sc)) {
         char cmd[32], arg[200]; int n = 0, keys = 0;
         if (sscanf(line, "%31s", cmd) != 1 || cmd[0] == '#') continue;
         if (!strcmp(cmd, "run") && sscanf(line, "%*s %d %i", &n, &keys) >= 1) {
-            for (int i = 0; i < n; i++) { c->setKeys(c, keys); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; }
+            for (int i = 0; i < n; i++) { c->setKeys(c, keys); frame1(c); frame++; g_frame = frame; }
         } else if (!strcmp(cmd, "tap") && sscanf(line, "%*s %i %d", &keys, &n) >= 1) {   /* 키 6프레임 누르고 n프레임 대기 */
-            for (int i = 0; i < 6; i++) { c->setKeys(c, keys); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; }
-            for (int i = 0; i < (n ? n : 30); i++) { c->setKeys(c, 0); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; }
+            for (int i = 0; i < 6; i++) { c->setKeys(c, keys); frame1(c); frame++; g_frame = frame; }
+            for (int i = 0; i < (n ? n : 30); i++) { c->setKeys(c, 0); frame1(c); frame++; g_frame = frame; }
         } else if (!strcmp(cmd, "shot") && sscanf(line, "%*s %199s", arg) == 1) {
             char p[512]; snprintf(p, sizeof p, "%s/%s.ppm", argv[2], arg);
             FILE* f = fopen(p, "wb"); fprintf(f, "P6 240 160 255\n");
@@ -96,7 +142,7 @@ int main(int argc, char** argv) {
         } else if (!strcmp(cmd, "rundump")) {   /* rundump <프레임> <키> <간격> <접두어> : 간격마다 메모리 덤프 */
             int every = 1; if (sscanf(line, "%*s %d %i %d %199s", &n, &keys, &every, arg) != 4) continue;
             for (int i = 0; i < n; i++) {
-                c->setKeys(c, keys); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame;
+                c->setKeys(c, keys); frame1(c); frame++; g_frame = frame;
                 if (i % every == 0) {
                     char p[512]; snprintf(p, sizeof p, "%s/%s_%06ld.mem", argv[2], arg, frame); FILE* f = fopen(p, "wb");
                     for (unsigned a = 0x05000000; a < 0x05000400; a++) fputc(c->busRead8(c, a), f);
@@ -119,8 +165,18 @@ int main(int argc, char** argv) {
             if (!g_dbg.platform) {
                 memset(&g_dbg, 0, sizeof g_dbg); g_dbg.entered = wp_entered; g_dbg.paused = wp_paused; g_core = c;
                 mDebuggerAttach(&g_dbg, c); g_dbg.state = DEBUGGER_RUNNING;
-                char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); g_wlog = fopen(p, "w");
             }
+            if (!g_wlog) { char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); g_wlog = fopen(p, "w"); }
+            struct mBreakpoint bp; memset(&bp, 0, sizeof bp); bp.address = addr & ~1u; bp.segment = -1; bp.type = BREAKPOINT_HARDWARE;
+            g_dbg.platform->setBreakpoint(g_dbg.platform, &bp);
+        } else if (!strcmp(cmd, "bpreg")) {   /* bpreg <주소> <레지스터> <값> <횟수(−1 계속)> : 그 주소에 닿으면 레지스터 값을 바꾼다 (앞에 놓인 것부터 맞춰 본다) */
+            unsigned addr = 0, val = 0; char reg[8]; int left = -1;
+            if (sscanf(line, "%*s %i %7s %i %d", &addr, reg, &val, &left) < 3 || g_nbpreg >= 16) continue;
+            if (!g_dbg.platform) {
+                memset(&g_dbg, 0, sizeof g_dbg); g_dbg.entered = wp_entered; g_dbg.paused = wp_paused; g_core = c;
+                mDebuggerAttach(&g_dbg, c); g_dbg.state = DEBUGGER_RUNNING;
+            }
+            g_bpreg[g_nbpreg].addr = addr & ~1u; strcpy(g_bpreg[g_nbpreg].reg, reg); g_bpreg[g_nbpreg].val = val; g_bpreg[g_nbpreg].left = left; g_nbpreg++;
             struct mBreakpoint bp; memset(&bp, 0, sizeof bp); bp.address = addr & ~1u; bp.segment = -1; bp.type = BREAKPOINT_HARDWARE;
             g_dbg.platform->setBreakpoint(g_dbg.platform, &bp);
         } else if (!strcmp(cmd, "watch")) {   /* watch <주소> <파일> : 쓰기 감시점 추가(이후 run/autolog 중 기록) */
@@ -128,8 +184,8 @@ int main(int argc, char** argv) {
             if (!g_dbg.platform) {
                 memset(&g_dbg, 0, sizeof g_dbg); g_dbg.entered = wp_entered; g_dbg.paused = wp_paused; g_core = c;
                 mDebuggerAttach(&g_dbg, c); g_dbg.state = DEBUGGER_RUNNING;
-                char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); g_wlog = fopen(p, "w");
             }
+            if (!g_wlog) { char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); g_wlog = fopen(p, "w"); }
             struct mWatchpoint wp; memset(&wp, 0, sizeof wp); wp.address = addr; wp.segment = -1; wp.type = WATCHPOINT_WRITE;
             g_dbg.platform->setWatchpoint(g_dbg.platform, &wp);
             printf("watch %08x\n", addr);
@@ -149,7 +205,7 @@ int main(int argc, char** argv) {
                     if (white > 4500) { press = 12; presses++; }
                 }
                 c->setKeys(c, hold | (press > 6 ? 1 : 0)); if (press) press--;
-                (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame;
+                frame1(c); frame++; g_frame = frame;
                 if (i % every == 0) {
                     unsigned fr = (unsigned)frame; fwrite(&fr, 4, 1, f);
                     for (unsigned a = addr; a < addr + len; a++) fputc(c->busRead8(c, a), f);
@@ -161,7 +217,7 @@ int main(int argc, char** argv) {
             if (sscanf(line, "%*s %d %i %d %i %i %199s", &n, &keys, &every, &addr, &len, arg) != 6) continue;
             char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); FILE* f = fopen(p, "ab");
             for (int i = 0; i < n; i++) {
-                c->setKeys(c, keys); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame;
+                c->setKeys(c, keys); frame1(c); frame++; g_frame = frame;
                 if (i % every == 0) {
                     unsigned fr = (unsigned)frame; fwrite(&fr, 4, 1, f);
                     for (unsigned a = addr; a < addr + len; a++) fputc(c->busRead8(c, a), f);
@@ -171,7 +227,7 @@ int main(int argc, char** argv) {
         } else if (!strcmp(cmd, "runshot")) {   /* runshot <프레임> <키> <간격> <접두어> : 간격마다 화면 저장 */
             int every = 1; if (sscanf(line, "%*s %d %i %d %199s", &n, &keys, &every, arg) != 4) continue;
             for (int i = 0; i < n; i++) {
-                c->setKeys(c, keys); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame;
+                c->setKeys(c, keys); frame1(c); frame++; g_frame = frame;
                 if (i % every == 0) {
                     char p[512]; snprintf(p, sizeof p, "%s/%s_%06ld.ppm", argv[2], arg, frame);
                     FILE* f = fopen(p, "wb"); fprintf(f, "P6 240 160 255\n");
@@ -194,7 +250,7 @@ int main(int argc, char** argv) {
                 }
                 for (int k = 0; k < (getenv("SWEEP_SETTLE") ? atoi(getenv("SWEEP_SETTLE")) : 3); k++) { c->busWrite16(c, addr, (uint16_t)v); if (getenv("SWEEP_ALL")) { c->busWrite16(c, addr - 4, (uint16_t)v); c->busWrite16(c, addr - 8, (uint16_t)v); c->busWrite16(c, 0x03007dd8, (uint16_t)v); }
                     if (getenv("SWEEP_Y")) { uint16_t y = (uint16_t)atoi(getenv("SWEEP_Y")); c->busWrite16(c, addr + 2, y); c->busWrite16(c, addr - 2, y); c->busWrite16(c, addr - 6, y); }   /* 세로 위치 고정 (집 화면 0x020047F2 등) */
-                    c->setKeys(c, 0); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; }
+                    c->setKeys(c, 0); frame1(c); frame++; g_frame = frame; }
                 char p[512]; snprintf(p, sizeof p, "%s/%s_%05d.ppm", argv[2], arg, v);
                 FILE* f = fopen(p, "wb"); fprintf(f, "P6 240 160 255\n");
                 for (int k = 0; k < 240 * 160; k++) { unsigned q = pix[k]; unsigned char rgb[3] = { q & 0xFF, (q >> 8) & 0xFF, (q >> 16) & 0xFF }; fwrite(rgb, 1, 3, f); }
@@ -204,7 +260,7 @@ int main(int argc, char** argv) {
             unsigned addr; int x0, x1, ty, sp, every; if (sscanf(line, "%*s %i %d %d %d %d %d %199s", &addr, &x0, &x1, &ty, &sp, &every, arg) != 7) continue;
             int cx = (int16_t)c->busRead16(c, addr), cy = (int16_t)c->busRead16(c, addr + 2);
             #define PAN_SET(X, Y) do { for (int o = 0; o <= 8; o += 4) { c->busWrite16(c, addr - o, (uint16_t)(X)); c->busWrite16(c, addr + 2 - o, (uint16_t)(Y)); } } while (0)
-            #define PAN_FRAME() do { c->setKeys(c, 0); (g_dbg.platform ? mDebuggerRunFrame(&g_dbg) : c->runFrame(c)); frame++; g_frame = frame; } while (0)
+            #define PAN_FRAME() do { c->setKeys(c, 0); frame1(c); frame++; g_frame = frame; } while (0)
             while (cx != x0 || cy != ty) {   /* 시작점까지 천천히 */
                 cx += cx < x0 ? (x0 - cx < sp ? x0 - cx : sp) : cx > x0 ? -(cx - x0 < sp ? cx - x0 : sp) : 0;
                 cy += cy < ty ? (ty - cy < sp ? ty - cy : sp) : cy > ty ? -(cy - ty < sp ? cy - ty : sp) : 0;
@@ -247,6 +303,8 @@ int main(int argc, char** argv) {
             void* sram = NULL; size_t n = c->savedataClone(c, &sram);
             char p[512]; snprintf(p, sizeof p, "%s/%s.sav", argv[2], arg); FILE* f = fopen(p, "wb"); if (sram) fwrite(sram, 1, n, f); fclose(f); free(sram);
             printf("savedump %zu\n", n);
+        } else if (!strcmp(cmd, "audio") && sscanf(line, "%*s %199s", arg) == 1) {   /* audio <파일.wav> | audio off : 소리 녹음 시작·끝 */
+            if (!strcmp(arg, "off")) wav_close(); else { char p[512]; snprintf(p, sizeof p, "%s/%s", argv[2], arg); wav_open(c, p); }
         } else if (!strcmp(cmd, "reset")) {
             c->reset(c);
         } else if (!strcmp(cmd, "savestate") && sscanf(line, "%*s %199s", arg) == 1) {
@@ -257,5 +315,6 @@ int main(int argc, char** argv) {
             struct VFile* vf = VFileOpen(p, O_RDONLY); mCoreLoadStateNamed(c, vf, SAVESTATE_ALL); vf->close(vf);
         }
     }
+    wav_close();
     return 0;
 }

@@ -79,6 +79,9 @@ namespace SennenKazoku.Game
             t.resizeTextForBestFit = false; return t;
         }
 
+        /// <summary>단추를 누를 때마다 (앱이 효과음을 건다)</summary>
+        public static Action Clicked;
+
         public static Button Btn(Transform parent, string name, string text, int size, Color bg, Color fg, Action onClick)
         {
             var im = Box(parent, name, bg); im.raycastTarget = true;
@@ -87,7 +90,7 @@ namespace SennenKazoku.Game
             var l = Label(im.transform, "label", text, size, fg, TextAnchor.MiddleCenter, FontStyle.Bold);
             var lr = l.rectTransform; lr.anchorMin = Vector2.zero; lr.anchorMax = Vector2.one; lr.offsetMin = new Vector2(8, 4); lr.offsetMax = new Vector2(-8, -4);
             lr.pivot = new Vector2(0.5f, 0.5f);
-            b.onClick.AddListener(() => onClick());
+            b.onClick.AddListener(() => { if (Clicked != null) Clicked(); onClick(); });
             return b;
         }
 

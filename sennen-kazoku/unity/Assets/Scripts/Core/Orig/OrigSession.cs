@@ -266,7 +266,29 @@ namespace SennenKazoku.Core.Orig
         {
             if (heavenWait == null || heavenWait.Count == 0) { heavenWait = null; return false; }
             heavenCur = heavenWait; heavenWait = null; heavenPage = 0;
+            // 원작 천계 큰 장면의 곡(곡 표 번호, 각 장면 함수 안의 재생 0x08248D80): 방식 3 천계 보고 0x0809F72C → 2 · 방식 4 천년가족 0x0809E168 → 4 · 방식 5 가계 끊김 0x0809EB90 → 5
+            heavenSong = millenniumQueued ? 4 : lineageQueued || bookmarkQueued ? 5 : 2;
             return true;
+        }
+        int heavenSong = 2;
+
+        /// <summary>
+        /// 지금 장에 맞는 원작 배경음악 번호(원작 곡 표 번호 — SoundKit), 모르면 −1(앱이 집 화면 곡을 쓴다).
+        /// 천계 장: 장면 방식별 곡. 사건 장: 원작 사건 장면 시작(0x0804D58C)이 결과 기록 +0x2C 가 가리키는 첫 낱말을 곡으로 낸다
+        /// (재생기 1 의 사건 곡 41~63, 0xFFFFFFFF = 없음 — 실기 자동 진행에서 사건마다 확인). 사건 메모 장은 −1.
+        /// </summary>
+        public int SceneMusic
+        {
+            get
+            {
+                if (heavenCur != null) return heavenSong;
+                if (memo != null && !replaying) return -1;
+                if (cur == null) return -1;
+                var m = Game.Mem; uint p = m.R32(cur.Data + 0x2C);
+                if (p < 0x08000000 || p >= 0x0A000000) return -1;
+                uint id = m.R32(p);
+                return id >= 41 && id <= 63 ? (int)id : -1;
+            }
         }
 
         /// <summary>

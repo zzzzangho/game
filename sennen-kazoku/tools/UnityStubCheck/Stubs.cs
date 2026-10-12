@@ -118,6 +118,14 @@ namespace UnityEngine
     public struct Vector4 { public Vector4(float a, float b, float c, float d) { } public static Vector4 zero; }
     public class Font : Object { public static Font CreateDynamicFontFromOSFont(string n, int s) { return null; } public static Font CreateDynamicFontFromOSFont(string[] n, int s) { return null; } public static string[] GetOSInstalledFontNames() { return new string[0]; } }
     public class TextAsset : Object { public string text; public byte[] bytes; }
+    public class AudioClip : Object { public float length; public int samples, frequency, channels; }
+    public class AudioListener : Behaviour { }
+    public class AudioSource : Behaviour
+    {
+        public AudioClip clip; public bool loop, playOnAwake, isPlaying; public float volume, time, spatialBlend; public int timeSamples;
+        public void Play() { } public void Stop() { } public void PlayScheduled(double t) { } public void PlayOneShot(AudioClip c, float v) { }
+    }
+    public static class AudioSettings { public static double dspTime; }
     public static class Resources
     {
         public static T Load<T>(string p) where T : Object { return null; } public static Object Load(string p) { return null; }

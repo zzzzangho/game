@@ -22,6 +22,7 @@ namespace SennenKazoku.Game
         readonly List<string> contentWarnings = new List<string>();
         readonly ContentUpdater updater = new ContentUpdater();
         ArtLibrary art;
+        SoundKit sound;                               // 원작 소리 (LocalAudio — tools/gba_capture/audio_rip.py). 없으면 조용하다
 
         // ---- UI ----
         RectTransform root, titleRoot, gameRoot, popupRoot;
@@ -48,6 +49,8 @@ namespace SennenKazoku.Game
             Screen.orientation = ScreenOrientation.Portrait;
             Camera.main.clearFlags = CameraClearFlags.SolidColor; Camera.main.backgroundColor = Color.black;
             art = ArtLibrary.Load();
+            sound = SoundKit.Create(transform);
+            UiKit.Clicked = () => sound.PlaySe(SeClick);
             LoadContent();
             saves = new SaveSystem(Path.Combine(Application.persistentDataPath, "saves"));
             var cgo = new GameObject("Canvas", typeof(Canvas), typeof(GraphicRaycaster));
@@ -426,7 +429,7 @@ namespace SennenKazoku.Game
 
         void ShowTitle()
         {
-            titleAt = Time.realtimeSinceStartup; cardShown = false;
+            titleAt = Time.realtimeSinceStartup; cardShown = false; musicOverride = -1;
             playing = false; popupOpen = false; ClearPopup();
             gameRoot.gameObject.SetActive(false); titleRoot.gameObject.SetActive(true); Clear(titleRoot);
             if (lay == null) return;
@@ -462,7 +465,7 @@ namespace SennenKazoku.Game
             if (!art.Parts.Available) { if (OrigAvailable()) BeginOrig(); else BeginNew(false); return; }
             // 원작 도입부의 신님 질문 (원작 문구 확인됨: docs/07)
             playing = false;
-            var body = Window("신님", 300); float w = BodyW(body);
+            var body = Window("신님", 300); float w = BodyW(body); musicOverride = 1;   // 원작: 천계 신님 대화 곡 1
             var q = UiKit.Label(body, "q", "내가 아는 가족을 지켜봐 주지 않겠느냐?", Px(16), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
             UiKit.SetPx(q.rectTransform, 0, 0, w, Px(60));
             bool orig = OrigAvailable();
@@ -777,7 +780,7 @@ namespace SennenKazoku.Game
 
         void EnterGame()
         {
-            ClearPopup(); playing = true; speed = 1; acc = 0; lastAutoDay = session.Family.Today; follow = true;
+            ClearPopup(); playing = true; speed = 1; acc = 0; lastAutoDay = session.Family.Today; follow = true; musicOverride = -1;
             titleRoot.gameObject.SetActive(false); gameRoot.gameObject.SetActive(true);
             selectedId = session.Family.HeadId >= 0 ? session.Family.HeadId : session.Family.Members[0].Id;
             RebuildActors(); RefreshAll();
@@ -1047,6 +1050,7 @@ namespace SennenKazoku.Game
             if (lastScreen.x != Screen.width || lastScreen.y != Screen.height || lastSafe != Screen.safeArea) ApplyLayout();
             if (toastBox.gameObject.activeSelf && Time.unscaledTime > toastUntil) toastBox.gameObject.SetActive(false);
             if (titleHouse != null && titleRoot.gameObject.activeSelf) { var u = titleHouse.uvRect; u.x += Time.deltaTime * 0.01f; titleHouse.uvRect = u; }
+            UpdateMusic();
             if (reel != null) { UpdateOpening(); return; }
             if (parade != null) { UpdateParade(); return; }
             if (!playing || session == null) return;
@@ -1099,6 +1103,42 @@ namespace SennenKazoku.Game
                 RefreshAll();
             }
             else { RefreshHud(); RefreshEffects(); }
+        }
+
+        // =============================================================== 소리 (원작 곡 표 번호 — SoundKit, tools/gba_capture/audio_rip.py)
+        const int SeClick = 0xC9;                 // 원작 글 넘기기·고르기 소리 (천계 대화에서 A 를 누를 때)
+        int musicOverride = -1;                   // 지금 창이 정한 곡 (신님 질문·부탁 = 천계 곡 1), −1 없음. 창을 닫거나 바꾸면 지운다(ClearPopup)
+
+        /// <summary>
+        /// 원작 집 화면 곡 (0x08017CE8): 집 기록 0x08581768 + k×0x2CC 의 첫 세 낱말(가족 무드 낮음·보통·높음 — 이 판에서는 셋이 같다),
+        /// k = (가족 +0x69F 집 등급 &amp; 0xF) + 시대(+0x682)×4 → 곡 81 − 3×등급 + 12×시대 (72~117).
+        /// </summary>
+        int HouseMusic()
+        {
+            var f = session.Family;
+            int era = Mathf.Clamp(f.BodySet, 0, 3), grade = Mathf.Clamp(f.HouseGrade & 0xF, 0, 3);
+            return 81 - 3 * grade + 12 * era;
+        }
+
+        /// <summary>
+        /// 지금 화면에 맞는 원작 곡 (원작 재생 위치에서 찾은 번호): 제목 0x84 · 신님 대화 1 · 내가 아는 가족 입력 3 · 천계 장(보고 2 · 천년가족 4 · 가계 끊김 5) ·
+        /// 원작 사건 장 = 사건 기록의 곡(41~63) · 그 밖 = 집 곡(사건 뒤에는 원작처럼 0.5초 동안 키운다). 오프닝 데모는 OpeningMusic, 엔딩 카드는 앞 곡을 그대로 둔다.
+        /// </summary>
+        void UpdateMusic()
+        {
+            if (sound == null || !sound.Available || reel != null || cardShown) return;
+            int id; float fadeIn = 0f; bool again = false;
+            var os = session as Core.Orig.OrigSession;
+            if (parade != null) id = 5;
+            else if (popupOpen && setup != null) id = 3;
+            else if (popupOpen && musicOverride >= 0) id = musicOverride;
+            else if (titleRoot.gameObject.activeSelf) { id = 0x84; again = true; }
+            else if (session == null) return;
+            else if (os != null && os.SceneMusic >= 0) id = os.SceneMusic;
+            else if (os != null && os.EndMenu == 4) id = 4;
+            else if (os != null && (os.EndMenu == 5 || os.BookmarkAskPending || os.LineageEnded)) id = 5;
+            else { id = HouseMusic(); fadeIn = 0.5f; }
+            sound.PlayBgm(id, 0.5f, fadeIn, 0f, again);
         }
 
         string MemberIds() { var sb = new StringBuilder(); foreach (var m in session.Family.Members) sb.Append(m.Id).Append(','); return sb.ToString(); }
@@ -1512,7 +1552,7 @@ namespace SennenKazoku.Game
         }
 
         void ClosePopup() { ClearPopup(); if (playing) RefreshAll(); }
-        void ClearPopup() { popupOpen = false; Clear(popupRoot); }
+        void ClearPopup() { popupOpen = false; musicOverride = -1; Clear(popupRoot); }
 
         float BodyW(RectTransform b) { return b.sizeDelta.x; }
         float BodyH(RectTransform b) { return b.sizeDelta.y; }
@@ -1655,7 +1695,7 @@ namespace SennenKazoku.Game
         /// </summary>
         void OpenNewFamilyRequest(Core.Orig.OrigSession os)
         {
-            var body = Window("높으신 신의 부탁", 520); float w = BodyW(body);
+            var body = Window("높으신 신의 부탁", 520); float w = BodyW(body); musicOverride = 1;
             var t = UiKit.Label(body, "t", "높으신 신: " + string.Join("\n", os.FinalMsg(666)) + "\n\n큐피트: " + string.Join("\n", os.FinalMsg(667)), Px(14), UiKit.Ink, TextAnchor.UpperLeft);
             UiKit.SetPx(t.rectTransform, 0, 0, w, Px(250));
             var b = UiKit.Btn(body, "next", "다음", Px(16), Color.white, UiKit.Ink, () => { continueNewFamily = true; StartNew(); });
@@ -1829,7 +1869,18 @@ namespace SennenKazoku.Game
         }
 
         // ---------- 원작 오프닝 데모 재생 (엔딩 카드 뒤) ----------
-        FrameReel reel; RawImage reelImg; Texture2D reelTex; float reelStart; int reelShown = -1; Action reelDone;
+        FrameReel reel; RawImage reelImg; Texture2D reelTex; float reelStart; int reelShown = -1; Action reelDone; bool reelSe;
+
+        // 원작 오프닝 데모의 소리 (전원을 켠 뒤 프레임, 실기 중단점): 72 곡 0x82 · 2505 효과음 0xDC(큐피트 화살) · 2606 곡 0x82 멈춤 → 곡 0x83 · 5001 모두 멈춤.
+        // 데모 프레임은 525 부터 떴다(opening_frames.py) — 그 시각에 맞춰 곡 중간부터 낸다.
+        const float DemoFps = 59.7275f; const int DemoFrom = 525, DemoSong1At = 72, DemoArrowAt = 2505, DemoSong2At = 2606;
+        void OpeningMusic(float t)
+        {
+            float f = DemoFrom + t * DemoFps;
+            if (f < DemoSong2At) sound.PlayBgm(0x82, 0f, 0f, (f - DemoSong1At) / DemoFps);
+            else sound.PlayBgm(0x83, 0f, 0f, (f - DemoSong2At) / DemoFps);
+            if (!reelSe && f >= DemoArrowAt) { reelSe = true; if (f < DemoArrowAt + 30) sound.PlaySe(0xDC); }
+        }
 
         /// <summary>오프닝 데모 프레임(로컬 추출)을 화면 너비에 맞춰 재생한다. 없거나 누르면 바로 done.</summary>
         void PlayOpening(Action done)
@@ -1845,15 +1896,17 @@ namespace SennenKazoku.Game
             UiKit.SetPx(reelImg.rectTransform, lay.Safe.X, lay.Safe.Y + (lay.Safe.H - h) / 2f, w, h);
             if (reelTex == null) { reelTex = new Texture2D(2, 2, TextureFormat.RGBA32, false); reelTex.filterMode = FilterMode.Point; reelTex.wrapMode = TextureWrapMode.Clamp; }
             reelImg.texture = reelTex;
-            reel = r; reelStart = Time.unscaledTime; reelShown = -1; reelDone = done;
+            reel = r; reelStart = Time.unscaledTime; reelShown = -1; reelDone = done; reelSe = false;
             UpdateOpening();
         }
 
         void UpdateOpening()
         {
             if (reel == null) return;
-            int k = reel.FrameAt(Time.unscaledTime - reelStart);
+            float t = Time.unscaledTime - reelStart;
+            int k = reel.FrameAt(t);
             if (k < 0) { StopOpening(); return; }
+            OpeningMusic(t);
             if (k != reelShown) { reelTex.LoadImage(reel.Png(k)); reelTex.filterMode = FilterMode.Point; reelShown = k; }
         }
 
@@ -1917,7 +1970,7 @@ namespace SennenKazoku.Game
         // ---- 설정 (속도·따라가기·저장·콘텐츠·타이틀) ----
         void OpenSettings()
         {
-            var body = Window("설정", 720); float w = BodyW(body), bw = (w - Px(18)) / 4f, y = 0;
+            var body = Window("설정", 840); float w = BodyW(body), bw = (w - Px(18)) / 4f, y = 0;
             if (session.Family.GodRank >= 0)
             {
                 string gen = session is Core.Orig.OrigSession gos ? GenLabel(gos.Generation(session.Family.HeadId)) + "째 " + session.Family.Name + "가 · " : "";   // 원작 메뉴 머리 "N대째 ○○가" — 가장의 세대로 보여 준다(추정: 실기 "1대째" = 가장 세대 1 과 일치, 머리 글을 만드는 원작 코드는 확인하지 않음)
@@ -1934,6 +1987,8 @@ namespace SennenKazoku.Game
             }
             y += Px(60);
             var items = new List<KeyValuePair<string, Action>> {
+                new KeyValuePair<string, Action>(sound.Available ? "배경음악 음량: " + VolLabel(sound.BgmVolume) : "원작 소리 없음 (LocalAudio 를 만들지 않음)", () => { if (!sound.Available) return; sound.BgmVolume = NextVol(sound.BgmVolume); sound.ApplyVolume(); OpenSettings(); }),
+                new KeyValuePair<string, Action>(sound.Available ? "효과음 음량: " + VolLabel(sound.SeVolume) : null, () => { sound.SeVolume = NextVol(sound.SeVolume); OpenSettings(); }),
                 new KeyValuePair<string, Action>(follow ? "선택한 사람 따라가기: 켜짐" : "선택한 사람 따라가기: 꺼짐", () => { follow = !follow; OpenSettings(); }),
                 new KeyValuePair<string, Action>(session is Core.Orig.OrigSession ? "종합 진단" : null, OpenDiagnosis),
                 new KeyValuePair<string, Action>("저장 / 불러오기", () => OpenSaveSlots()),
@@ -1948,6 +2003,10 @@ namespace SennenKazoku.Game
                 UiKit.SetPx(b.GetComponent<RectTransform>(), 0, y, w, Px(52)); y += Px(60);
             }
         }
+
+        static readonly float[] VolSteps = { 0f, 0.25f, 0.5f, 0.8f, 1f };
+        static string VolLabel(float v) { return v <= 0f ? "끔" : Mathf.RoundToInt(v * 100f) + "%"; }
+        static float NextVol(float v) { foreach (var x in VolSteps) if (x > v + 0.01f) return x; return 0f; }
 
         // ---- 저장 슬롯 ----
         void OpenSaveSlots()
