@@ -151,6 +151,17 @@ namespace SennenKazoku.Game
             return s;
         }
 
+        /// <summary>9칸 늘이기 그림 (border = 왼·아래·오른·위 원본 점, 점 100개 = 1단위 — 화면 크기는 Image.pixelsPerUnitMultiplier 로). 없으면 null.</summary>
+        public Sprite Sliced(string name, Vector4 border)
+        {
+            Sprite s; string key = name + "#9";
+            if (cache.TryGetValue(key, out s)) return s;
+            var t = Texture(name);
+            s = t == null ? null : UnityEngine.Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, border);
+            cache[key] = s;
+            return s;
+        }
+
         public Sprite Ui(string key) { return Manifest == null ? null : Sprite(J.Str(J.Child(Manifest, "ui"), key)); }
 
         public Dictionary<string, object> Character(string id)

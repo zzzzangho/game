@@ -216,7 +216,7 @@ namespace UnityEngine.UI
     public class MaskableGraphic : Graphic { public bool maskable; }
     public class Image : MaskableGraphic
     {
-        public Sprite sprite; public bool preserveAspect; public Type type; public float fillAmount; public FillMethod fillMethod; public int fillOrigin;
+        public Sprite sprite; public bool preserveAspect; public Type type; public float fillAmount, pixelsPerUnitMultiplier; public FillMethod fillMethod; public int fillOrigin;
         public enum Type { Simple, Sliced, Tiled, Filled } public enum FillMethod { Horizontal, Vertical, Radial90, Radial180, Radial360 }
         public enum OriginHorizontal { Left, Right }
     }

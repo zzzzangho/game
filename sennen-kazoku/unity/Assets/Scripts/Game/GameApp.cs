@@ -547,6 +547,18 @@ namespace SennenKazoku.Game
         List<int> introQ; int introI, introPage, introSong; List<string> introPages; Action introDone; string[] introChoices; Action<int> introPick;
         FrameReel heavenReel; RawImage introImg; Texture2D introTex; float introStart; int introShown = -1; string introExtra;
 
+        // 원작 말풍선 9칸 늘이기 테두리 (원본 점 — 왼, 아래, 오른, 위): 꼬리가 왼쪽·위 고정 칸 안에 들어가게
+        static readonly Vector4 HeavenBorder = new Vector4(72, 8, 10, 16), TipBorder = new Vector4(14, 10, 8, 6);
+
+        /// <summary>원작 말풍선 그림(LocalArt bubble_* — bubbles.py)을 9칸 늘이기로 입힌다. scale = 원작 1점이 화면 몇 점인가. 그림이 없으면 false(앱 상자 그대로).</summary>
+        bool SetBubble(Image img, string name, Vector4 border, float scale)
+        {
+            var sp = art.Sliced(name, border);
+            if (sp == null) return false;
+            img.sprite = sp; img.type = Image.Type.Sliced; img.color = Color.white; img.pixelsPerUnitMultiplier = 1f / Mathf.Max(0.01f, scale);
+            return true;
+        }
+
         bool IntroAvailable() { return OrigAvailable() && LoadOrig() && origText != null && origText.Heaven.Msgs.ContainsKey(564); }
 
         string IntroName(int code, int fmt)
@@ -614,11 +626,13 @@ namespace SennenKazoku.Game
             y += h + Px(10);
             var box = UiKit.Box(popupRoot, "introBox", new Color32(0xF4, 0xFA, 0xFF, 255)); box.raycastTarget = false;
             float bh = lay.Safe.Y + lay.Safe.H - y - Px(12) - (introChoices != null && IntroLast ? Px(124) : 0);
-            UiKit.SetPx(box.rectTransform, x + Px(10), y, w - Px(20), bh);
+            // 원작 천계 말풍선 (bubbles.py): 신님 = 크림색·꼬리 가운데 쪽, 큐피트 = 하늘색·꼬리 왼쪽. 몸통은 꼬리 아래 16줄부터
+            float gs = w / 240f, top = SetBubble(box, cupidSpeaks ? "bubble_cupid" : "bubble_god", HeavenBorder, gs) ? 14 * gs : 0f;
+            UiKit.SetPx(box.rectTransform, x + Px(6), y, w - Px(12), bh);
             var who = UiKit.Label(box.transform, "who", cupidSpeaks ? "큐피트" : "높으신 신", Px(15), cupidSpeaks ? new Color32(0xE0, 0x60, 0x90, 255) : new Color32(0x30, 0x60, 0xB0, 255), TextAnchor.UpperLeft, FontStyle.Bold);
-            UiKit.SetPx(who.rectTransform, Px(12), Px(8), w - Px(44), Px(22));
+            UiKit.SetPx(who.rectTransform, Px(14), top + Px(8), w - Px(44), Px(22));
             var tx = UiKit.Label(box.transform, "text", text, Px(16), UiKit.Ink, TextAnchor.UpperLeft); tx.raycastTarget = false;
-            UiKit.SetPx(tx.rectTransform, Px(12), Px(34), w - Px(44), bh - Px(44));
+            UiKit.SetPx(tx.rectTransform, Px(14), top + Px(34), w - Px(48), bh - top - Px(44));
             if (introChoices != null && IntroLast)
             {
                 float cy = y + bh + Px(8);
@@ -1202,8 +1216,16 @@ namespace SennenKazoku.Game
                 var cs = art.Cupid((int)(t * 6) % 4); if (cs != null) cupid.sprite = cs;
                 cupid.transform.SetAsLastSibling();
                 float tw = Mathf.Min(lay.Scene.W - (cx + 36) * hs - Px(8), Px(240));
-                UiKit.SetPx(tipBox.rectTransform, (cx + 34) * hs, (cy + 2) * hs, tw, Px(40));
-                UiKit.Stretch(tipText.rectTransform, Px(6), Px(2), Px(6), Px(2));
+                if (SetBubble(tipBox, "bubble_tip", TipBorder, hs))
+                {   // 원작 큐피트 한마디 말풍선 (28줄, 꼬리가 아래 왼쪽 — 큐피트 쪽): 글은 꼬리 위 몸통(0~22줄) 안
+                    UiKit.SetPx(tipBox.rectTransform, (cx + 30) * hs, (cy - 4) * hs, tw, 28 * hs);
+                    UiKit.Stretch(tipText.rectTransform, 8 * hs, 3 * hs, 6 * hs, 8 * hs);
+                }
+                else
+                {
+                    UiKit.SetPx(tipBox.rectTransform, (cx + 34) * hs, (cy + 2) * hs, tw, Px(40));
+                    UiKit.Stretch(tipText.rectTransform, Px(6), Px(2), Px(6), Px(2));
+                }
                 tipBox.transform.SetAsLastSibling();
                 itemCorner.transform.SetAsLastSibling(); bowCorner.transform.SetAsLastSibling();
             }
