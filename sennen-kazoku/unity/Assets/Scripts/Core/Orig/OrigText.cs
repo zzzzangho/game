@@ -278,6 +278,14 @@ namespace SennenKazoku.Core.Orig
                     s = s.Substring(0, k) + Template.Josa(prev, p[1]) + s.Substring(k + p[0].Length);
                 }
             }
+            // 글자 0x8746(글자표 "⑦"): 이름 뒤 서술격 "(이)" — "{이름}⑦라고" → 받침 있으면 "○○이라고", 없으면 "○○라고" (도입부 글 272·292)
+            int j;
+            while ((j = s.IndexOf('⑦')) >= 0)
+            {
+                char c = j > 0 ? s[j - 1] : ' ';
+                bool batchim = c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 != 0;
+                s = s.Substring(0, j) + (batchim ? "이" : "") + s.Substring(j + 1);
+            }
             return s;
         }
     }

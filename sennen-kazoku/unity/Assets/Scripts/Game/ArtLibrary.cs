@@ -87,6 +87,17 @@ namespace SennenKazoku.Game
         }
         FrameReel title; bool titleLoaded;
 
+        /// <summary>원작 도입부 천계 장면 프레임 (LocalArt/heaven_frames.bin.bytes — tools/gba_capture/heaven_frames.py). 없으면 null.</summary>
+        public FrameReel HeavenReel()
+        {
+            if (heavenLoaded) return heaven;
+            heavenLoaded = true;
+            var ta = Resources.Load<TextAsset>("LocalArt/heaven_frames.bin");
+            heaven = ta == null ? null : FrameReel.Parse(ta.bytes);
+            return heaven;
+        }
+        FrameReel heaven; bool heavenLoaded;
+
         public Texture2D HouseTexture()
         {
             Texture2D t = null;

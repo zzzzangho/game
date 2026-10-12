@@ -131,7 +131,7 @@ def heaven_pack(rom, table):
     lives = [[u32(HEAVEN_LIVES + 8 * x), u32(HEAVEN_LIVES + 8 * x + 4)] for x in range(12)]
     era_msgs = [u32(ERA_MSGS + 4 * k) for k in range(3)]
     era_bands = [u32(ERA_BANDS + 4 * k) for k in range(3)]
-    ids = {v for v in lists if v >= 0} | {t[1] for t in types} | {t[1] for t in lives} | set(era_msgs) | set(range(60, 108)) | set(range(240, 260)) | set(range(554, 560)) | {666, 667}   # 60~107 사건 메모 장면 · 240~246 천년가족 · 247~259 가계 끊김(0x085BC058) · 554~559 마지막 메뉴 · 666·667 끝난 뒤 새 가족
+    ids = {v for v in lists if v >= 0} | {t[1] for t in types} | {t[1] for t in lives} | set(era_msgs) | set(range(60, 108)) | set(range(240, 260)) | set(range(554, 560)) | {666, 667} | set(range(3, 60)) | set(range(263, 300)) | set(range(563, 580)) | {669}   # 60~107 사건 메모 장면 · 240~246 천년가족 · 247~259 가계 끊김(0x085BC058) · 554~559 마지막 메뉴 · 666·667 끝난 뒤 새 가족 · 도입부(실기 글 순서, 0x02014E4C·0x0200F4D8): 564~572 천계 · 263~272 큐피트 가족 소개 · 288~298·669 다시 천계 · 573~579 그대가 아는 가족 · 3~59 가족 입력
     msgs = {}
     for v in sorted(ids):
         p = u32(HEAVEN_MSGS + 4 * v) - 0x08000000

@@ -35,6 +35,7 @@ dotnet run --project tools/PackLintCli -- unity/Assets/Resources/BundledPacks �
 `BuildScript.BuildAndroid` 를 돌린다. 원작 자료는 이 컴퓨터의 `unity/Assets/Resources/LocalArt · LocalAudio · LocalOrig · LocalPacks`(git 제외)에 있는 것이 들어간다.
 - `LocalOrig/`: 원작 팩의 `orig_rules.json` · `orig_rules.json.trees` → `orig_trees.bytes` · `orig_text.json`
 - `LocalArt/opening_frames.bin.bytes`: `python3 -I tools/gba_capture/opening_frames.py <ROM>` (엔딩 카드 뒤 오프닝 데모)
+- `LocalArt/heaven_frames.bin.bytes`: `python3 -I tools/gba_capture/heaven_frames.py <ROM>` (도입부 천계 장면 — 신님·큐피트. 대사는 orig_text.json "heaven": `tools/romlift/export_charset.py <ROM> orig_text.json --heaven-only`)
 - `LocalArt/title_frames.bin.bytes`: `python3 -I tools/gba_capture/title_frames.py <ROM>` (원작 제목 화면 — 누르면 메뉴, 그냥 두면 오프닝 데모. 부팅 로고는 넣지 않음)
 - `LocalAudio/`: `python3 -I tools/gba_capture/audio_rip.py <ROM>` (원작 배경음악·효과음 — 아래 "원작 소리")
 - 결과 `build/` 와 `*.apk` 는 git 에서 빠진다. Unity 계정은 2단계 인증이 꺼져 있어야 컨테이너 안에서 활성화된다(끝나면 반납).

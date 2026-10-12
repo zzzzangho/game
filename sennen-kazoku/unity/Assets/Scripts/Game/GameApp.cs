@@ -197,7 +197,7 @@ namespace SennenKazoku.Game
             {
                 session = Core.Orig.OrigSession.NewRecommended(origRules, origText, "", OrigSeed(), cartridge: LastCartridge(), fresh: !continueNewFamily);
                 continueNewFamily = false;
-                EnterGame(); Toast("원작 규칙으로 시작합니다 (신님이 추천하는 가족)"); ApplyPlayerName();
+                FinishIntro(false);
             }
             catch (Exception e) { Toast("원작 진행 시작 실패: " + e.Message); session = null; }
         }
@@ -496,7 +496,7 @@ namespace SennenKazoku.Game
 
         void UpdateTitleReel()
         {
-            if (titleReel == null || titleImg == null) return;
+            if (titleReel == null || titleImg == null || popupOpen) return;   // 제목 위에 창(도입부·기록 등)이 떠 있으면 멈춘다 — 곡도 바꾸지 않는다
             int k = titleReel.FrameAt(Time.unscaledTime - titleStart);
             if (k < 0)
             {
@@ -509,8 +509,24 @@ namespace SennenKazoku.Game
         void StartNew()
         {
             if (!art.Parts.Available) { if (OrigAvailable()) BeginOrig(); else BeginNew(false); return; }
-            // 원작 도입부의 신님 질문 (원작 문구 확인됨: docs/07)
             playing = false;
+            if (IntroAvailable())
+            {
+                // 원작 도입부 (천계 — 실기 글 순서): 564 신 인사 · 565~567 큐피트 등장 · 568·569 부탁 · 570 "내가 아는 가족을 지켜봐 주지 않겠느냐?"
+                // 끝난 가문 뒤 새 가족(글 666·667 뒤)이면 인사는 넘기고 물음부터.
+                bool orig0 = OrigAvailable();
+                PlayIntro(continueNewFamily ? new[] { 570 } : new[] { 564, 565, 566, 567, 568, 569, 570 }, 1, null, new[] { "네, 알겠습니다!", "어… 잠깐만요…" }, k =>
+                {
+                    if (k == 0) PlayIntro(new[] { 571, 572 }, 1, () => { if (orig0) BeginOrig(); else BeginNew(false); });
+                    else PlayIntro(new[] { 573, 574 }, 1, null, new[] { "네", "아니오" }, k2 =>
+                    {
+                        if (k2 == 0) PlayIntro(new[] { 576, 577 }, 1, () => BeginNew(true));                                   // 그대가 아는 가족
+                        else PlayIntro(new[] { 575, 572 }, 1, () => { if (orig0) BeginOrig(); else BeginNew(false); });   // 역시 신님이 아는 가족
+                    });
+                });
+                return;
+            }
+            // (원작 글이 없을 때) 원작 도입부의 신님 질문 (원작 문구 확인됨: docs/07)
             var body = Window("신님", 300); float w = BodyW(body); musicOverride = 1;   // 원작: 천계 신님 대화 곡 1
             var q = UiKit.Label(body, "q", "내가 아는 가족을 지켜봐 주지 않겠느냐?", Px(16), UiKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
             UiKit.SetPx(q.rectTransform, 0, 0, w, Px(60));
@@ -519,6 +535,158 @@ namespace SennenKazoku.Game
             UiKit.SetPx(a.GetComponent<RectTransform>(), 0, Px(70), w, Px(52));
             var b = UiKit.Btn(body, "no", "어… 잠깐만요… (내가 아는 가족)", Px(16), new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => BeginNew(true));
             UiKit.SetPx(b.GetComponent<RectTransform>(), 0, Px(132), w, Px(52));
+        }
+
+        // =============================================================== 원작 도입부 (천계 신님·큐피트 대화)
+        // 실기(에뮬레이터, 글 포인터 0x02014E4C·0x0200F4D8 기록)로 확인한 순서:
+        //   천계(곡 1): 564 565 566 567 568 569 570 → [네] 571 572 / [잠깐만요] 573 574 → [네] 576 577 (내가 아는 가족 입력) · [아니오] 575
+        //   큐피트 가족 소개(곡 3): 263 (264·265 날짜 입력 — 앱은 오늘 날짜) 266 267 270 (이름 입력) 272
+        //   다시 천계(곡 1): 288 289(내가 아는 가족이면 290) 291 292 293 294 295 669 297 298 → 집.
+        // 대사는 원작 글 그대로(orig_text.json "heaven" — export_charset.py), 그림은 원작 천계 장면 프레임(heaven_frames.py).
+        static readonly HashSet<int> CupidLines = new HashSet<int> { 565, 567, 569, 572, 577, 56, 263, 264, 265, 266, 267, 270, 272, 292, 294, 669, 298 };
+        List<int> introQ; int introI, introPage, introSong; List<string> introPages; Action introDone; string[] introChoices; Action<int> introPick;
+        FrameReel heavenReel; RawImage introImg; Texture2D introTex; float introStart; int introShown = -1; string introExtra;
+
+        bool IntroAvailable() { return OrigAvailable() && LoadOrig() && origText != null && origText.Heaven.Msgs.ContainsKey(564); }
+
+        string IntroName(int code, int fmt)
+        {
+            if (code == 0x26) { var os = session as Core.Orig.OrigSession; var n = os != null && os.PlayerName.Length > 0 ? os.PlayerName : SavedPlayerName(); return n.Length > 0 ? n : "○○"; }
+            if (code == 0x27) return session != null ? session.Family.Name : "○○";
+            return null;
+        }
+
+        List<string> IntroText(int id)
+        {
+            byte[] b; if (!origText.Heaven.Msgs.TryGetValue(id, out b)) return new List<string>();
+            return origText.Decode(b, IntroName, null, null);
+        }
+
+        /// <summary>원작 글 ids 를 차례로 보여 준다(누르면 다음 장). choices 가 있으면 마지막 장에서 그 단추를 띄우고 고른 번호로 pick, 아니면 끝나면 done.</summary>
+        void PlayIntro(IList<int> ids, int song, Action done, string[] choices = null, Action<int> pick = null, string extra = null)
+        {
+            introQ = new List<int>(ids); introI = 0; introPage = 0; introSong = song; introDone = done; introChoices = choices; introPick = pick; introExtra = extra;
+            introPages = IntroText(introQ[0]);
+            if (introStart <= 0f) introStart = Time.unscaledTime;
+            DrawIntro();
+        }
+
+        bool IntroLast { get { return introI >= introQ.Count - 1 && introPage >= introPages.Count - 1; } }
+
+        void AdvanceIntro()
+        {
+            if (introQ == null) return;
+            if (IntroLast && introChoices != null) return;
+            introPage++;
+            while (introQ != null && introPage >= introPages.Count)
+            {
+                introI++; introPage = 0;
+                if (introI >= introQ.Count) { var d = introDone; introQ = null; introImg = null; if (d != null) d(); return; }
+                introPages = IntroText(introQ[introI]);
+            }
+            DrawIntro();
+        }
+
+        void DrawIntro()
+        {
+            ClearPopup(); popupOpen = true; popupRoot.gameObject.SetActive(true); musicOverride = introSong;
+            int id = introQ[introI]; bool cupidSpeaks = CupidLines.Contains(id);
+            string text = introPages.Count > 0 ? introPages[Mathf.Min(introPage, introPages.Count - 1)] : "";
+            if (introI == introQ.Count - 1 && introPage >= introPages.Count - 1 && !string.IsNullOrEmpty(introExtra)) text += "\n\n" + introExtra;
+            var bg = UiKit.Box(popupRoot, "introBg", introSong == 1 ? Color.black : new Color32(0xD8, 0xF0, 0xA8, 255)); bg.raycastTarget = true; UiKit.Stretch(bg.rectTransform, 0, 0, 0, 0);
+            if (introChoices == null || !IntroLast) bg.gameObject.AddComponent<Button>().onClick.AddListener(() => { sound.PlaySe(SeClick); AdvanceIntro(); });
+            float x = lay.Safe.X, w = lay.Safe.W, h = w * 160f / 240f, y = lay.Safe.Y + Px(8);
+            heavenReel = heavenReel ?? art.HeavenReel();
+            introImg = null;
+            if (introSong == 1 && heavenReel != null)
+            {
+                introImg = new GameObject("heaven", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>(); introImg.transform.SetParent(popupRoot, false);
+                introImg.raycastTarget = false; UiKit.SetPx(introImg.rectTransform, x, y, w, h);
+                if (introTex == null) { introTex = new Texture2D(2, 2, TextureFormat.RGBA32, false); introTex.filterMode = FilterMode.Point; introTex.wrapMode = TextureWrapMode.Clamp; }
+                introImg.texture = introTex; introShown = -1; UpdateIntroReel();
+            }
+            else
+            {
+                // 큐피트가 가족을 소개하는 장 (원작은 바둑판 무늬 화면 — 앱은 단색 위에 큐피트)
+                var cp = art.Cupid(0);
+                if (cp != null) { var ci = UiKit.Box(popupRoot, "cupid", Color.white, cp); ci.preserveAspect = true; ci.raycastTarget = false; UiKit.SetPx(ci.rectTransform, x + w / 2f - Px(48), y + h / 2f - Px(48), Px(96), Px(96)); }
+            }
+            y += h + Px(10);
+            var box = UiKit.Box(popupRoot, "introBox", new Color32(0xF4, 0xFA, 0xFF, 255)); box.raycastTarget = false;
+            float bh = lay.Safe.Y + lay.Safe.H - y - Px(12) - (introChoices != null && IntroLast ? Px(124) : 0);
+            UiKit.SetPx(box.rectTransform, x + Px(10), y, w - Px(20), bh);
+            var who = UiKit.Label(box.transform, "who", cupidSpeaks ? "큐피트" : "높으신 신", Px(15), cupidSpeaks ? new Color32(0xE0, 0x60, 0x90, 255) : new Color32(0x30, 0x60, 0xB0, 255), TextAnchor.UpperLeft, FontStyle.Bold);
+            UiKit.SetPx(who.rectTransform, Px(12), Px(8), w - Px(44), Px(22));
+            var tx = UiKit.Label(box.transform, "text", text, Px(16), UiKit.Ink, TextAnchor.UpperLeft); tx.raycastTarget = false;
+            UiKit.SetPx(tx.rectTransform, Px(12), Px(34), w - Px(44), bh - Px(44));
+            if (introChoices != null && IntroLast)
+            {
+                float cy = y + bh + Px(8);
+                for (int i = 0; i < introChoices.Length; i++)
+                {
+                    int k = i; var pick = introPick;
+                    var b = UiKit.Btn(popupRoot, "c" + i, introChoices[i], Px(16), i == 0 ? new Color32(0xE8, 0x70, 0x40, 255) : new Color32(0x3A, 0x6E, 0xC8, 255), Color.white, () => { introQ = null; introImg = null; pick(k); });
+                    UiKit.SetPx(b.GetComponent<RectTransform>(), x + Px(20), cy, w - Px(40), Px(52)); cy += Px(60);
+                }
+            }
+            else
+            {
+                var more = UiKit.Label(box.transform, "more", "▼", Px(14), new Color32(0xE0, 0x60, 0x90, 255), TextAnchor.LowerRight); more.raycastTarget = false;
+                UiKit.SetPx(more.rectTransform, w - Px(60), bh - Px(26), Px(24), Px(20));
+            }
+        }
+
+        void UpdateIntroReel()
+        {
+            if (introImg == null || heavenReel == null) return;
+            int k = heavenReel.FrameAt(Mathf.Repeat(Time.unscaledTime - introStart, heavenReel.Seconds));
+            if (k < 0) k = 0;
+            if (k != introShown) { introTex.LoadImage(heavenReel.Png(k)); introTex.filterMode = FilterMode.Point; introShown = k; }
+        }
+
+        /// <summary>
+        /// 가족이 정해진 뒤의 원작 도입부: 큐피트 가족 소개(신님이 아는 가족) 또는 정리 끝(내가 아는 가족, 글 56) → 이름 → 272 → 천계로 돌아가 신님 말씀 → 집.
+        /// 원작 글이 없으면 바로 집(예전처럼 이름은 따로 묻는다).
+        /// </summary>
+        void FinishIntro(bool own)
+        {
+            if (!IntroAvailable() || !(session is Core.Orig.OrigSession os))
+            {
+                EnterGame(); Toast(own ? "이제 모두 끝! " + session.Family.Name + "가를 지켜보자 (원작 규칙)" : "원작 규칙으로 시작합니다 (신님이 추천하는 가족)"); ApplyPlayerName(); return;
+            }
+            var sb = new StringBuilder();
+            foreach (var m in session.Family.Members) if (m.Alive) sb.Append("· ").Append(m.Name).Append("  ").Append(m.Age(session.Family.Today)).Append("세\n");
+            Action toGod = () => PlayIntro(new[] { 288, own ? 290 : 289, 291, 292, 293, 294, 295, 669, 297, 298 }, 1, () => { EnterGame(); });
+            Action afterName = () => PlayIntro(new[] { 272 }, 3, toGod);
+            Action askName = () =>
+            {
+                var saved = SavedPlayerName();
+                if (saved.Length > 0) { os.PlayerName = saved; afterName(); return; }
+                OpenIntroName(os, afterName);
+            };
+            if (own) PlayIntro(new[] { 56 }, 3, askName);
+            else
+            {
+                PlayIntro(new[] { 263, 266 }, 3, () => PlayIntro(new[] { 270 }, 3, askName), null, null, sb.ToString().TrimEnd());
+            }
+        }
+
+        /// <summary>도입부의 이름 묻기 (원작 글 24 "마지막으로 네 이름을 알려 줘!" 자리 — 입력은 앱 입력칸).</summary>
+        void OpenIntroName(Core.Orig.OrigSession os, Action next)
+        {
+            string name = "";
+            var body = Window(origText.Heaven.Msgs.ContainsKey(23) && IntroText(23).Count > 0 ? IntroText(23)[0] : "이름", 260); float w = BodyW(body); musicOverride = 3;
+            var q = UiKit.Label(body, "q", IntroText(24).Count > 0 ? "큐피트: " + IntroText(24)[0] : "네 이름을 알려 줘!", Px(14), UiKit.Ink, TextAnchor.MiddleLeft); UiKit.SetPx(q.rectTransform, 0, 0, w, Px(30));
+            var f = UiKit.Input(body, "name", name, Px(18), 6, v => name = v.Trim());
+            UiKit.SetPx(f.GetComponent<RectTransform>(), 0, Px(36), w, Px(52));
+            f.ActivateInputField();
+            NextBtn(body, Px(104), "결정", () =>
+            {
+                if (name.Length == 0) { Toast("이름을 입력해 줘"); return; }
+                os.PlayerName = name;
+                try { File.WriteAllText(PlayerNamePath, name); } catch (Exception) { }
+                next();
+            });
         }
 
         /// <summary>
@@ -681,7 +849,7 @@ namespace SennenKazoku.Game
                 {
                     session = Core.Orig.OrigSession.NewCustom(origRules, origText, setup, OrigSeed(), LastCartridge(), !continueNewFamily);
                     continueNewFamily = false;
-                    var name = session.Family.Name; setup = null; EnterGame(); Toast("이제 모두 끝! " + name + "가를 지켜보자 (원작 규칙)"); ApplyPlayerName();
+                    setup = null; FinishIntro(true);
                 }
                 catch (Exception e) { Toast("원작 가족 만들기 실패: " + e.Message); }
                 return;
@@ -1114,6 +1282,7 @@ namespace SennenKazoku.Game
             if (toastBox.gameObject.activeSelf && Time.unscaledTime > toastUntil) toastBox.gameObject.SetActive(false);
             if (titleHouse != null && titleRoot.gameObject.activeSelf) { var u = titleHouse.uvRect; u.x += Time.deltaTime * 0.01f; titleHouse.uvRect = u; }
             if (titleRoot.gameObject.activeSelf && reel == null) UpdateTitleReel();
+            if (introImg != null) UpdateIntroReel();
             UpdateMusic();
             if (reel != null) { UpdateOpening(); return; }
             if (parade != null) { UpdateParade(); return; }
