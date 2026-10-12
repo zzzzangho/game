@@ -4,11 +4,13 @@
   python3 house_rom.py ROM.gba 상태폴더 [LocalArt 폴더]
 
 원작 집 정의 표 0x08581768 + 716·집번호 (집번호 = 등급 + 4·시대, 원작 0x080171BC; 등급 = 0x0202C6AF 아래 4비트, 시대 = 가족 +0x682):
-  +0x20 폭(px)·높이(px)…, +0x2E 타일 자원 · +0x40~ 자원 번호 20개(2 팔레트 · 3 시간대 팔레트 · 5 뒤 맵 · 6 앞 맵 · 7~ 방 가구 조각),
+  +0x20 폭(px)·높이(px)…, +0x2E 타일 자원 · +0x40~ 자원 번호 20개(2 팔레트 · 3 시간대 팔레트 · 5 가구 맵(BG1, 앞) · 6 집 맵(BG0, 뒤) · 7~ 방 가구 조각),
   +0x80~ 32바이트 항목들의 +0x10: 방 (x, y, 폭, 높이 — 타일, 종류)  ← 그림 속 방과 정확히 겹침(로컬 확인).
 그림 자원은 자원 표 0x08003AB0 (타일 = 4bpp 무압축, 팔레트 = 15비트 색, 맵 = 폭×높이 u16 글자 BG 형식).
 팔레트: 공용 3587(256색) 위에 집 팔레트(0~6), 시간대 팔레트 칸(8~11, 원작 0x08017AF8 이 장면 시각으로 고름 — HouseClock).
-방 가구는 원작이 방마다 조각 맵을 덧씌운 작업용 맵(실기 RAM, 앞 맵 0x02004834 근처)을 쓰므로, 상태폴더의
+(실기 확인: 자원 6 의 작업용 맵 0x02004834 = BG0 우선순위 3, 자원 5 의 작업용 맵 0x02008084 = BG1 우선순위 2 — 문·침대·소파·TV 같은 가구.
+ 예전 판은 둘을 거꾸로 겹쳐 집 뒤판이 가구를 덮었다.)
+방 가구는 원작이 방마다 조각 맵을 덧씌운 작업용 맵(실기 RAM)을 쓰므로, 상태폴더의
 st_e<시대>g<등급>.state(실기 새 게임 가족 만들기 끝에 시대·등급만 바꿔 심은 상태 — capture bpload)에서 RAM 을 떠 그 맵을 쓴다.
 출력: house_e<시대>g<등급>_s<칸>.png.bytes (칸 0 낮 · 2 저녁 · 4 밤 · 6 새벽) + manifest.json "houses".
 """
@@ -76,10 +78,13 @@ def render(T, P, w, h, mp, out):
                     if c: px[tx * 8 + (7 - x if hf else x), ty * 8 + (7 - y if vf else y)] = P[p * 16 + c]
 
 
-def house_images(rom, h, ram):
+def house_images(rom, h, ram, vram=None):
     e1, ids, rooms = rom.house_def(h)
     T = rom.tiles(ids[0])
-    maps = [ram_map(rom, ram, ids[5]), ram_map(rom, ram, ids[6])]   # 뒤 → 앞
+    if vram:   # 집 타일 뒤에 원작이 따로 올린 가구 타일 (실기 VRAM 글자 블록 0) — VRAM 에 이 집 타일이 올라가 있을 때만
+        V = [[(vram[t * 32 + y * 4 + x // 2] >> (4 * (x & 1))) & 15 for y in range(8) for x in range(8)] for t in range(1024)]
+        if sum(V[t] == T[t] for t in range(min(len(T), 1024))) > 0.9 * min(len(T), 1024): T = T + V[len(T):]
+    maps = [ram_map(rom, ram, ids[6]), ram_map(rom, ram, ids[5])]   # 뒤(BG0 집) → 앞(BG1 가구)
     out = {}
     for s in SLOTS:
         pal = [0] * 256
@@ -96,9 +101,9 @@ def house_images(rom, h, ram):
 
 def ramdump(exe, rom_path, state, work):
     d = tempfile.mkdtemp(dir=work); shutil.copy(state, os.path.join(d, 'm.state'))
-    open(os.path.join(d, 's.txt'), 'w').write('loadstate m\nrun 5\nramdump r\n')
+    open(os.path.join(d, 's.txt'), 'w').write('loadstate m\nrun 5\nramdump r\ndump v\n')
     subprocess.check_call([exe, rom_path, d, os.path.join(d, 's.txt')], stdout=subprocess.DEVNULL)
-    return open(os.path.join(d, 'r.ram'), 'rb').read()
+    return open(os.path.join(d, 'r.ram'), 'rb').read(), open(os.path.join(d, 'v.mem'), 'rb').read()[0x400:0x400 + 0x8000]
 
 
 def main():
@@ -115,8 +120,8 @@ def main():
     for era in range(4):
         for g in range(4):
             st = os.path.join(sdir, "st_e%dg%d.state" % (era, g))
-            ram = ramdump(exe, rom_path, st, work) if os.path.exists(st) else None
-            e1, rooms, ims = house_images(rom, g + 4 * era, ram)
+            ram, vram = ramdump(exe, rom_path, st, work) if os.path.exists(st) else (None, None)
+            e1, rooms, ims = house_images(rom, g + 4 * era, ram, vram)
             key = "e%dg%d" % (era, g); files = {}
             for s, im in ims.items():
                 name = "house_%s_s%d" % (key, s); im.save(os.path.join(out, name + ".png.bytes"), format="PNG"); files[str(s)] = name
