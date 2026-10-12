@@ -87,6 +87,17 @@ namespace SennenKazoku.Game
         }
         FrameReel title; bool titleLoaded;
 
+        /// <summary>원작 화살 쏘기 하늘 장면 프레임 (LocalArt/arrow_shot_frames.bin.bytes — tools/gba_capture/arrow_fx.py). 없으면 null.</summary>
+        public FrameReel ShotReel()
+        {
+            if (shotLoaded) return shot;
+            shotLoaded = true;
+            var ta = Resources.Load<TextAsset>("LocalArt/arrow_shot_frames.bin");
+            shot = ta == null ? null : FrameReel.Parse(ta.bytes);
+            return shot;
+        }
+        FrameReel shot; bool shotLoaded;
+
         /// <summary>원작 도입부 천계 장면 프레임 (LocalArt/heaven_frames.bin.bytes — tools/gba_capture/heaven_frames.py). 없으면 null.</summary>
         public FrameReel HeavenReel()
         {

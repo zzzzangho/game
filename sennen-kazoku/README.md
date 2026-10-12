@@ -37,6 +37,7 @@ dotnet run --project tools/PackLintCli -- unity/Assets/Resources/BundledPacks �
 - `LocalArt/opening_frames.bin.bytes`: `python3 -I tools/gba_capture/opening_frames.py <ROM>` (엔딩 카드 뒤 오프닝 데모)
 - `LocalArt/heaven_frames.bin.bytes`: `python3 -I tools/gba_capture/heaven_frames.py <ROM>` (도입부 천계 장면 — 신님·큐피트. 대사는 orig_text.json "heaven": `tools/romlift/export_charset.py <ROM> orig_text.json --heaven-only`)
 - `LocalArt/bubble_*.png.bytes` · `band_event.png.bytes`: `python3 -I tools/gba_capture/bubbles.py <ROM>` (원작 말풍선 — 천계 신님·큐피트, 집 큐피트 한마디, 사건 글상자·제목 띠. 글자를 지운 빈 것)
+- `LocalArt/arrow_shot_frames.bin.bytes` · `fx_arrow` · `fx_burst_0~2`: `python3 -I tools/gba_capture/arrow_fx.py <ROM>` (원작 화살 연출 — 하늘 장면, 꽂히는 화살, 터짐. 효과음은 audio_rip.py 가 함께 뽑는다)
 - `LocalArt/title_frames.bin.bytes`: `python3 -I tools/gba_capture/title_frames.py <ROM>` (원작 제목 화면 — 누르면 메뉴, 그냥 두면 오프닝 데모. 부팅 로고는 넣지 않음)
 - `LocalAudio/`: `python3 -I tools/gba_capture/audio_rip.py <ROM>` (원작 배경음악·효과음 — 아래 "원작 소리")
 - 결과 `build/` 와 `*.apk` 는 git 에서 빠진다. Unity 계정은 2단계 인증이 꺼져 있어야 컨테이너 안에서 활성화된다(끝나면 반납).

@@ -1297,6 +1297,85 @@ namespace SennenKazoku.Game
             selectedId = alive[((i + dir) % alive.Count + alive.Count) % alive.Count].Id; follow = true; shownImm = -1; RefreshBar(); RefreshDialog();
         }
 
+        // =============================================================== 원작 화살 연출 (tools/gba_capture/arrow_fx.py — 실기 프레임, 고른 때 = 0)
+        //   0 효과음 0x116 → 집이 어두워짐 → 42~ 하늘 장면(큐피트 "조금 따끔할 거야~" · 76 0x1C2 · 131 0x1C3 · 154 0x117 "얍~!") → 245 집
+        //   → 241 0x123 화살이 화면 오른쪽 밖(+70)에서 1프레임 10점씩 날아와 인물 그림(32×64) 안 (12, 36)에 꽂힘 → 0x10C · 2프레임 뒤 터짐(64×64, (−16, 11))
+        //   3장 × 3프레임 + 빈 3프레임 되풀이 45프레임 → 힘내라 0x10F / 진정해 0x110. 연출 동안 시간은 멈춘다.
+        static readonly int[,] FxSe = { { 0, 0x116 }, { 76, 0x1C2 }, { 131, 0x1C3 }, { 154, 0x117 }, { 241, 0x123 } };
+        const int FxReelFrom = 42, FxHouseAt = 245, FxArrowAt = 242, FxBurstLen = 45;
+        FrameReel shotReel; RawImage fxReelImg; Texture2D fxTex; Image fxBlack, fxArrow, fxBurst; int fxShown = -1, fxTarget = -1, fxSeI;
+        bool fxActive, fxCalm, fxHit; float fxT0, fxStartX, fxHitAt;
+
+        bool PlayArrowFx(int targetId, bool calm)
+        {
+            var ar = art.Sprite("fx_arrow"); shotReel = art.ShotReel();
+            if (ar == null || !actors.ContainsKey(targetId)) return false;
+            fxActive = true; fxCalm = calm; fxTarget = targetId; fxT0 = Time.unscaledTime; fxSeI = 0; fxHit = false; fxShown = -1; fxStartX = float.NaN;
+            selectedId = targetId; follow = true; RefreshBar();
+            fxBlack = UiKit.Box(root, "fxBlack", new Color(0, 0, 0, 0)); fxBlack.raycastTarget = true; UiKit.Stretch(fxBlack.rectTransform, 0, 0, 0, 0);
+            fxReelImg = new GameObject("fxReel", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>(); fxReelImg.transform.SetParent(root, false);
+            fxReelImg.raycastTarget = false; fxReelImg.enabled = false;
+            float w = lay.Safe.W, h = w * 160f / 240f; UiKit.SetPx(fxReelImg.rectTransform, lay.Safe.X, lay.Safe.Y + (lay.Safe.H - h) / 2f, w, h);
+            if (fxTex == null) { fxTex = new Texture2D(2, 2, TextureFormat.RGBA32, false); fxTex.filterMode = FilterMode.Point; fxTex.wrapMode = TextureWrapMode.Clamp; }
+            fxReelImg.texture = fxTex;
+            fxArrow = UiKit.Box(scene, "fxArrow", Color.white, ar); fxArrow.raycastTarget = false; fxArrow.gameObject.SetActive(false);
+            fxBurst = UiKit.Box(scene, "fxBurst", Color.white, null); fxBurst.raycastTarget = false; fxBurst.gameObject.SetActive(false);
+            if (shotReel == null) { sound.PlaySe(0x116); fxSeI = FxSe.GetLength(0) - 1; fxT0 -= (FxArrowAt - 20) / DemoFps; }   // 하늘 장면 그림이 없으면 바로 집 부분
+            return true;
+        }
+
+        void EndArrowFx()
+        {
+            fxActive = false;
+            foreach (var g in new Graphic[] { fxBlack, fxReelImg, fxArrow, fxBurst }) if (g != null) Destroy(g.gameObject);
+            fxBlack = null; fxReelImg = null; fxArrow = null; fxBurst = null;
+        }
+
+        void UpdateArrowFx()
+        {
+            float f = (Time.unscaledTime - fxT0) * DemoFps;
+            while (fxSeI < FxSe.GetLength(0) && f >= FxSe[fxSeI, 0]) { sound.PlaySe(FxSe[fxSeI, 1]); fxSeI++; }
+            if (f < FxHouseAt && shotReel != null)
+            {
+                // 하늘 장면 (집이 닦이듯 사라지는 부분은 앱 화면이 어두워지는 것으로 대신)
+                fxBlack.color = new Color(0, 0, 0, Mathf.Clamp01(f / FxReelFrom));
+                int k = f >= FxReelFrom ? shotReel.FrameAt((f - FxReelFrom) / DemoFps) : -1;
+                fxReelImg.enabled = k >= 0;
+                if (k >= 0 && k != fxShown) { fxTex.LoadImage(shotReel.Png(k)); fxTex.filterMode = FilterMode.Point; fxShown = k; }
+                fxBlack.transform.SetAsLastSibling(); fxReelImg.transform.SetAsLastSibling();
+                return;
+            }
+            if (fxBlack != null) { Destroy(fxBlack.gameObject); Destroy(fxReelImg.gameObject); fxBlack = null; fxReelImg = null; }
+            Actor a;
+            if (!actors.TryGetValue(fxTarget, out a)) { EndArrowFx(); return; }
+            float viewW = lay.Scene.W / hs; int W = art.HouseWidth;
+            float stopX = a.X + 12, top = a.Floor - 61 - camY;
+            if (float.IsNaN(fxStartX)) fxStartX = stopX + (viewW - Mod(a.X - scrollX, W)) + 70;
+            float ax = stopX;
+            if (!fxHit)
+            {
+                ax = fxStartX - 10f * Mathf.Max(0f, f - FxArrowAt);
+                if (ax <= stopX) { ax = stopX; fxHit = true; fxHitAt = f; sound.PlaySe(0x10C); }
+            }
+            float dx = Mod(ax - scrollX, W); if (dx > viewW + 64) dx -= W;
+            fxArrow.gameObject.SetActive(f >= FxArrowAt); fxArrow.transform.SetAsLastSibling();
+            UiKit.SetPx(fxArrow.rectTransform, dx * hs, (top + 36) * hs, 32 * hs, 8 * hs);
+            if (fxHit)
+            {
+                float g = f - fxHitAt - 2;
+                int ph = g < 0 ? 3 : ((int)(g / 3f)) % 4;
+                var bs = ph < 3 ? art.Sprite("fx_burst_" + ph) : null;
+                fxBurst.gameObject.SetActive(bs != null);
+                if (bs != null)
+                {
+                    fxBurst.sprite = bs; fxBurst.transform.SetAsLastSibling();
+                    float bx = Mod(a.X - 16 - scrollX, W); if (bx > viewW + 64) bx -= W;
+                    UiKit.SetPx(fxBurst.rectTransform, bx * hs, (top + 11) * hs, 64 * hs, 64 * hs);
+                }
+                if (g >= FxBurstLen) { sound.PlaySe(fxCalm ? 0x110 : 0x10F); EndArrowFx(); }
+            }
+        }
+
         // =============================================================== 매 프레임
         void Update()
         {
@@ -1313,6 +1392,7 @@ namespace SennenKazoku.Game
             UpdateStageAnim();
             UpdateGauge();
             UpdateTip();
+            if (fxActive) { UpdateArrowFx(); return; }   // 화살 연출 동안은 시간이 가지 않는다(원작)
             if (!popupOpen && session is Core.Orig.OrigSession pos && pos.Memo != null)
             {   // 사건 메모 "확인 중" 화면: 원작 장면이 프레임마다 하루 묶음(25일)을 돌리듯 자동으로 넘긴다
                 var mv = pos.View();
@@ -1903,8 +1983,11 @@ namespace SennenKazoku.Game
                 {
                     if (id == "item.heart_crystal" && session is Core.Orig.OrigSession os) { ClosePopup(); OpenLegacyHearts(os); return; }
                     if (id == "arrow.legacy" && session is Core.Orig.OrigSession os2) { ClosePopup(); OpenLegacyDreams(os2); return; }
-                    var err = session.Use(Sel(), id);
-                    ClosePopup(); Toast(err ?? (Interventions.Find(id).Name + "을(를) " + Sel().Name + "에게 썼습니다"));
+                    var target = Sel();
+                    var err = session.Use(target, id);
+                    ClosePopup();
+                    bool fx = err == null && Interventions.Find(id).Kind == "arrow" && PlayArrowFx(target.Id, id == "arrow.calm");   // 원작 화살 연출 (있으면 알림 대신)
+                    if (!fx) Toast(err ?? (Interventions.Find(id).Name + "을(를) " + Sel().Name + "에게 썼습니다"));
                     if (err == null) SaveSlot("auto", true);
                 });
                 var lbl = b.GetComponentInChildren<Text>(); lbl.alignment = TextAnchor.MiddleLeft; lbl.fontStyle = FontStyle.Normal; lbl.supportRichText = true;
