@@ -434,7 +434,27 @@ namespace SennenKazoku.Game
             gameRoot.gameObject.SetActive(false); titleRoot.gameObject.SetActive(true); Clear(titleRoot);
             if (lay == null) return;
             float x = lay.Safe.X, w = lay.Safe.W, y = lay.Safe.Y + lay.Safe.H * 0.06f, pad = Px(28), bw = w - 2 * pad, bh = Px(56);
-            if (art.Available)
+            titleImg = null; titleReel = art.TitleReel();
+            if (titleReel != null)
+            {
+                // 원작 제목 화면 (로컬 추출 프레임 — title_frames.py): 누르기(START) 전에는 원작 화면만, 누르면 메뉴. 로고(상표) 화면은 없다.
+                var bk = UiKit.Box(titleRoot, "titleBg", Color.black); UiKit.Stretch(bk.rectTransform, 0, 0, 0, 0);
+                float th = w * 160f / 240f, ty = lay.Safe.Y + Mathf.Max(0f, (lay.Safe.H * 0.62f - th) / 2f);
+                titleImg = new GameObject("titleReel", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>(); titleImg.transform.SetParent(titleRoot, false);
+                titleImg.raycastTarget = false; UiKit.SetPx(titleImg.rectTransform, x, ty, w, th);
+                if (titleTex == null) { titleTex = new Texture2D(2, 2, TextureFormat.RGBA32, false); titleTex.filterMode = FilterMode.Point; titleTex.wrapMode = TextureWrapMode.Clamp; }
+                titleImg.texture = titleTex;
+                if (!titleRunning) RestartTitleReel();
+                titleShown = -1; UpdateTitleReel();
+                if (!titlePressed)
+                {
+                    var hit = UiKit.Box(titleRoot, "pressStart", new Color(0, 0, 0, 0)); hit.raycastTarget = true; UiKit.Stretch(hit.rectTransform, 0, 0, 0, 0);
+                    hit.gameObject.AddComponent<Button>().onClick.AddListener(() => { titlePressed = true; sound.PlaySe(0xE7); ShowTitle(); });   // 원작 START 소리
+                    return;
+                }
+                y = ty + th + Px(16);
+            }
+            else if (art.Available)
             {
                 var hgo = new GameObject("titleHouse", typeof(RectTransform), typeof(RawImage)); hgo.transform.SetParent(titleRoot, false);
                 var ri = hgo.GetComponent<RawImage>(); ri.texture = art.HouseTexture();
@@ -442,12 +462,15 @@ namespace SennenKazoku.Game
                 ri.uvRect = new Rect(0, 0, (w / (th / 160f)) / art.HouseWidth, 1);
                 titleHouse = ri;
             }
-            var t = UiKit.Label(titleRoot, "t", "천년가족", Px(44), new Color32(0xE8, 0x50, 0x70, 255), TextAnchor.MiddleCenter, FontStyle.Bold);
-            var o = t.gameObject.AddComponent<Outline>(); o.effectColor = new Color32(0x30, 0x80, 0xD0, 255); o.effectDistance = new Vector2(Px(2), -Px(2));
-            UiKit.SetPx(t.rectTransform, x, y, w, Px(64)); y += Px(64);
-            var sub = UiKit.Label(titleRoot, "s", "MILLENNIAL FAMILY · 모바일 재구현 (비공식)\n" + (art.Available ? "원작 그래픽: 로컬 추출본 사용 중 (배포 불가)" : "임시 그래픽 (원작 그래픽 미추출)"), Px(12), UiKit.Ink, TextAnchor.UpperCenter);
-            UiKit.SetPx(sub.rectTransform, x, y, w, Px(40));
-            y = lay.Safe.Y + lay.Safe.H * 0.72f;
+            if (titleReel == null)
+            {
+                var t = UiKit.Label(titleRoot, "t", "천년가족", Px(44), new Color32(0xE8, 0x50, 0x70, 255), TextAnchor.MiddleCenter, FontStyle.Bold);
+                var o = t.gameObject.AddComponent<Outline>(); o.effectColor = new Color32(0x30, 0x80, 0xD0, 255); o.effectDistance = new Vector2(Px(2), -Px(2));
+                UiKit.SetPx(t.rectTransform, x, y, w, Px(64)); y += Px(64);
+                var sub = UiKit.Label(titleRoot, "s", "MILLENNIAL FAMILY · 모바일 재구현 (비공식)\n" + (art.Available ? "원작 그래픽: 로컬 추출본 사용 중 (배포 불가)" : "임시 그래픽 (원작 그래픽 미추출)"), Px(12), UiKit.Ink, TextAnchor.UpperCenter);
+                UiKit.SetPx(sub.rectTransform, x, y, w, Px(40));
+                y = lay.Safe.Y + lay.Safe.H * 0.72f;
+            }
             bool hasSave = saves.Exists("auto");
             var c = UiKit.Btn(titleRoot, "cont", hasSave ? "이어하기" : "이어하기 (저장 없음)", Px(18), hasSave ? new Color32(0x3A, 0x6E, 0xC8, 255) : (Color)Color.gray, Color.white, () => { if (hasSave) LoadSlot("auto"); });
             UiKit.SetPx(c.GetComponent<RectTransform>(), x + pad, y, bw, bh); y += bh + Px(10);
@@ -459,6 +482,29 @@ namespace SennenKazoku.Game
             UiKit.SetPx(rc.GetComponent<RectTransform>(), x + pad + (bw + Px(10)) / 2, y, (bw - Px(10)) / 2, Px(48));
         }
         RawImage titleHouse;
+
+        // ---------- 원작 제목 화면 프레임 (LocalArt/title_frames.bin.bytes) ----------
+        // 원작: 제목 곡 0x84(52초, 한 번 곡)와 함께 하늘이 낮 → 저녁 → 밤으로 바뀌고, 아무것도 누르지 않으면 흰 화면으로 사라진 뒤 오프닝 데모 → 다시 제목.
+        // 앱: START 전에는 끝나면 오프닝 데모(있으면)로, START 뒤(메뉴가 나온 뒤)에는 제목 화면을 처음부터 다시 돈다. 곡도 화면과 같이 다시 시작한다.
+        FrameReel titleReel; RawImage titleImg; Texture2D titleTex; float titleStart; int titleShown = -1; bool titlePressed, titleRunning;
+
+        void RestartTitleReel()
+        {
+            titleStart = Time.unscaledTime; titleShown = -1; titleRunning = true;
+            if (sound != null) sound.PlayBgm(0x84, 0f, 0f, 0f, true);
+        }
+
+        void UpdateTitleReel()
+        {
+            if (titleReel == null || titleImg == null) return;
+            int k = titleReel.FrameAt(Time.unscaledTime - titleStart);
+            if (k < 0)
+            {
+                if (!titlePressed && !popupOpen && art.OpeningReel() != null) { titleRunning = false; titleImg = null; PlayOpening(ShowTitle); return; }
+                RestartTitleReel(); k = 0;
+            }
+            if (k != titleShown) { titleTex.LoadImage(titleReel.Png(k)); titleTex.filterMode = FilterMode.Point; titleShown = k; }
+        }
 
         void StartNew()
         {
@@ -781,6 +827,7 @@ namespace SennenKazoku.Game
         void EnterGame()
         {
             ClearPopup(); playing = true; speed = 1; acc = 0; lastAutoDay = session.Family.Today; follow = true; musicOverride = -1;
+            titleRunning = titlePressed = false;   // 다음에 제목으로 돌아오면 원작처럼 처음(START 전)부터
             titleRoot.gameObject.SetActive(false); gameRoot.gameObject.SetActive(true);
             selectedId = session.Family.HeadId >= 0 ? session.Family.HeadId : session.Family.Members[0].Id;
             RebuildActors(); RefreshAll();
@@ -1066,6 +1113,7 @@ namespace SennenKazoku.Game
             if (lastScreen.x != Screen.width || lastScreen.y != Screen.height || lastSafe != Screen.safeArea) ApplyLayout();
             if (toastBox.gameObject.activeSelf && Time.unscaledTime > toastUntil) toastBox.gameObject.SetActive(false);
             if (titleHouse != null && titleRoot.gameObject.activeSelf) { var u = titleHouse.uvRect; u.x += Time.deltaTime * 0.01f; titleHouse.uvRect = u; }
+            if (titleRoot.gameObject.activeSelf && reel == null) UpdateTitleReel();
             UpdateMusic();
             if (reel != null) { UpdateOpening(); return; }
             if (parade != null) { UpdateParade(); return; }
@@ -1148,7 +1196,7 @@ namespace SennenKazoku.Game
             if (parade != null) id = 5;
             else if (popupOpen && setup != null) id = 3;
             else if (popupOpen && musicOverride >= 0) id = musicOverride;
-            else if (titleRoot.gameObject.activeSelf) { id = 0x84; again = true; }
+            else if (titleRoot.gameObject.activeSelf) { id = 0x84; again = titleReel == null; }   // 제목 프레임이 있으면 곡은 화면과 같이 다시 시작(RestartTitleReel)
             else if (session == null) return;
             else if (os != null && os.SceneMusic >= 0) id = os.SceneMusic;
             else if (os != null && os.EndMenu == 4) id = 4;

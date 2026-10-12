@@ -76,6 +76,17 @@ namespace SennenKazoku.Game
         }
         FrameReel opening; bool openingLoaded;
 
+        /// <summary>원작 제목 화면 프레임 (LocalArt/title_frames.bin.bytes — tools/gba_capture/title_frames.py). 없으면 null.</summary>
+        public FrameReel TitleReel()
+        {
+            if (titleLoaded) return title;
+            titleLoaded = true;
+            var ta = Resources.Load<TextAsset>("LocalArt/title_frames.bin");
+            title = ta == null ? null : FrameReel.Parse(ta.bytes);
+            return title;
+        }
+        FrameReel title; bool titleLoaded;
+
         public Texture2D HouseTexture()
         {
             Texture2D t = null;
