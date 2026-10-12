@@ -868,6 +868,8 @@ namespace SennenKazoku.Game
             return CharacterComposer.FromPreset(art.Parts, rng, RoleOf(p), p.Gender);
         }
 
+        const float OutSignTop = 29;   // 팻말(32줄) 위끝 = 바닥 − 29 → 아래끝이 사람 그림 아래끝(바닥 + 3)과 같다
+
         void UpdateActors()
         {
             RefreshHouse();
@@ -909,8 +911,21 @@ namespace SennenKazoku.Game
                     a.Target = UnityEngine.Random.Range(room[0] + 4, Mathf.Max(room[0] + 5, room[1] - 36)); a.NextMove = Time.time + UnityEngine.Random.Range(4f, 10f);
                     if (RoomFloor(room) != (int)a.Floor) { a.Floor = RoomFloor(room); a.X = a.Target; }   // 다른 층 방: 바로 옮긴다(원작 계단 이동은 옮기지 않음)
                 }
-                a.Img.enabled = !a.Hidden;
-                if (a.Hidden) { a.Bubble.gameObject.SetActive(false); continue; }
+                // 외출 중: 원작은 사람 대신 현관(방 0, 집을 나선 자리)에 "외출중" 팻말(OBJ 32×32, 셀 5dff2d7c4c68)을 세운다 — 실기 화면.
+                // 고르면 화면이 그 팻말로 가고 선택 화살표가 팻말 위에 뜬다. 팻말 그림이 없으면 예전처럼 숨긴다.
+                var outSign = a.Hidden ? art.Ui("outing") : null;
+                a.Img.enabled = !a.Hidden || outSign != null;
+                if (a.Hidden)
+                {
+                    a.Bubble.gameObject.SetActive(false);
+                    if (outSign != null)
+                    {
+                        a.Img.sprite = outSign;
+                        float ox = Mod(a.X - scrollX, W); if (ox > viewW + 32) ox -= W;
+                        UiKit.SetPx(a.Rt, ox * hs, (a.Floor - OutSignTop - camY) * hs, 32 * hs, 32 * hs);
+                    }
+                    continue;
+                }
                 float d = a.Target - a.X; bool moving = Mathf.Abs(d) > 0.5f;
                 if (moving) a.X += Mathf.Sign(d) * Mathf.Min(Mathf.Abs(d), 18f * Time.deltaTime);
                 a.Anim += Time.deltaTime;
@@ -962,7 +977,8 @@ namespace SennenKazoku.Game
             {
                 float dx = Mod(sa.X - scrollX, W); if (dx > viewW + 32) dx -= W;
                 float bob = Mathf.Sin(Time.time * 3f) * 2f;
-                UiKit.SetPx(marker.rectTransform, (dx + 8) * hs, (sa.Floor - 61 - camY + 6 + bob) * hs, 16 * hs, 16 * hs);
+                float headTop = sa.Hidden && art.Ui("outing") != null ? sa.Floor - OutSignTop - 14 : sa.Floor - 61 + 6;   // 외출 중이면 팻말 위
+                UiKit.SetPx(marker.rectTransform, (dx + 8) * hs, (headTop - camY + bob) * hs, 16 * hs, 16 * hs);
             }
             // 큐피트: 장면 왼쪽 위를 떠다니며 팁 말풍선을 보여 준다
             {
