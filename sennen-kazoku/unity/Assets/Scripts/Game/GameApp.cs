@@ -39,7 +39,7 @@ namespace SennenKazoku.Game
         const float SecondsPerDay = 5250f / 59.7275f, HoldSpeed = 5250f / 810f;
         bool playing, popupOpen, follow = true; int lastAutoDay; float toastUntil;
         int selectedId = -1; float scrollX, camY;                             // GBA px
-        sealed class Actor { public int Id; public float X, Target, Floor; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; public int Room = -1, Kind = -1, Spot = -1, Emo = -1; public float EmoStart, EmoCheck; public bool Hidden; }
+        sealed class Actor { public int Id; public float X, Target, Floor; public RectTransform Rt; public Image Img; public float Anim, NextMove; public bool Back; public Image Bubble; public Text BubbleText; public int Room = -1, Kind = -1, Spot = -1, Emo = -1; public float EmoStart, EmoCheck; public bool Hidden; public int TintPhase; public float TintClock; }
         readonly Dictionary<int, Actor> actors = new Dictionary<int, Actor>();
 
         // =============================================================== 시작
@@ -1097,6 +1097,48 @@ namespace SennenKazoku.Game
             return CharacterComposer.FromPreset(art.Parts, rng, RoleOf(p), p.Gender);
         }
 
+        // 힘내라·진정해 화살을 맞은 사람: 원작은 그 사람 OBJ 팔레트의 1번 색(검은 외곽선)만 표의 색으로 바꿔 맥박처럼 깜빡인다 (0x08012658~0x08012862, 실기 확인).
+        //   +0x69 bit1(힘내라) → 표 0x08581748 빨강, 아니면 bit2(진정해) → 표 0x08581758 파랑, 둘 다 아니면 검정. 표 8칸을 차례로 돌고,
+        //   1프레임마다 셈을 힘내라는 게이지(+0x5A) 255 면 2·아니면 1, 진정해는 게이지 0 이면 2·아니면 1 올려 3(빨강)·5(파랑)를 넘으면 다음 칸 — 빨강 4프레임, 파랑 6프레임마다.
+        //   표시는 다음 관심사로 바뀌어 +0x69 가 지워질 때까지 이어진다(OrigSelect). 앱은 그림의 순검정(0,0,0) 점을 외곽선으로 본다.
+        static readonly Color32[] ArrowRed = { C15(31, 13, 14), C15(31, 3, 5), C15(21, 2, 3), C15(10, 1, 1), C15(0, 0, 0), C15(10, 1, 1), C15(21, 2, 3), C15(31, 3, 5) };
+        static readonly Color32[] ArrowBlue = { C15(13, 17, 31), C15(5, 5, 31), C15(2, 2, 21), C15(1, 1, 10), C15(0, 0, 0), C15(1, 1, 10), C15(2, 2, 21), C15(5, 5, 31) };
+        static Color32 C15(int r, int g, int b) { return new Color32((byte)(r * 255 / 31), (byte)(g * 255 / 31), (byte)(b * 255 / 31), 255); }
+        readonly Dictionary<long, Sprite> tintCache = new Dictionary<long, Sprite>();
+
+        Sprite ArrowOutline(Actor a, Person p, Sprite spr)
+        {
+            bool red = (p.ArrowFlags & 2) != 0, blue = !red && (p.ArrowFlags & 4) != 0;
+            if (!red && !blue || fxActive && a.Id == fxTarget) { a.TintClock = 0; return spr; }   // 화살 연출 중에는 아직 (원작: 터짐이 끝난 뒤부터)
+            int step = red ? (p.Gauge >= 255 ? 2 : 1) : (p.Gauge <= 0 ? 2 : 1), over = red ? 4 : 6;
+            a.TintClock += Time.deltaTime * 60f * step;
+            while (a.TintClock >= over) { a.TintClock -= over; a.TintPhase = (a.TintPhase + 1) & 7; }
+            return Tinted(spr, (red ? ArrowRed : ArrowBlue)[a.TintPhase]);
+        }
+
+        Sprite Tinted(Sprite spr, Color32 c)
+        {
+            if (c.r == 0 && c.g == 0 && c.b == 0) return spr;
+            long key = ((long)spr.GetInstanceID() << 32) | (uint)(c.r << 16 | c.g << 8 | c.b);
+            Sprite s;
+            if (tintCache.TryGetValue(key, out s)) return s;
+            var r = spr.textureRect; int w = (int)r.width, h = (int)r.height;
+            Color32[] px;
+            try { px = spr.texture.GetPixels32(); } catch (Exception) { return tintCache[key] = spr; }   // 읽을 수 없는 그림이면 그대로
+            var outPx = new Color32[w * h]; int tw = spr.texture.width;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    var q = px[((int)r.y + y) * tw + (int)r.x + x];
+                    outPx[y * w + x] = q.a > 0 && q.r == 0 && q.g == 0 && q.b == 0 ? c : q;
+                }
+            var t = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            t.SetPixels32(outPx); t.Apply();
+            var piv = spr.pivot;
+            s = Sprite.Create(t, new Rect(0, 0, w, h), new Vector2(piv.x / w, piv.y / h), spr.pixelsPerUnit);
+            return tintCache[key] = s;
+        }
+
         const float OutSignTop = 29;   // 팻말(32줄) 위끝 = 바닥 − 29 → 아래끝이 사람 그림 아래끝(바닥 + 3)과 같다
 
         void UpdateActors()
@@ -1159,7 +1201,7 @@ namespace SennenKazoku.Game
                 if (moving) a.X += Mathf.Sign(d) * Mathf.Min(Mathf.Abs(d), 18f * Time.deltaTime);
                 a.Anim += Time.deltaTime;
                 var spr = Figure(p, moving && d < 0, moving ? (int)(a.Anim * 4) : 0);
-                if (spr != null) a.Img.sprite = spr;
+                if (spr != null) a.Img.sprite = ArrowOutline(a, p, spr);
                 float dx = Mod(a.X - scrollX, W); if (dx > viewW + 32) dx -= W;
                 float top = a.Floor - 61 - camY;
                 UiKit.SetPx(a.Rt, dx * hs, top * hs, 32 * hs, 64 * hs);

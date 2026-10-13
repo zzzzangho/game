@@ -8,7 +8,7 @@ namespace UnityEngine
 {
     public class Object
     {
-        public string name;
+        public string name; public int GetInstanceID() { return 0; }
         public static void Destroy(Object o) { }
         public static void DontDestroyOnLoad(Object o) { }
         public static T Instantiate<T>(T o) where T : Object { return o; }
@@ -109,7 +109,7 @@ namespace UnityEngine
     public enum TextureWrapMode { Repeat, Clamp }
     public class Sprite : Object
     {
-        public Texture2D texture; public Rect rect; public Vector2 pivot; public float pixelsPerUnit;
+        public Texture2D texture; public Rect rect, textureRect; public Vector2 pivot; public float pixelsPerUnit;
         public static Sprite Create(Texture2D t, Rect r, Vector2 p) { return null; } public static Sprite Create(Texture2D t, Rect r, Vector2 p, float ppu) { return null; }
         public static Sprite Create(Texture2D t, Rect r, Vector2 p, float ppu, uint ex, SpriteMeshType m) { return null; }
         public static Sprite Create(Texture2D t, Rect r, Vector2 p, float ppu, uint ex, SpriteMeshType m, Vector4 b) { return null; }
