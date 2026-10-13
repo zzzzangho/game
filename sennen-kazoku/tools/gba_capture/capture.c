@@ -127,6 +127,10 @@ int main(int argc, char** argv) {
             fclose(f); printf("shot %s @%ld\n", arg, frame);
         } else if (!strcmp(cmd, "layer") && sscanf(line, "%*s %d %i", &n, &keys) == 2) {   /* layer <0-3 BG, 4 OBJ> <0|1> */
             c->enableVideoLayer(c, n, keys != 0);
+        } else if (!strcmp(cmd, "poke")) {   /* poke <주소> <값> [바이트 수 1·2·4] : 메모리에 값을 써 넣는다 (상태를 바꿔 화면을 보는 실험용) */
+            unsigned addr = 0, val = 0; int n = 1;
+            if (sscanf(line, "%*s %i %i %d", &addr, &val, &n) < 2) continue;
+            if (n == 4) c->busWrite32(c, addr, val); else if (n == 2) c->busWrite16(c, addr, val); else c->busWrite8(c, addr, val);
         } else if (!strcmp(cmd, "ramdump") && sscanf(line, "%*s %199s", arg) == 1) {       /* EWRAM(256K)+IWRAM(32K) 덤프 */
             char p[512]; snprintf(p, sizeof p, "%s/%s.ram", argv[2], arg); FILE* f = fopen(p, "wb");
             for (unsigned a = 0x02000000; a < 0x02040000; a++) fputc(c->busRead8(c, a), f);
